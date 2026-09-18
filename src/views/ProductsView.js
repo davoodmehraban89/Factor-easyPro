@@ -8,10 +8,20 @@ import { Toast } from '../core/Toast.js';
 import { Formatters } from '../utils/Formatters.js';
 import { numberToWords } from '../utils/NumberToWords.js';
 import { NumberInput } from '../utils/NumberInput.js';
+import { StockKardexModal } from './StockKardexModal.js';
 
 let currentTab = 'products';
 let currentSearch = '';
-let cache = { products: [], units: [], categories: [], stockMap: {} };
+let currentStockFilter = ''; // '' | 'low' | 'out' | 'ok'
+let cache = {
+  products: [],
+  units: [],
+  categories: [],
+  stockMap: {},
+  lowStockCount: 0,
+  outOfStockCount: 0,
+  totalStockValue: { totalBuyValue: 0, totalSellValue: 0, potentialProfit: 0 }
+};
 
 class ProductsViewImpl {
   async render() {
@@ -19,7 +29,7 @@ class ProductsViewImpl {
     return `
       <div class="page-title">
         <h2>کالا و انبار</h2>
-        <p>مدیریت کالاها، خدمات، واحدها و گروه‌ها</p>
+        <p>مدیریت کالاها، خدمات، واحدها، گروه‌ها و موجودی انبار</p>
       </div>
 
       <div class="tabs">
@@ -50,6 +60,24 @@ class ProductsViewImpl {
     cache.categories = await ProductController.getCategories();
     const ids = cache.products.map(p => p.id);
     cache.stockMap = await ProductController.getStockMap(ids);
+
+    // محاسبه KPI ها
+    let lowCount = 0, outCount = 0;
+    cache.products.forEach(p => {
+      if (p.trackInventory === false) return;
+      const s = cache.stockMap[p.id] || 0;
+      const min = Number(p.minStock) || 0;
+      if (s <= 0) outCount++;
+      else if (s <= min) lowCount++;
+    });
+    cache.lowStockCount = lowCount;
+    cache.outOfStockCount = outCount;
+
+    try {
+      cache.totalStockValue = await ProductController.getTotalStockValue();
+    } catch (e) {
+      cache.totalStockValue = { totalBuyValue: 0, totalSellValue: 0, potentialProfit: 0 };
+    }
   }
 
   renderTabContent() {
@@ -71,17 +99,31 @@ class ProductsViewImpl {
   }
 
   // ============================================================
-  // کالاها
+  // تب کالاها
   // ============================================================
   renderProductsTab() {
-    const filtered = currentSearch
-      ? cache.products.filter(p => {
-          const q = currentSearch.toLowerCase();
-          return (p.name || '').toLowerCase().includes(q)
-              || (p.code || '').toLowerCase().includes(q)
-              || (p.barcode || '').toLowerCase().includes(q);
-        })
-      : cache.products;
+    let filtered = cache.products;
+
+    if (currentSearch) {
+      const q = currentSearch.toLowerCase();
+      filtered = filtered.filter(p =>
+        (p.name || '').toLowerCase().includes(q)
+        || (p.code || '').toLowerCase().includes(q)
+        || (p.barcode || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (currentStockFilter) {
+      filtered = filtered.filter(p => {
+        if (p.trackInventory === false) return false;
+        const s = cache.stockMap[p.id] || 0;
+        const min = Number(p.minStock) || 0;
+        if (currentStockFilter === 'low') return s <= min && s > 0;
+        if (currentStockFilter === 'out') return s <= 0;
+        if (currentStockFilter === 'ok') return s > min;
+        return true;
+      });
+    }
 
     let rowsHtml = '';
     if (filtered.length === 0) {
@@ -89,8 +131,8 @@ class ProductsViewImpl {
         <tr><td colspan="7">
           <div class="empty-state">
             <div class="icon">📦</div>
-            <h3>هیچ کالایی ثبت نشده</h3>
-            <p>اولین کالا یا خدمات خود را اضافه کنید</p>
+            <h3>هیچ کالایی یافت نشد</h3>
+            <p>${currentSearch || currentStockFilter ? 'فیلتر رو تغییر بده یا کالای جدید اضافه کن' : 'اولین کالا یا خدمات خود را اضافه کنید'}</p>
           </div>
         </td></tr>`;
     } else {
@@ -98,7 +140,20 @@ class ProductsViewImpl {
         const unit = cache.units.find(u => u.id === p.unitId);
         const cat = cache.categories.find(c => c.id === p.categoryId);
         const stock = cache.stockMap[p.id] || 0;
+        const minStock = Number(p.minStock) || 0;
         const isService = p.trackInventory === false;
+
+        let stockHtml;
+        if (isService) {
+          stockHtml = '<span class="badge badge-muted">خدمت</span>';
+        } else if (stock <= 0) {
+          stockHtml = `<strong style="color:var(--danger)">${Formatters.number(stock)}</strong> <span class="badge badge-danger" style="font-size:9px">تمام</span>`;
+        } else if (stock <= minStock) {
+          stockHtml = `<strong style="color:var(--warning)">${Formatters.number(stock)}</strong> <span class="badge badge-warning" style="font-size:9px">کم</span>`;
+        } else {
+          stockHtml = `<strong style="color:var(--success)">${Formatters.number(stock)}</strong>`;
+        }
+
         return `
           <tr>
             <td><strong>${this._esc(p.code || '—')}</strong></td>
@@ -106,17 +161,13 @@ class ProductsViewImpl {
               <div style="font-weight:600">${this._esc(p.name)}</div>
               ${cat ? `<small style="color:var(--text-muted);font-size:11px">${this._esc(cat.name)}</small>` : ''}
             </td>
-            <td>${unit ? this._esc(unit.name) : '—'}</td>
+            <td>${unit ? this._esc(unit.name) : (p.unit ? this._esc(p.unit) : '—')}</td>
             <td>${Formatters.money(p.buyPrice)}</td>
             <td>${Formatters.money(p.sellPrice)}</td>
-            <td>
-              ${isService
-                ? '<span class="badge badge-muted">خدمت</span>'
-                : `<strong style="color:${stock > 0 ? 'var(--success)' : stock < 0 ? 'var(--danger)' : 'var(--text-muted)'}">${Formatters.number(stock)}</strong>`
-              }
-            </td>
+            <td>${stockHtml}</td>
             <td>
               <div class="row-actions">
+                ${!isService ? `<button class="icon-btn-sm" title="کاردکس انبار" onclick="window.ProductsView.openKardex('${p.id}')">📊</button>` : ''}
                 <button class="icon-btn-sm" title="ویرایش" onclick="window.ProductsView.editProduct('${p.id}')">✏️</button>
                 <button class="icon-btn-sm danger" title="حذف" onclick="window.ProductsView.deleteProduct('${p.id}')">🗑️</button>
               </div>
@@ -126,12 +177,59 @@ class ProductsViewImpl {
       }).join('');
     }
 
+    const totalStockVal = cache.totalStockValue.totalBuyValue || 0;
+    const totalSellVal = cache.totalStockValue.totalSellValue || 0;
+
     return `
+      <div class="grid-kpi">
+        <div class="card kpi-card" style="margin:0;border-top:3px solid var(--primary)">
+          <div class="kpi-card-icon" style="background:#eff6ff;color:var(--primary)">📦</div>
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">تعداد کالا</div>
+            <div style="font-size:17px;font-weight:800;color:var(--primary)">${Formatters.number(cache.products.length)}</div>
+            <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px">${Formatters.number(cache.products.filter(p => p.trackInventory !== false).length)} فیزیکی</div>
+          </div>
+        </div>
+
+        <div class="card kpi-card" style="margin:0;border-top:3px solid var(--success)">
+          <div class="kpi-card-icon" style="background:#ecfdf5;color:var(--success)">💰</div>
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">ارزش موجودی (خرید)</div>
+            <div style="font-size:14px;font-weight:800;color:var(--success)">${Formatters.money(totalStockVal)}</div>
+            <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px">فروش: ${Formatters.money(totalSellVal)}</div>
+          </div>
+        </div>
+
+        <div class="card kpi-card" style="margin:0;border-top:3px solid var(--warning);cursor:${cache.lowStockCount > 0 ? 'pointer' : 'default'}" onclick="window.ProductsView._setStockFilter('low')">
+          <div class="kpi-card-icon" style="background:#fffbeb;color:var(--warning)">⚠️</div>
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">کالاهای کم‌موجود</div>
+            <div style="font-size:17px;font-weight:800;color:var(--warning)">${Formatters.number(cache.lowStockCount)}</div>
+            <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px">زیر نقطه سفارش</div>
+          </div>
+        </div>
+
+        <div class="card kpi-card" style="margin:0;border-top:3px solid var(--danger);cursor:${cache.outOfStockCount > 0 ? 'pointer' : 'default'}" onclick="window.ProductsView._setStockFilter('out')">
+          <div class="kpi-card-icon" style="background:#fef2f2;color:var(--danger)">🚨</div>
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">کالاهای تمام‌شده</div>
+            <div style="font-size:17px;font-weight:800;color:var(--danger)">${Formatters.number(cache.outOfStockCount)}</div>
+            <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px">موجودی صفر</div>
+          </div>
+        </div>
+      </div>
+
       <div class="toolbar">
         <div class="search-input-wrap">
           <span class="icon">🔍</span>
           <input type="text" class="form-control" id="productSearch" placeholder="جستجو بر اساس نام، کد یا بارکد..." value="${this._esc(currentSearch)}" oninput="window.ProductsView._onSearch(this.value)" />
         </div>
+        <select class="form-control" style="width:auto;min-width:160px" onchange="window.ProductsView._setStockFilter(this.value)">
+          <option value="" ${currentStockFilter === '' ? 'selected' : ''}>همه کالاها</option>
+          <option value="low" ${currentStockFilter === 'low' ? 'selected' : ''}>⚠️ کم‌موجود</option>
+          <option value="out" ${currentStockFilter === 'out' ? 'selected' : ''}>🚨 تمام‌شده</option>
+          <option value="ok" ${currentStockFilter === 'ok' ? 'selected' : ''}>✅ موجودی سالم</option>
+        </select>
         <button class="btn" onclick="window.ProductsView.openProductModal()">➕ کالای جدید</button>
       </div>
 
@@ -144,8 +242,8 @@ class ProductsViewImpl {
               <th style="width:90px">واحد</th>
               <th style="width:130px">خرید</th>
               <th style="width:130px">فروش</th>
-              <th style="width:90px">موجودی</th>
-              <th style="width:100px">عملیات</th>
+              <th style="width:120px">موجودی</th>
+              <th style="width:130px">عملیات</th>
             </tr>
           </thead>
           <tbody>${rowsHtml}</tbody>
@@ -160,6 +258,12 @@ class ProductsViewImpl {
     if (el) el.innerHTML = this.renderProductsTab();
     const input = document.getElementById('productSearch');
     if (input) { input.focus(); input.setSelectionRange(val.length, val.length); }
+  }
+
+  _setStockFilter(filter) {
+    currentStockFilter = filter;
+    const el = document.getElementById('products-tab-content');
+    if (el) el.innerHTML = this.renderProductsTab();
   }
 
   // ============================================================
@@ -240,7 +344,7 @@ class ProductsViewImpl {
     const data = product || {
       code: '', barcode: '', name: '', categoryId: null, unitId: null,
       buyPrice: 0, sellPrice: 0, trackInventory: true,
-      isActiveSell: true, isActiveBuy: true, description: ''
+      isActiveSell: true, isActiveBuy: true, minStock: 0, description: ''
     };
 
     const unitOptions = cache.units.map(u =>
@@ -294,11 +398,19 @@ class ProductsViewImpl {
 
       <div class="form-group">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" id="pTrackInventory" ${data.trackInventory !== false ? 'checked' : ''} />
+          <input type="checkbox" id="pTrackInventory" ${data.trackInventory !== false ? 'checked' : ''} onchange="window.ProductsView._toggleMinStock()" />
           <span style="font-size:13px">پیگیری موجودی انبار</span>
         </label>
         <small style="color:var(--text-muted);font-size:11.5px;display:block;margin-top:2px;padding-right:24px">
           اگه این گزینه رو بردارید، این مورد به عنوان «خدمت» ثبت می‌شه و موجودی براش محاسبه نمی‌شه.
+        </small>
+      </div>
+
+      <div class="form-group" id="minStockBox" style="display:${data.trackInventory !== false ? 'block' : 'none'}">
+        <label class="form-label">نقطه سفارش (حداقل موجودی)</label>
+        <input type="text" inputmode="numeric" class="form-control" id="pMinStock" value="${NumberInput.format(data.minStock || 0)}" />
+        <small style="color:var(--text-muted);font-size:11.5px;display:block;margin-top:4px">
+          وقتی موجودی به این عدد یا کمتر رسید، هشدار «کم‌موجود» نمایش داده می‌شه.
         </small>
       </div>
 
@@ -321,6 +433,12 @@ class ProductsViewImpl {
     });
   }
 
+  _toggleMinStock() {
+    const checked = document.getElementById('pTrackInventory').checked;
+    document.getElementById('minStockBox').style.display = checked ? 'block' : 'none';
+  }
+
+  // ⬇️ متد ویرایش کالا
   async editProduct(id) {
     await this.openProductModal(id);
   }
@@ -335,6 +453,7 @@ class ProductsViewImpl {
       buyPrice: NumberInput.parse(document.getElementById('pBuyPrice').value),
       sellPrice: NumberInput.parse(document.getElementById('pSellPrice').value),
       trackInventory: document.getElementById('pTrackInventory').checked,
+      minStock: NumberInput.parse(document.getElementById('pMinStock')?.value || '0'),
       description: document.getElementById('pDescription').value
     };
 
@@ -380,6 +499,13 @@ class ProductsViewImpl {
   }
 
   // ============================================================
+  // کاردکس
+  // ============================================================
+  openKardex(productId) {
+    StockKardexModal.open(productId);
+  }
+
+  // ============================================================
   // فرم واحد
   // ============================================================
   openUnitModal(fromProductForm = false) {
@@ -409,24 +535,18 @@ class ProductsViewImpl {
       const newUnit = await ProductController.createUnit(name, symbol);
       Toast.success('واحد ثبت شد');
 
-      // بستن مودال واحد (برمی‌گرده به مودال کالا اگه باز بود)
       Modal.close();
-
-      // cache واحدها رو به‌روز کن
       cache.units = await ProductController.getUnits();
 
       if (fromProductForm) {
-        // ⬇️ اصلاح اصلی: dropdown واحد توی فرم کالا رو به‌روز کن
         const unitSelect = document.getElementById('pUnit');
         if (unitSelect) {
           unitSelect.innerHTML = cache.units.map(u =>
             `<option value="${u.id}">${this._esc(u.name)}</option>`
           ).join('');
-          // واحد جدید رو انتخاب کن
           unitSelect.value = newUnit.id;
         }
       } else {
-        // توی تب واحدها هستیم، جدول رو رفرش کن
         const el = document.getElementById('products-tab-content');
         if (el) el.innerHTML = this.renderTabContent();
       }
@@ -486,20 +606,15 @@ class ProductsViewImpl {
       const newCategory = await ProductController.createCategory(name, parentId);
       Toast.success('گروه ثبت شد');
 
-      // بستن مودال گروه
       Modal.close();
-
-      // cache گروه‌ها رو به‌روز کن
       cache.categories = await ProductController.getCategories();
 
       if (fromProductForm) {
-        // ⬇️ اصلاح اصلی: dropdown گروه توی فرم کالا رو به‌روز کن
         const catSelect = document.getElementById('pCategory');
         if (catSelect) {
           catSelect.innerHTML = cache.categories.map(c =>
             `<option value="${c.id}">${this._esc(c.name)}</option>`
           ).join('');
-          // گروه جدید رو انتخاب کن
           catSelect.value = newCategory.id;
         }
       } else {

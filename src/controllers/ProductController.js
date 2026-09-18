@@ -64,14 +64,34 @@ class ProductControllerImpl {
         (p.barcode || '').toLowerCase().includes(q)
       );
     }
-    if (filter.categoryId) {
-      list = list.filter(p => p.categoryId === filter.categoryId);
-    }
-    if (filter.type === 'good') {
-      list = list.filter(p => p.trackInventory !== false);
-    }
-    if (filter.type === 'service') {
-      list = list.filter(p => p.trackInventory === false);
+    if (filter.categoryId) list = list.filter(p => p.categoryId === filter.categoryId);
+    if (filter.type === 'good') list = list.filter(p => p.trackInventory !== false);
+    if (filter.type === 'service') list = list.filter(p => p.trackInventory === false);
+
+    // فیلترهای جدید فاز ۹
+    if (filter.stockStatus) {
+      const ids = list.map(p => p.id);
+      const stockMap = await this.getStockMap(ids);
+      if (filter.stockStatus === 'low') {
+        list = list.filter(p => {
+          if (p.trackInventory === false) return false;
+          const s = stockMap[p.id] || 0;
+          const min = Number(p.minStock) || 0;
+          return s <= min && s > 0;
+        });
+      } else if (filter.stockStatus === 'out') {
+        list = list.filter(p => {
+          if (p.trackInventory === false) return false;
+          return (stockMap[p.id] || 0) <= 0;
+        });
+      } else if (filter.stockStatus === 'ok') {
+        list = list.filter(p => {
+          if (p.trackInventory === false) return false;
+          const s = stockMap[p.id] || 0;
+          const min = Number(p.minStock) || 0;
+          return s > min;
+        });
+      }
     }
 
     return list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
@@ -91,11 +111,13 @@ class ProductControllerImpl {
       name: (data.name || '').trim(),
       categoryId: data.categoryId || null,
       unitId: data.unitId || null,
+      unit: data.unit || 'عدد',
       buyPrice: Number(data.buyPrice) || 0,
       sellPrice: Number(data.sellPrice) || 0,
       trackInventory: data.trackInventory !== false,
       isActiveSell: data.isActiveSell !== false,
       isActiveBuy: data.isActiveBuy !== false,
+      minStock: Number(data.minStock) || 0,
       description: (data.description || '').trim()
     };
     return await StorageService.put('products', product);
@@ -111,11 +133,13 @@ class ProductControllerImpl {
       name: (data.name || '').trim(),
       categoryId: data.categoryId || null,
       unitId: data.unitId || null,
+      unit: data.unit || existing.unit || 'عدد',
       buyPrice: Number(data.buyPrice) || 0,
       sellPrice: Number(data.sellPrice) || 0,
       trackInventory: data.trackInventory !== false,
       isActiveSell: data.isActiveSell !== false,
       isActiveBuy: data.isActiveBuy !== false,
+      minStock: Number(data.minStock) || 0,
       description: (data.description || '').trim()
     };
     return await StorageService.put('products', updated);
@@ -180,8 +204,92 @@ class ProductControllerImpl {
     const all = await StorageService.getByOwner('stock_movements', user.id);
     return all
       .filter(m => m.productId === productId)
-      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }
+
+  // ============================================================
+  // متدهای جدید فاز ۹
+  // ============================================================
+
+  /**
+   * کاردکس کامل یک کالا با موجودی تجمعی
+   */
+  async getKardex(productId) {
+    const movements = await this.getMovements(productId);
+    let runningBalance = 0;
+    let totalIn = 0, totalOut = 0;
+    const rows = movements.map(m => {
+      const qty = Number(m.qty) || 0;
+      if (m.type === 'in') { runningBalance += qty; totalIn += qty; }
+      else if (m.type === 'out') { runningBalance -= qty; totalOut += qty; }
+      else if (m.type === 'adjust') { runningBalance = qty; }
+      return {
+        id: m.id,
+        date: m.date,
+        type: m.type,
+        qty,
+        balance: runningBalance,
+        refType: m.refType,
+        refId: m.refId,
+        note: m.note || ''
+      };
+    });
+    return { rows, totalIn, totalOut, finalBalance: runningBalance };
+  }
+
+  /**
+   * کالاهای زیر نقطه سفارش
+   */
+  async getLowStockProducts() {
+    const products = await this.getProducts({ type: 'good' });
+    const ids = products.map(p => p.id);
+    const stockMap = await this.getStockMap(ids);
+    return products.filter(p => {
+      const s = stockMap[p.id] || 0;
+      const min = Number(p.minStock) || 0;
+      return s <= min;
+    }).map(p => ({
+      ...p,
+      currentStock: stockMap[p.id] || 0,
+      minStock: Number(p.minStock) || 0,
+      deficit: Math.max(0, (Number(p.minStock) || 0) - (stockMap[p.id] || 0))
+    }));
+  }
+
+  /**
+   * جمع ارزش موجودی انبار (بر اساس قیمت خرید و فروش)
+   */
+  async getTotalStockValue() {
+    const products = await this.getProducts({ type: 'good' });
+    const ids = products.map(p => p.id);
+    const stockMap = await this.getStockMap(ids);
+    let totalBuyValue = 0, totalSellValue = 0;
+    products.forEach(p => {
+      const stock = stockMap[p.id] || 0;
+      if (stock > 0) {
+        totalBuyValue += stock * (Number(p.buyPrice) || 0);
+        totalSellValue += stock * (Number(p.sellPrice) || 0);
+      }
+    });
+    return { totalBuyValue, totalSellValue, potentialProfit: totalSellValue - totalBuyValue };
+  }
+
+  /**
+   * خلاصه‌ی حرکات انبار
+   */
+  async getMovementSummary() {
+    const user = Auth.current();
+    if (!user) return { total: 0, in: 0, out: 0, adjust: 0 };
+    const all = await StorageService.getByOwner('stock_movements', user.id);
+    const summary = { total: all.length, in: 0, out: 0, adjust: 0 };
+    all.forEach(m => {
+      if (m.type === 'in') summary.in++;
+      else if (m.type === 'out') summary.out++;
+      else if (m.type === 'adjust') summary.adjust++;
+    });
+    return summary;
   }
 }
 
 export const ProductController = new ProductControllerImpl();
+window.ProductController = ProductController;
