@@ -1,0 +1,26 @@
+{
+  "name": "factor-easypro",
+  "version": "1.0.0",
+  "description": "فینورا پرو - سامانه جامع حسابداری و صدور فاکتور",
+  "main": "index.js",
+  "scripts": {
+  "dev": "vite",
+  "build": "vite build",
+  "preview": "vite preview"
+},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/davoodmehraban89/Factor-easyPro.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/davoodmehraban89/Factor-easyPro/issues"
+  },
+  "homepage": "https://github.com/davoodmehraban89/Factor-easyPro#readme",
+  "devDependencies": {
+    "vite": "^8.3.0"
+  }
+}
