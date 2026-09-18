@@ -10,6 +10,7 @@ import { ContactsView } from './views/ContactsView.js';
 import { ProductsView } from './views/ProductsView.js';
 import { ExpensesView } from './views/ExpensesView.js';
 import { DashboardView } from './views/DashboardView.js';
+import { ReportsView } from './views/ReportsView.js';
 import { StorageService } from './core/StorageService.js';
 import { Theme } from './core/Theme.js';
 import { Toast } from './core/Toast.js';
@@ -32,18 +33,6 @@ const FINORA = {
 window.FINORA = FINORA;
 
 function registerRoutes() {
-  const placeholder = (title, phase) => async () => `
-    <div class="page-title">
-      <h2>${title}</h2>
-      <p>این ماژول در فاز ${phase} پیاده‌سازی می‌شود</p>
-    </div>
-    <div class="card" style="text-align:center;padding:60px 20px">
-      <div style="font-size:60px;margin-bottom:16px">🚧</div>
-      <h3 style="margin-bottom:8px">در حال توسعه</h3>
-      <p class="text-muted">این بخش به‌زودی اضافه می‌شود</p>
-    </div>
-  `;
-
   Router.register('dashboard', {
     title: 'داشبورد',
     render: () => DashboardView.render(),
@@ -88,7 +77,8 @@ function registerRoutes() {
 
   Router.register('reports', {
     title: 'گزارش سود و زیان',
-    render: placeholder('گزارش سود و زیان', 8)
+    render: () => ReportsView.render(),
+    onMount: () => ReportsView.onMount()
   });
 
   Router.register('settings', {
