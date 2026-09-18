@@ -6,11 +6,13 @@ import { ContactController } from '../controllers/ContactController.js';
 import { Modal } from '../core/Modal.js';
 import { Toast } from '../core/Toast.js';
 import { Formatters } from '../utils/Formatters.js';
+import { ContactLedgerModal } from './ContactLedgerModal.js';
 
 let currentSearch = '';
 let currentRoleFilter = 'all';
 let currentTypeFilter = 'all';
-let cache = { contacts: [], balances: {}, tags: [] };
+let currentBalanceFilter = ''; // '' | 'debtor' | 'creditor' | 'settled'
+let cache = { contacts: [], balances: {}, tags: [], globalSummary: {} };
 
 class ContactsViewImpl {
   async render() {
@@ -21,21 +23,56 @@ class ContactsViewImpl {
         <p>مدیریت مشتریان، تامین‌کنندگان و طرف‌حساب‌ها</p>
       </div>
 
+      <div class="grid-kpi">
+        <div class="card kpi-card" style="margin:0;border-top:3px solid var(--danger)">
+          <div class="kpi-card-icon" style="background:#fef2f2;color:var(--danger)">📥</div>
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">کل مطالبات</div>
+            <div style="font-size:16px;font-weight:800;color:var(--danger)">${Formatters.money(cache.globalSummary.totalDebt || 0)}</div>
+            <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px">${Formatters.number(cache.globalSummary.debtorsCount || 0)} بدهکار</div>
+          </div>
+        </div>
+
+        <div class="card kpi-card" style="margin:0;border-top:3px solid var(--success)">
+          <div class="kpi-card-icon" style="background:#ecfdf5;color:var(--success)">📤</div>
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">کل بدهی ما</div>
+            <div style="font-size:16px;font-weight:800;color:var(--success)">${Formatters.money(cache.globalSummary.totalCredit || 0)}</div>
+            <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px">${Formatters.number(cache.globalSummary.creditorsCount || 0)} بستانکار</div>
+          </div>
+        </div>
+
+        <div class="card kpi-card" style="margin:0;border-top:3px solid var(--primary)">
+          <div class="kpi-card-icon" style="background:#eff6ff;color:var(--primary)">👥</div>
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">تعداد اشخاص</div>
+            <div style="font-size:16px;font-weight:800;color:var(--primary)">${Formatters.number(cache.contacts.length)}</div>
+            <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px">ثبت‌شده در سیستم</div>
+          </div>
+        </div>
+      </div>
+
       <div class="toolbar">
         <div class="search-input-wrap">
           <span class="icon">🔍</span>
           <input type="text" class="form-control" id="contactSearch" placeholder="جستجو بر اساس نام، تلفن یا کد ملی..." value="${this._esc(currentSearch)}" oninput="window.ContactsView._onSearch(this.value)" />
         </div>
-        <select class="form-control" style="width:auto;min-width:140px" id="roleFilter" onchange="window.ContactsView._onFilterRole(this.value)">
+        <select class="form-control" style="width:auto;min-width:130px" id="roleFilter" onchange="window.ContactsView._onFilterRole(this.value)">
           <option value="all" ${currentRoleFilter === 'all' ? 'selected' : ''}>همه نقش‌ها</option>
           <option value="customer" ${currentRoleFilter === 'customer' ? 'selected' : ''}>مشتری</option>
           <option value="supplier" ${currentRoleFilter === 'supplier' ? 'selected' : ''}>تامین‌کننده</option>
           <option value="both" ${currentRoleFilter === 'both' ? 'selected' : ''}>هر دو</option>
         </select>
-        <select class="form-control" style="width:auto;min-width:140px" id="typeFilter" onchange="window.ContactsView._onFilterType(this.value)">
+        <select class="form-control" style="width:auto;min-width:120px" id="typeFilter" onchange="window.ContactsView._onFilterType(this.value)">
           <option value="all" ${currentTypeFilter === 'all' ? 'selected' : ''}>همه انواع</option>
           <option value="natural" ${currentTypeFilter === 'natural' ? 'selected' : ''}>حقیقی</option>
           <option value="legal" ${currentTypeFilter === 'legal' ? 'selected' : ''}>حقوقی</option>
+        </select>
+        <select class="form-control" style="width:auto;min-width:140px" onchange="window.ContactsView._onFilterBalance(this.value)">
+          <option value="" ${currentBalanceFilter === '' ? 'selected' : ''}>همه مانده‌ها</option>
+          <option value="debtor" ${currentBalanceFilter === 'debtor' ? 'selected' : ''}>فقط بدهکاران</option>
+          <option value="creditor" ${currentBalanceFilter === 'creditor' ? 'selected' : ''}>فقط بستانکاران</option>
+          <option value="settled" ${currentBalanceFilter === 'settled' ? 'selected' : ''}>تسویه‌شده</option>
         </select>
         <button class="btn" onclick="window.ContactsView.openContactModal()">➕ شخص جدید</button>
       </div>
@@ -53,6 +90,7 @@ class ContactsViewImpl {
     cache.tags = await ContactController.getAllTags();
     const ids = cache.contacts.map(c => c.id);
     cache.balances = await ContactController.getBalanceMap(ids);
+    cache.globalSummary = await ContactController.getGlobalSummary();
   }
 
   renderTable() {
@@ -73,6 +111,15 @@ class ContactsViewImpl {
     if (currentTypeFilter !== 'all') {
       list = list.filter(c => c.entityType === currentTypeFilter);
     }
+    if (currentBalanceFilter) {
+      list = list.filter(c => {
+        const b = cache.balances[c.id] || 0;
+        if (currentBalanceFilter === 'debtor') return b > 0;
+        if (currentBalanceFilter === 'creditor') return b < 0;
+        if (currentBalanceFilter === 'settled') return b === 0;
+        return true;
+      });
+    }
 
     if (list.length === 0) {
       return `
@@ -81,8 +128,8 @@ class ContactsViewImpl {
             <tr><td>
               <div class="empty-state">
                 <div class="icon">👥</div>
-                <h3>هیچ شخصی ثبت نشده</h3>
-                <p>اولین مشتری یا تامین‌کننده‌ی خود را اضافه کنید</p>
+                <h3>هیچ شخصی یافت نشد</h3>
+                <p>${currentSearch || currentRoleFilter !== 'all' || currentTypeFilter !== 'all' || currentBalanceFilter ? 'فیلترها را تغییر بده یا شخص جدید اضافه کن' : 'اولین مشتری یا تامین‌کننده‌ی خود را اضافه کنید'}</p>
                 <button class="btn" onclick="window.ContactsView.openContactModal()">➕ شخص جدید</button>
               </div>
             </td></tr>
@@ -92,8 +139,8 @@ class ContactsViewImpl {
 
     const rows = list.map(c => {
       const balance = cache.balances[c.id] || 0;
-      const isDebtor = balance > 0;    // مشتری بدهکار
-      const isCreditor = balance < 0;  // ما بدهکاریم
+      const isDebtor = balance > 0;
+      const isCreditor = balance < 0;
       const balanceColor = isDebtor ? 'var(--danger)' : isCreditor ? 'var(--success)' : 'var(--text-muted)';
       const balanceText = balance === 0 ? 'تسویه' :
                          isDebtor ? Formatters.money(Math.abs(balance)) + ' بدهکار' :
@@ -127,6 +174,7 @@ class ContactsViewImpl {
           <td style="font-weight:600;color:${balanceColor}">${balanceText}</td>
           <td>
             <div class="row-actions">
+              <button class="icon-btn-sm" title="کارت حساب" onclick="window.ContactsView.openLedger('${c.id}')">📒</button>
               <button class="icon-btn-sm" title="ویرایش" onclick="window.ContactsView.editContact('${c.id}')">✏️</button>
               <button class="icon-btn-sm danger" title="حذف" onclick="window.ContactsView.deleteContact('${c.id}')">🗑️</button>
             </div>
@@ -146,7 +194,7 @@ class ContactsViewImpl {
               <th style="width:150px">تماس</th>
               <th style="width:130px">شناسه / کد ملی</th>
               <th style="width:180px">مانده حساب</th>
-              <th style="width:100px">عملیات</th>
+              <th style="width:130px">عملیات</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -170,6 +218,18 @@ class ContactsViewImpl {
   _onFilterType(val) {
     currentTypeFilter = val;
     document.getElementById('contacts-content').innerHTML = this.renderTable();
+  }
+
+  _onFilterBalance(val) {
+    currentBalanceFilter = val;
+    document.getElementById('contacts-content').innerHTML = this.renderTable();
+  }
+
+  // ============================================================
+  // کارت حساب
+  // ============================================================
+  openLedger(contactId) {
+    ContactLedgerModal.open(contactId);
   }
 
   // ============================================================
@@ -320,7 +380,6 @@ class ContactsViewImpl {
     const container = document.getElementById('tagsContainer');
     if (container.querySelector('small')) container.innerHTML = '';
 
-    // چک تکراری
     const existing = Array.from(container.querySelectorAll('.tagCheckbox')).map(cb => cb.value);
     if (existing.includes(tag)) {
       Toast.warning('این برچسب قبلاً اضافه شده');
@@ -407,3 +466,4 @@ class ContactsViewImpl {
 }
 
 export const ContactsView = new ContactsViewImpl();
+window.ContactsView = ContactsView;
