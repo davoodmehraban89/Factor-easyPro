@@ -15,28 +15,28 @@ class InvoicePrintImpl {
   constructor() {
     this.currentInvoiceId = null;
     this.settings = {
-      template: 'non_formal',      // formal | non_formal | thermal
+      template: 'non_formal',
       paperSize: 'A4',
       orientation: 'portrait',
       showSignature: true,
       showCode: true,
       themeColor: '#0d9488',
-      showBalance: 'none'           // none | simple | detailed
+      showBalance: 'none'
     };
   }
 
-  // ============================================================
-  // باز کردن تنظیمات چاپ
-  // ============================================================
   async openSettings(invoiceId) {
     this.currentInvoiceId = invoiceId;
     const inv = await InvoiceController.get(invoiceId);
     if (!inv) { Toast.error('فاکتور یافت نشد'); return; }
 
-    // پیش‌فرض بر اساس نوع سند
-    if (inv.kind === 'formal') this.settings.template = 'formal';
-    else if (inv.kind === 'non_formal') this.settings.template = 'non_formal';
-    else this.settings.template = 'non_formal';
+    if (inv.isPreInvoice) {
+      this.settings.template = 'non_formal';
+    } else if (inv.kind === 'formal') {
+      this.settings.template = 'formal';
+    } else {
+      this.settings.template = 'non_formal';
+    }
 
     const body = `
       <div class="form-group">
@@ -115,7 +115,6 @@ class InvoicePrintImpl {
 
     Modal.open({ title: 'تنظیمات چاپ فاکتور', body, footer, size: 'md' });
 
-    // ذخیره تنظیمات در ctx
     setTimeout(() => {
       document.querySelectorAll('.print-tpl-card').forEach(card => {
         card.addEventListener('click', () => {
@@ -128,8 +127,6 @@ class InvoicePrintImpl {
   }
 
   _collectSettings() {
-    // فقط اگه فیلدهای تنظیمات توی صفحه موجودن، مقدار جدید رو بگیر
-    // وگرنه از مقدار قبلی (this.settings) استفاده کن
     const tpl = document.querySelector('input[name="tpl"]:checked');
     if (tpl) this.settings.template = tpl.value;
 
@@ -157,7 +154,6 @@ class InvoicePrintImpl {
   async _preview() {
     this._collectSettings();
     const html = await this._buildHtml(this.currentInvoiceId);
-    // نمایش پیش‌نمایش در یک مودال جدید
     const body = `
       <div style="background:#e5e7eb;padding:20px;border-radius:8px;overflow:auto;max-height:70vh">
         <div style="background:#fff;margin:0 auto;max-width:${this.settings.template === 'thermal' ? '80mm' : '210mm'};box-shadow:0 4px 20px rgba(0,0,0,.15)">
@@ -179,9 +175,6 @@ class InvoicePrintImpl {
     Modal.close();
   }
 
-  // ============================================================
-  // ساخت HTML چاپ
-  // ============================================================
   async _buildHtml(invoiceId) {
     const inv = await InvoiceController.get(invoiceId);
     if (!inv) throw new Error('فاکتور یافت نشد');
@@ -215,7 +208,10 @@ class InvoicePrintImpl {
   // ------------------------------------------------------------
   _formalTemplate(inv, seller, contact, balance) {
     const color = this.settings.themeColor;
-    const showCode = this.settings.showCode;
+
+    const headerTitle = inv.isPreInvoice
+      ? 'پیش‌فاکتور فروش کالا و خدمات'
+      : 'صورتحساب فروش کالا و خدمات';
 
     const items = inv.items.map((it, idx) => {
       const qty = Number(it.qty) || 0;
@@ -251,17 +247,21 @@ class InvoicePrintImpl {
       <div class="print-doc" dir="rtl" style="direction:rtl;text-align:right;font-family:'Vazirmatn FD',Tahoma,sans-serif;color:#000;padding:6mm">
         <table style="width:100%;border-collapse:collapse;border:2px solid ${color};margin-bottom:4px">
           <tr>
-            <td style="width:28%;border:1px solid ${color};padding:6px;font-size:11px;vertical-align:middle">
-              <div style="font-weight:bold;font-size:13px;color:${color}">${this._esc(seller.name)}</div>
-              <div style="font-size:9.5px;color:#475569;margin-top:2px">صادرکننده فاکتور رسمی</div>
+            <td style="width:28%;border:1px solid ${color};padding:6px;font-size:11px;vertical-align:middle;text-align:center">
+              <div style="font-weight:bold;font-size:7.5px;color:${color}">فینورا پرو</div>
             </td>
             <td style="width:44%;border:1px solid ${color};padding:8px;text-align:center;vertical-align:middle;background:#f0fdfa">
-              <h1 style="font-size:16px;margin:0;font-weight:bold;color:${color}">صورتحساب فروش کالا و خدمات</h1>
-              <div style="font-size:10px;margin-top:3px">(ماده ۱۶۹ مکرر قانون مالیات‌های مستقیم)</div>
+              <h1 style="font-size:16px;margin:0;font-weight:bold;color:${color}">${headerTitle}</h1>
             </td>
-            <td style="width:28%;border:1px solid ${color};padding:6px;font-size:10.5px;vertical-align:middle;text-align:left">
-              <div>شماره سریال: <strong style="color:#b91c1c">${Formatters.toPersianDigits(inv.number)}</strong></div>
-              <div style="margin-top:2px">تاریخ صدور: <strong>${Formatters.toPersianDigits(inv.date)}</strong></div>
+            <td style="width:28%;border:1px solid ${color};padding:6px;font-size:10.5px;vertical-align:middle">
+              <div style="display:flex;align-items:center;line-height:1.7;gap:4px">
+                <span style="display:inline-block;min-width:72px;text-align:left;white-space:nowrap">شماره سریال:</span>
+                <strong style="color:#b91c1c">${Formatters.toPersianDigits(inv.number)}</strong>
+              </div>
+              <div style="display:flex;align-items:center;line-height:1.7;gap:4px">
+                <span style="display:inline-block;min-width:72px;text-align:left;white-space:nowrap">تاریخ صدور:</span>
+                <strong>${Formatters.toPersianDigits(inv.date)}</strong>
+              </div>
             </td>
           </tr>
         </table>
@@ -502,6 +502,10 @@ class InvoicePrintImpl {
           ${seller.address ? `<div style="font-size:9px;margin-top:2px">${this._esc(seller.address)}</div>` : ''}
         </div>
 
+        <div style="text-align:center;font-size:11px;font-weight:700;margin-bottom:4px;padding:3px 0;background:#f3f4f6;border-radius:4px">
+          ${inv.isPreInvoice ? 'پیش‌فاکتور فروش' : 'فاکتور فروش'}
+        </div>
+
         <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:4px">
           <div>شماره: ${Formatters.toPersianDigits(inv.number)}</div>
           <div>تاریخ: ${Formatters.toPersianDigits(inv.date)}</div>
@@ -547,17 +551,13 @@ class InvoicePrintImpl {
     `;
   }
 
-  // ============================================================
-  // باز کردن پنجره چاپ
-  // ============================================================
-    _openPrintWindow(html) {
+  _openPrintWindow(html) {
     const printWindow = window.open('', '_blank', 'width=900,height=700');
     if (!printWindow) {
       Toast.error('لطفاً پاپ‌آپ را فعال کنید');
       return;
     }
 
-    // تعیین اندازه‌ی صفحه
     let pageCss = 'A4 portrait';
     if (this.settings.template === 'thermal') {
       pageCss = '80mm auto';
@@ -574,7 +574,6 @@ class InvoicePrintImpl {
         <title>چاپ فاکتور</title>
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/Vazirmatn-FD-font-face.css" />
         <style>
-          /* @page باید بیرون از @media print باشه تا درست اعمال بشه */
           @page {
             size: ${pageCss};
             margin: 6mm;
@@ -596,7 +595,6 @@ class InvoicePrintImpl {
           @media print {
             body { padding: 0; }
             .print-doc { page-break-inside: auto; }
-            /* جلوگیری از چاپ رنگ‌های پیش‌فرض */
             * {
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;

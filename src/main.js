@@ -8,6 +8,8 @@ import { TreasuryView } from './views/TreasuryView.js';
 import { InvoicesView } from './views/InvoicesView.js';
 import { ContactsView } from './views/ContactsView.js';
 import { ProductsView } from './views/ProductsView.js';
+import { ExpensesView } from './views/ExpensesView.js';
+import { DashboardView } from './views/DashboardView.js';
 import { StorageService } from './core/StorageService.js';
 import { Theme } from './core/Theme.js';
 import { Toast } from './core/Toast.js';
@@ -44,67 +46,8 @@ function registerRoutes() {
 
   Router.register('dashboard', {
     title: 'داشبورد',
-    render: async () => {
-      const user = Auth.current();
-      const invoices = await StorageService.getByOwner('invoices', user.id);
-      const contacts = await StorageService.getByOwner('contacts', user.id);
-      const products = await StorageService.getByOwner('products', user.id);
-
-      const totalSales = invoices.reduce((s, i) => s + (i.grandTotal || 0), 0);
-
-      return `
-        <div class="page-title">
-          <h2>داشبورد مدیریتی</h2>
-          <p>نمای کلی از وضعیت کسب‌وکار شما</p>
-        </div>
-
-        <div class="grid-kpi">
-          <div class="card" style="margin:0">
-            <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">فروش کل</div>
-            <div style="font-size:20px;font-weight:800;color:var(--primary);margin-bottom:4px">${Formatters.money(totalSales)}</div>
-            <div style="font-size:11px;color:var(--text-muted)">${Formatters.number(invoices.length)} فاکتور</div>
-          </div>
-          <div class="card" style="margin:0">
-            <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">اشخاص ثبت‌شده</div>
-            <div style="font-size:20px;font-weight:800;color:var(--info);margin-bottom:4px">${Formatters.number(contacts.length)}</div>
-            <div style="font-size:11px;color:var(--text-muted)">مشتری و تامین‌کننده</div>
-          </div>
-          <div class="card" style="margin:0">
-            <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">کالاها</div>
-            <div style="font-size:20px;font-weight:800;color:var(--success);margin-bottom:4px">${Formatters.number(products.length)}</div>
-            <div style="font-size:11px;color:var(--text-muted)">کالا و خدمات</div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title"><span>🎉 خوش آمدید به فینورا پرو</span></div>
-          <p style="font-size:13.5px;line-height:1.9;color:var(--text-muted)">
-            این <strong>فاز ۱</strong> از پروژه است. زیرساخت آماده است:
-          </p>
-          <ul style="margin-top:12px;padding-right:20px;font-size:13px;line-height:2;color:var(--text-muted)">
-            <li>✅ پایگاه‌داده IndexedDB</li>
-            <li>✅ معماری ماژولار ES Modules</li>
-            <li>✅ Router داخلی SPA</li>
-            <li>✅ تم روشن/تاریک</li>
-            <li>✅ Toast حرفه‌ای</li>
-            <li>✅ تاریخ شمسی توکار</li>
-            <li>✅ عدد به حروف فارسی</li>
-            <li>✅ EventBus</li>
-          </ul>
-        </div>
-
-        <div class="card">
-          <div class="card-title"><span>🧪 تست سریع</span></div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap">
-            <button class="btn" onclick="FINORA.Toast.success('این یک پیام موفقیت است')">تست Toast موفق</button>
-            <button class="btn btn-danger" onclick="FINORA.Toast.error('این یک خطا است')">تست Toast خطا</button>
-            <button class="btn btn-secondary" onclick="FINORA.Theme.toggle()">تغییر تم</button>
-            <button class="btn btn-secondary" onclick="FINORA.Toast.info(FINORA.Utils.numberToWords(1234567890))">تست عدد به حروف</button>
-            <button class="btn btn-secondary" onclick="FINORA.Toast.info(FINORA.Utils.Jalali.todayLong())">تاریخ امروز</button>
-          </div>
-        </div>
-      `;
-    }
+    render: () => DashboardView.render(),
+    onMount: () => DashboardView.onMount()
   });
 
   Router.register('invoices', {
@@ -112,28 +55,42 @@ function registerRoutes() {
     render: () => InvoicesView.render(),
     onMount: () => InvoicesView.onMount()
   });
+
   Router.register('products', {
     title: 'کالا و انبار',
     render: () => ProductsView.render(),
     onMount: () => ProductsView.onMount()
   });
+
   Router.register('contacts', {
     title: 'اشخاص',
     render: () => ContactsView.render(),
     onMount: () => ContactsView.onMount()
   });
+
   Router.register('treasury', {
     title: 'خزانه و بانک',
     render: () => TreasuryView.render(),
     onMount: () => TreasuryView.onMount()
   });
+
   Router.register('cheques', {
     title: 'چک‌ها',
     render: () => ChequesView.render(),
     onMount: () => ChequesView.onMount()
   });
-  Router.register('expenses', { title: 'هزینه و درآمد', render: placeholder('هزینه و درآمد', 6) });
-  Router.register('reports', { title: 'گزارش سود و زیان', render: placeholder('گزارش سود و زیان', 7) });
+
+  Router.register('expenses', {
+    title: 'هزینه و درآمد',
+    render: () => ExpensesView.render(),
+    onMount: () => ExpensesView.onMount()
+  });
+
+  Router.register('reports', {
+    title: 'گزارش سود و زیان',
+    render: placeholder('گزارش سود و زیان', 8)
+  });
+
   Router.register('settings', {
     title: 'تنظیمات',
     render: () => SettingsView.render(),
