@@ -5,6 +5,7 @@
 import { SettingsController } from '../controllers/SettingsController.js';
 import { StorageService } from '../core/StorageService.js';
 import { Theme } from '../core/Theme.js';
+import { KeyboardShortcuts } from '../core/KeyboardShortcuts.js';
 import { Modal } from '../core/Modal.js';
 import { Toast } from '../core/Toast.js';
 import { Formatters } from '../utils/Formatters.js';
@@ -23,6 +24,7 @@ class SettingsViewImpl {
 
       <div class="settings-grid">
         ${this._renderCompanyCard()}
+        ${this._renderShortcutsCard()}
         ${this._renderBackupCard()}
         ${this._renderStatsCard()}
         ${this._renderThemeCard()}
@@ -90,6 +92,103 @@ class SettingsViewImpl {
         </button>
       </div>
     `;
+  }
+
+  // ============================================================
+  // کارت میانبرهای صفحه‌کلید
+  // ============================================================
+  _renderShortcutsCard() {
+    const s = KeyboardShortcuts.settings;
+
+    const toggle = (id, checked, label, hint) => `
+      <label style="display:flex;align-items:flex-start;gap:10px;padding:9px 0;cursor:pointer;border-bottom:1px solid var(--border)">
+        <input type="checkbox" id="${id}" ${checked ? 'checked' : ''} style="margin-top:3px;width:16px;height:16px;cursor:pointer" />
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600">${label}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.6">${hint}</div>
+        </div>
+      </label>
+    `;
+
+    return `
+      <div class="card settings-card" style="border-color:#ddd6fe;background:linear-gradient(135deg,#faf5ff,#f8fafc)">
+        <div class="settings-card-header">
+          <div class="settings-card-icon" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9)">⌨️</div>
+          <div>
+            <h3 class="settings-card-title">میانبرهای صفحه‌کلید</h3>
+            <p class="settings-card-desc">با این میانبرها کار با برنامه سریع‌تر می‌شود</p>
+          </div>
+        </div>
+
+        ${toggle('scEnabled', s.enabled, 'فعال بودن میانبرها', 'کلاً همه‌ی میانبرهای زیر رو روشن یا خاموش می‌کند')}
+        ${toggle('scEnterConfirms', s.enterConfirms, 'تأیید با Enter', 'وقتی توی فرم هستید، Enter مثل دکمه‌ی ذخیره عمل می‌کند. Ctrl+Enter هم توی همه‌ی فیلدها کار می‌کند')}
+        ${toggle('scEscapeCloses', s.escapeCloses, 'بستن با Escape', 'فشار دادن Escape، مودال باز را می‌بندد')}
+        ${toggle('scCtrlSaves', s.ctrlSaves, 'ذخیره با Ctrl+S', 'داخل مودال‌ها، Ctrl+S فرم را ذخیره می‌کند')}
+        ${toggle('scPlusMinusZeros', s.plusMinusZeros, 'ضریب سریع صفر (+ و -)', 'روی فیلدهای مبلغ، کلید + صفر اضافه و کلید − صفر کم می‌کند')}
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)">
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">تعداد صفرهای کلید +</label>
+            <input type="text" inputmode="numeric" class="form-control" id="scPlusZeros" value="${Formatters.toPersianDigits(s.plusZeros)}" />
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">تعداد صفرهای کلید −</label>
+            <input type="text" inputmode="numeric" class="form-control" id="scMinusZeros" value="${Formatters.toPersianDigits(s.minusZeros)}" />
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
+          <button class="btn" onclick="window.SettingsView.saveShortcuts()">💾 ذخیره تنظیمات</button>
+          <button class="btn btn-secondary" onclick="window.SettingsView.resetShortcuts()">↺ بازگشت به پیش‌فرض</button>
+        </div>
+
+        <div style="margin-top:14px;padding:12px 14px;background:var(--bg);border-radius:8px;font-size:11.5px;color:var(--text-muted);line-height:2">
+          <div><strong style="color:var(--text)">راهنمای سریع:</strong></div>
+          <div>• <kbd style="background:var(--card-bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;font-family:monospace">Enter</kbd> — تأیید فرم</div>
+          <div>• <kbd style="background:var(--card-bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;font-family:monospace">Esc</kbd> — بستن مودال</div>
+          <div>• <kbd style="background:var(--card-bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;font-family:monospace">Ctrl+S</kbd> — ذخیره</div>
+          <div>• <kbd style="background:var(--card-bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;font-family:monospace">Ctrl+Enter</kbd> — تأیید از هر فیلد (حتی توضیحات)</div>
+          <div>• <kbd style="background:var(--card-bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;font-family:monospace">+</kbd> و <kbd style="background:var(--card-bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;font-family:monospace">−</kbd> — روی فیلدهای مبلغ، ضریب صفر</div>
+        </div>
+      </div>
+    `;
+  }
+
+  saveShortcuts() {
+    try {
+      const plusZeros = parseInt(Formatters.toLatinDigits(document.getElementById('scPlusZeros').value)) || 0;
+      const minusZeros = parseInt(Formatters.toLatinDigits(document.getElementById('scMinusZeros').value)) || 0;
+
+      const settings = {
+        enabled: document.getElementById('scEnabled').checked,
+        enterConfirms: document.getElementById('scEnterConfirms').checked,
+        escapeCloses: document.getElementById('scEscapeCloses').checked,
+        ctrlSaves: document.getElementById('scCtrlSaves').checked,
+        plusMinusZeros: document.getElementById('scPlusMinusZeros').checked,
+        plusZeros: Math.max(0, Math.min(12, plusZeros)),
+        minusZeros: Math.max(0, Math.min(12, minusZeros))
+      };
+
+      KeyboardShortcuts.saveSettings(settings);
+      Toast.success('تنظیمات میانبرهای صفحه‌کلید ذخیره شد');
+    } catch (err) {
+      Toast.error('خطا: ' + err.message);
+    }
+  }
+
+  resetShortcuts() {
+    Modal.confirm({
+      title: 'بازگشت به پیش‌فرض',
+      message: 'آیا می‌خواهید همه‌ی تنظیمات میانبرهای صفحه‌کلید به حالت پیش‌فرض برگردد؟',
+      confirmText: 'بازگردان',
+      onConfirm: () => {
+        KeyboardShortcuts.resetSettings();
+        Toast.success('تنظیمات به حالت پیش‌فرض برگشت');
+        // رفرش کارت
+        const grid = document.querySelector('.settings-grid');
+        if (grid) grid.innerHTML = this._renderAllCards();
+      }
+    });
   }
 
   // ============================================================
@@ -210,6 +309,15 @@ class SettingsViewImpl {
     `;
   }
 
+  _renderAllCards() {
+    return this._renderCompanyCard()
+      + this._renderShortcutsCard()
+      + this._renderBackupCard()
+      + this._renderStatsCard()
+      + this._renderThemeCard()
+      + this._renderAboutCard();
+  }
+
   // ============================================================
   // فرم اطلاعات شرکت
   // ============================================================
@@ -294,7 +402,8 @@ class SettingsViewImpl {
       Toast.success('اطلاعات ذخیره شد');
       Modal.close();
       await this.reload();
-      document.querySelector('.settings-grid').outerHTML = `<div class="settings-grid">${this._renderCompanyCard()}${this._renderBackupCard()}${this._renderStatsCard()}${this._renderThemeCard()}${this._renderAboutCard()}</div>`;
+      const grid = document.querySelector('.settings-grid');
+      if (grid) grid.innerHTML = this._renderAllCards();
     } catch (err) {
       Toast.error('خطا: ' + err.message);
     }
@@ -404,9 +513,7 @@ class SettingsViewImpl {
   setTheme(theme) {
     Theme.apply(theme);
     const grid = document.querySelector('.settings-grid');
-    if (grid) {
-      grid.innerHTML = this._renderCompanyCard() + this._renderBackupCard() + this._renderStatsCard() + this._renderThemeCard() + this._renderAboutCard();
-    }
+    if (grid) grid.innerHTML = this._renderAllCards();
   }
 
   _esc(s) {
@@ -416,3 +523,4 @@ class SettingsViewImpl {
 }
 
 export const SettingsView = new SettingsViewImpl();
+window.SettingsView = SettingsView;
