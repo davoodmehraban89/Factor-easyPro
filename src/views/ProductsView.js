@@ -7,6 +7,7 @@ import { Modal } from '../core/Modal.js';
 import { Toast } from '../core/Toast.js';
 import { Formatters } from '../utils/Formatters.js';
 import { numberToWords } from '../utils/NumberToWords.js';
+import { NumberInput } from '../utils/NumberInput.js';
 
 let currentTab = 'products';
 let currentSearch = '';
@@ -22,13 +23,13 @@ class ProductsViewImpl {
       </div>
 
       <div class="tabs">
-        <button class="tab-btn ${currentTab === 'products' ? 'active' : ''}" onclick="window.ProductsView._switchTab('products')">
+        <button class="tab-btn ${currentTab === 'products' ? 'active' : ''}" onclick="window.ProductsView._switchTab('products', event)">
           📦 کالاها و خدمات
         </button>
-        <button class="tab-btn ${currentTab === 'units' ? 'active' : ''}" onclick="window.ProductsView._switchTab('units')">
+        <button class="tab-btn ${currentTab === 'units' ? 'active' : ''}" onclick="window.ProductsView._switchTab('units', event)">
           📏 واحدها
         </button>
-        <button class="tab-btn ${currentTab === 'categories' ? 'active' : ''}" onclick="window.ProductsView._switchTab('categories')">
+        <button class="tab-btn ${currentTab === 'categories' ? 'active' : ''}" onclick="window.ProductsView._switchTab('categories', event)">
           🗂️ گروه‌ها
         </button>
       </div>
@@ -58,12 +59,13 @@ class ProductsViewImpl {
     return '';
   }
 
-  _switchTab(tab) {
+  _switchTab(tab, evt) {
     currentTab = tab;
     const el = document.getElementById('products-tab-content');
     if (el) {
-      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-      event.target.classList.add('active');
+      document.querySelectorAll('.tabs .tab-btn').forEach(btn => btn.classList.remove('active'));
+      const target = (evt && evt.target) ? evt.target.closest('.tab-btn') : null;
+      if (target) target.classList.add('active');
       el.innerHTML = this.renderTabContent();
     }
   }
@@ -282,11 +284,11 @@ class ProductsViewImpl {
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">قیمت خرید (ریال)</label>
-          <input type="number" class="form-control" id="pBuyPrice" value="${data.buyPrice || 0}" min="0" />
+          <input type="text" inputmode="numeric" class="form-control" id="pBuyPrice" value="${NumberInput.format(data.buyPrice || 0)}" />
         </div>
         <div class="form-group">
           <label class="form-label">قیمت فروش (ریال)</label>
-          <input type="number" class="form-control" id="pSellPrice" value="${data.sellPrice || 0}" min="0" />
+          <input type="text" inputmode="numeric" class="form-control" id="pSellPrice" value="${NumberInput.format(data.sellPrice || 0)}" />
         </div>
       </div>
 
@@ -319,6 +321,10 @@ class ProductsViewImpl {
     });
   }
 
+  async editProduct(id) {
+    await this.openProductModal(id);
+  }
+
   async saveProduct(id) {
     const data = {
       code: document.getElementById('pCode').value,
@@ -326,8 +332,8 @@ class ProductsViewImpl {
       name: document.getElementById('pName').value,
       unitId: document.getElementById('pUnit').value || null,
       categoryId: document.getElementById('pCategory').value || null,
-      buyPrice: document.getElementById('pBuyPrice').value,
-      sellPrice: document.getElementById('pSellPrice').value,
+      buyPrice: NumberInput.parse(document.getElementById('pBuyPrice').value),
+      sellPrice: NumberInput.parse(document.getElementById('pSellPrice').value),
       trackInventory: document.getElementById('pTrackInventory').checked,
       description: document.getElementById('pDescription').value
     };
@@ -398,16 +404,31 @@ class ProductsViewImpl {
     const name = document.getElementById('uName').value;
     const symbol = document.getElementById('uSymbol').value;
     if (!name.trim()) { Toast.warning('نام واحد الزامی است'); return; }
+
     try {
-      await ProductController.createUnit(name, symbol);
+      const newUnit = await ProductController.createUnit(name, symbol);
       Toast.success('واحد ثبت شد');
+
+      // بستن مودال واحد (برمی‌گرده به مودال کالا اگه باز بود)
       Modal.close();
-      await this.reload();
+
+      // cache واحدها رو به‌روز کن
+      cache.units = await ProductController.getUnits();
+
       if (fromProductForm) {
-        // به فرم کالا برگرد و dropdown رو refresh کن
-        Toast.info('واحد اضافه شد. لطفاً فرم کالا رو دوباره باز کنید');
+        // ⬇️ اصلاح اصلی: dropdown واحد توی فرم کالا رو به‌روز کن
+        const unitSelect = document.getElementById('pUnit');
+        if (unitSelect) {
+          unitSelect.innerHTML = cache.units.map(u =>
+            `<option value="${u.id}">${this._esc(u.name)}</option>`
+          ).join('');
+          // واحد جدید رو انتخاب کن
+          unitSelect.value = newUnit.id;
+        }
       } else {
-        document.getElementById('products-tab-content').innerHTML = this.renderTabContent();
+        // توی تب واحدها هستیم، جدول رو رفرش کن
+        const el = document.getElementById('products-tab-content');
+        if (el) el.innerHTML = this.renderTabContent();
       }
     } catch (err) {
       Toast.error('خطا: ' + err.message);
@@ -460,15 +481,30 @@ class ProductsViewImpl {
     const name = document.getElementById('cName').value;
     const parentId = document.getElementById('cParent').value || null;
     if (!name.trim()) { Toast.warning('نام گروه الزامی است'); return; }
+
     try {
-      await ProductController.createCategory(name, parentId);
+      const newCategory = await ProductController.createCategory(name, parentId);
       Toast.success('گروه ثبت شد');
+
+      // بستن مودال گروه
       Modal.close();
-      await this.reload();
+
+      // cache گروه‌ها رو به‌روز کن
+      cache.categories = await ProductController.getCategories();
+
       if (fromProductForm) {
-        Toast.info('گروه اضافه شد. لطفاً فرم کالا رو دوباره باز کنید');
+        // ⬇️ اصلاح اصلی: dropdown گروه توی فرم کالا رو به‌روز کن
+        const catSelect = document.getElementById('pCategory');
+        if (catSelect) {
+          catSelect.innerHTML = cache.categories.map(c =>
+            `<option value="${c.id}">${this._esc(c.name)}</option>`
+          ).join('');
+          // گروه جدید رو انتخاب کن
+          catSelect.value = newCategory.id;
+        }
       } else {
-        document.getElementById('products-tab-content').innerHTML = this.renderTabContent();
+        const el = document.getElementById('products-tab-content');
+        if (el) el.innerHTML = this.renderTabContent();
       }
     } catch (err) {
       Toast.error('خطا: ' + err.message);
@@ -497,3 +533,4 @@ class ProductsViewImpl {
 }
 
 export const ProductsView = new ProductsViewImpl();
+window.ProductsView = ProductsView;

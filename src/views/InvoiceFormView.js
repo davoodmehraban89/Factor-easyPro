@@ -9,12 +9,14 @@ import { Modal } from '../core/Modal.js';
 import { Toast } from '../core/Toast.js';
 import { Formatters } from '../utils/Formatters.js';
 import { numberToWords } from '../utils/NumberToWords.js';
+import { NumberInput } from '../utils/NumberInput.js';
 
 let ctx = {
   editId: null,
   data: null,
   contacts: [],
   products: [],
+  units: [],
   rowCounter: 0
 };
 
@@ -26,6 +28,7 @@ class InvoiceFormViewImpl {
     ctx.editId = invoiceId;
     ctx.contacts = await ContactController.getAll();
     ctx.products = await ProductController.getProducts();
+    ctx.units = await ProductController.getUnits();
     ctx.rowCounter = 0;
 
     if (invoiceId) {
@@ -42,7 +45,7 @@ class InvoiceFormViewImpl {
         discountType: 'fixed',
         discountInput: 0,
         vatEnabled: false,
-        vatRate: 9,
+        vatRate: 10,
         paymentMethod: 'cash',
         paidAmount: 0,
         description: ''
@@ -62,7 +65,7 @@ class InvoiceFormViewImpl {
       body,
       footer,
       size: 'lg',
-      onClose: () => { ctx = { editId: null, data: null, contacts: [], products: [], rowCounter: 0 }; }
+      onClose: () => { ctx = { editId: null, data: null, contacts: [], products: [], units: [], rowCounter: 0 }; }
     });
 
     // بعد از باز شدن مودال، اقلام رو رندر کن
@@ -142,9 +145,12 @@ class InvoiceFormViewImpl {
         </div>
       </div>
 
-      <div style="margin:14px 0 10px;display:flex;justify-content:space-between;align-items:center">
+      <div style="margin:14px 0 10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
         <h4 style="font-size:14px;font-weight:700">اقلام فاکتور</h4>
-        <button class="btn btn-secondary" style="min-height:34px;padding:4px 12px;font-size:12px" onclick="window.InvoiceFormView._addRow()">➕ افزودن ردیف</button>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-secondary" style="min-height:34px;padding:4px 12px;font-size:12px" onclick="window.InvoiceFormView._openQuickProduct()">➕ کالای جدید</button>
+          <button class="btn btn-secondary" style="min-height:34px;padding:4px 12px;font-size:12px" onclick="window.InvoiceFormView._addRow()">➕ افزودن ردیف</button>
+        </div>
       </div>
 
       <div class="table-wrap" style="max-height:340px;overflow-y:auto">
@@ -175,7 +181,7 @@ class InvoiceFormViewImpl {
               <option value="fixed" ${d.discountType === 'fixed' ? 'selected' : ''}>مبلغ</option>
               <option value="percent" ${d.discountType === 'percent' ? 'selected' : ''}>درصد</option>
             </select>
-            <input type="number" class="form-control" id="invDiscInput" style="width:110px;min-height:34px" value="${d.discountInput || 0}" oninput="window.InvoiceFormView._recalc()" />
+            <input type="text" inputmode="numeric" class="form-control" id="invDiscInput" style="width:110px;min-height:34px" value="${NumberInput.format(d.discountInput || 0)}" oninput="window.InvoiceFormView._recalc()" />
           </div>
 
           <div id="vatRow" style="display:${d.kind === 'non_formal' ? 'none' : 'flex'};gap:8px;align-items:center;margin-bottom:10px">
@@ -183,7 +189,7 @@ class InvoiceFormViewImpl {
               <input type="checkbox" id="invVatEnabled" ${d.vatEnabled ? 'checked' : ''} onchange="window.InvoiceFormView._recalc()" />
               مالیات ارزش افزوده
             </label>
-            <input type="number" class="form-control" id="invVatRate" style="width:80px;min-height:34px" value="${d.vatRate || 9}" oninput="window.InvoiceFormView._recalc()" />
+            <input type="text" inputmode="numeric" class="form-control" id="invVatRate" style="width:80px;min-height:34px" value="${NumberInput.format(d.vatRate || 10)}" oninput="window.InvoiceFormView._recalc()" />
             <span style="font-size:12.5px;color:var(--text-muted)">٪</span>
           </div>
 
@@ -198,7 +204,7 @@ class InvoiceFormViewImpl {
 
           <div id="paidRow" style="display:${d.paymentMethod === 'partial' ? 'flex' : 'none'};gap:8px;align-items:center;margin-bottom:10px">
             <span style="flex:1;font-size:12.5px">مبلغ پرداخت‌شده</span>
-            <input type="number" class="form-control" id="invPaidAmount" style="width:140px;min-height:34px" value="${d.paidAmount || 0}" oninput="window.InvoiceFormView._recalc()" />
+            <input type="text" inputmode="numeric" class="form-control" id="invPaidAmount" style="width:140px;min-height:34px" value="${NumberInput.format(d.paidAmount || 0)}" oninput="window.InvoiceFormView._recalc()" />
           </div>
 
           <div class="form-group" style="margin-bottom:0">
@@ -275,11 +281,11 @@ class InvoiceFormViewImpl {
         </select>
       </td>
       <td><input type="text" class="form-control row-unit" style="min-height:36px;text-align:center" value="${this._esc(item.unit)}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'unit', this.value)" /></td>
-      <td><input type="number" class="form-control row-qty" style="min-height:36px;text-align:center" value="${item.qty}" min="0" step="any" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'qty', this.value)" /></td>
-      <td><input type="number" class="form-control row-price" style="min-height:36px;text-align:left" value="${item.price}" min="0" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'price', this.value)" /></td>
+      <td><input type="text" inputmode="numeric" class="form-control row-qty" style="min-height:36px;text-align:center" value="${NumberInput.format(item.qty)}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'qty', this.value)" /></td>
+      <td><input type="text" inputmode="numeric" class="form-control row-price" style="min-height:36px;text-align:left" value="${NumberInput.format(item.price)}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'price', this.value)" /></td>
       <td>
         <div style="display:flex;gap:4px">
-          <input type="number" class="form-control row-disc" style="min-height:36px;text-align:left;flex:1" value="${item.discountType === 'percent' ? (item.discountInput || 0) : (item.discount || 0)}" min="0" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'discount', this.value)" />
+          <input type="text" inputmode="numeric" class="form-control row-disc" style="min-height:36px;text-align:left;flex:1" value="${NumberInput.format(item.discountType === 'percent' ? (item.discountInput || 0) : (item.discount || 0))}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'discount', this.value)" />
           <select class="form-control" style="min-height:36px;width:60px;padding:0 6px;text-align:center;font-size:12px" onchange="window.InvoiceFormView._onDiscTypeRowChange(${idx}, this.value)">
             <option value="fixed" ${item.discountType === 'fixed' ? 'selected' : ''}>مبلغ</option>
             <option value="percent" ${item.discountType === 'percent' ? 'selected' : ''}>٪</option>
@@ -327,14 +333,14 @@ class InvoiceFormViewImpl {
     const row = document.querySelector(`#itemsBody tr[data-idx="${idx}"]`);
     if (row) {
       row.querySelector('.row-unit').value = ctx.data.items[idx].unit;
-      row.querySelector('.row-price').value = ctx.data.items[idx].price;
+      row.querySelector('.row-price').value = NumberInput.format(ctx.data.items[idx].price);
     }
     this._recalc();
   }
 
   _onFieldChange(idx, field, value) {
     if (field === 'qty' || field === 'price' || field === 'discount') {
-      ctx.data.items[idx][field] = Number(value) || 0;
+      ctx.data.items[idx][field] = NumberInput.parse(value);
     } else {
       ctx.data.items[idx][field] = value;
     }
@@ -422,7 +428,7 @@ class InvoiceFormViewImpl {
 
     // تخفیف کلی
     const discType = document.getElementById('invDiscType')?.value || 'fixed';
-    const discInput = Number(document.getElementById('invDiscInput')?.value) || 0;
+    const discInput = NumberInput.parse(document.getElementById('invDiscInput')?.value);
     let totalDiscount = 0;
     if (discType === 'percent') {
       totalDiscount = Math.round(subtotal * discInput / 100);
@@ -435,7 +441,7 @@ class InvoiceFormViewImpl {
     // مالیات
     const kind = document.getElementById('invKind')?.value || 'sale';
     const vatEnabled = kind !== 'non_formal' && document.getElementById('invVatEnabled')?.checked;
-    const vatRate = Number(document.getElementById('invVatRate')?.value) || 0;
+    const vatRate = NumberInput.parse(document.getElementById('invVatRate')?.value);
     let vatAmount = 0;
     if (vatEnabled) vatAmount = Math.round(afterDiscount * vatRate / 100);
 
@@ -446,7 +452,7 @@ class InvoiceFormViewImpl {
     let paidAmount = 0;
     if (method === 'cash') paidAmount = grandTotal;
     else if (method === 'credit') paidAmount = 0;
-    else if (method === 'partial') paidAmount = Math.max(0, Math.min(Number(document.getElementById('invPaidAmount')?.value) || 0, grandTotal));
+    else if (method === 'partial') paidAmount = Math.max(0, Math.min(NumberInput.parse(document.getElementById('invPaidAmount')?.value), grandTotal));
     const remaining = grandTotal - paidAmount;
 
     // نمایش
@@ -463,6 +469,118 @@ class InvoiceFormViewImpl {
 
     // ذخیره در ctx برای استفاده در save
     ctx.totals = { subtotal, totalDiscount, vatAmount, grandTotal, paidAmount, remaining };
+  }
+
+  // ============================================================
+  // افزودن سریع کالا (بدون خروج از فرم فاکتور)
+  // ============================================================
+  _openQuickProduct() {
+    const body = `
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">کد کالا</label>
+          <input type="text" class="form-control" id="qpCode" placeholder="اختیاری" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">واحد</label>
+          <input type="text" class="form-control" id="qpUnit" value="عدد" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">نام کالا / خدمت <span class="req">*</span></label>
+        <input type="text" class="form-control" id="qpName" placeholder="مثلاً هارد سرور" />
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">قیمت خرید (ریال)</label>
+          <input type="text" inputmode="numeric" class="form-control" id="qpBuyPrice" value="0" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">قیمت فروش (ریال)</label>
+          <input type="text" inputmode="numeric" class="form-control" id="qpSellPrice" value="0" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+          <input type="checkbox" id="qpTrackInventory" checked />
+          پیگیری موجودی انبار (اگه خدمت هست، تیک رو بردار)
+        </label>
+      </div>
+
+      <small style="color:var(--text-muted);font-size:11.5px;display:block;margin-top:4px">
+        💡 بعد از ذخیره، این کالا خودکار توی ردیف فعلی فاکتور اضافه می‌شه.
+      </small>
+    `;
+
+    const footer = `
+      <button class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button>
+      <button class="btn" onclick="window.InvoiceFormView._saveQuickProduct()">💾 ذخیره و افزودن</button>
+    `;
+
+    Modal.open({ title: '➕ کالای جدید سریع', body, footer, size: 'sm' });
+  }
+
+  async _saveQuickProduct() {
+    const name = document.getElementById('qpName').value.trim();
+    if (!name) { Toast.warning('نام کالا الزامی است'); return; }
+
+    const data = {
+      code: document.getElementById('qpCode').value,
+      barcode: '',
+      name,
+      unit: document.getElementById('qpUnit').value || 'عدد',
+      unitId: null,
+      categoryId: null,
+      buyPrice: NumberInput.parse(document.getElementById('qpBuyPrice').value),
+      sellPrice: NumberInput.parse(document.getElementById('qpSellPrice').value),
+      trackInventory: document.getElementById('qpTrackInventory').checked,
+      isActiveSell: true,
+      isActiveBuy: true,
+      description: ''
+    };
+
+    try {
+      const newProduct = await ProductController.createProduct(data);
+
+      ctx.products.push(newProduct);
+
+      Toast.success('کالا اضافه شد و به فاکتور اضافه می‌شود');
+      Modal.close();
+
+      // اضافه کردن به dropdown همه‌ی ردیف‌ها
+      document.querySelectorAll('#itemsBody .row-product').forEach(select => {
+        const opt = document.createElement('option');
+        opt.value = newProduct.id;
+        opt.textContent = newProduct.name + (newProduct.code ? ` (${newProduct.code})` : '');
+        select.appendChild(opt);
+      });
+
+      const emptyIdx = ctx.data.items.findIndex(it => !it.productId);
+      let targetIdx;
+      if (emptyIdx >= 0) {
+        targetIdx = emptyIdx;
+      } else {
+        ctx.data.items.push(this._emptyItem());
+        targetIdx = ctx.data.items.length - 1;
+        this._renderItems();
+      }
+
+      ctx.data.items[targetIdx].productId = newProduct.id;
+      ctx.data.items[targetIdx].productName = newProduct.name;
+      ctx.data.items[targetIdx].unit = newProduct.unit || 'عدد';
+      ctx.data.items[targetIdx].price = Number(newProduct.sellPrice) || 0;
+      ctx.data.items[targetIdx].qty = ctx.data.items[targetIdx].qty || 1;
+
+      this._renderItems();
+      this._recalc();
+
+    } catch (err) {
+      console.error(err);
+      Toast.error('خطا در ذخیره‌ی کالا: ' + err.message);
+    }
   }
 
   // ============================================================
@@ -495,7 +613,6 @@ class InvoiceFormViewImpl {
         entityType: 'natural', role: 'customer', name, mobile
       });
       Toast.success('شخص اضافه شد');
-      // refresh dropdown
       const select = document.getElementById('invContact');
       const opt = document.createElement('option');
       opt.value = newContact.id;
@@ -523,7 +640,6 @@ class InvoiceFormViewImpl {
       return;
     }
 
-    // اعتبارسنجی اقلام
     const validItems = ctx.data.items.filter(it => it.productId && (Number(it.qty) || 0) > 0);
     if (validItems.length === 0) {
       Toast.warning('حداقل یک ردیف معتبر (کالا با مقدار) لازم است');
@@ -538,11 +654,11 @@ class InvoiceFormViewImpl {
       contactName: contact.name,
       items: validItems,
       discountType: document.getElementById('invDiscType').value,
-      discountInput: Number(document.getElementById('invDiscInput').value) || 0,
+      discountInput: NumberInput.parse(document.getElementById('invDiscInput').value),
       vatEnabled: document.getElementById('invVatEnabled')?.checked || false,
-      vatRate: Number(document.getElementById('invVatRate')?.value) || 0,
+      vatRate: NumberInput.parse(document.getElementById('invVatRate')?.value),
       paymentMethod: document.getElementById('invPayment').value,
-      paidAmount: Number(document.getElementById('invPaidAmount')?.value) || 0,
+      paidAmount: NumberInput.parse(document.getElementById('invPaidAmount')?.value),
       description: document.getElementById('invDescription').value
     };
 
@@ -553,9 +669,8 @@ class InvoiceFormViewImpl {
       Modal.close();
       if (printAfter) {
         const { InvoicePrint } = await import('../utils/InvoicePrint.js');
-        setTimeout(() => InvoicePrint.print(savedId), 200);
+        setTimeout(() => InvoicePrint.openSettings(savedId), 250);
       }
-      // refresh list
       if (window.InvoicesView) window.InvoicesView.reloadAndRender?.();
     } catch (err) {
       console.error(err);

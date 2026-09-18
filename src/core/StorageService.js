@@ -3,11 +3,12 @@
 // ============================================================
 
 const DB_NAME = 'finora_pro_db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 const STORES = [
   'users', 'companies', 'contacts', 'products',
   'units', 'categories',
+  'treasury',
   'invoices', 'invoice_items', 'stock_movements',
   'transactions', 'cheques', 'expenses',
   'settings', 'logs'

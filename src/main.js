@@ -2,6 +2,9 @@
 // Finora Pro — Main Entry Point
 // ============================================================
 
+import { SettingsView } from './views/SettingsView.js';
+import { ChequesView } from './views/ChequesView.js';
+import { TreasuryView } from './views/TreasuryView.js';
 import { InvoicesView } from './views/InvoicesView.js';
 import { ContactsView } from './views/ContactsView.js';
 import { ProductsView } from './views/ProductsView.js';
@@ -11,15 +14,18 @@ import { Toast } from './core/Toast.js';
 import { Router } from './core/Router.js';
 import { Auth } from './core/Auth.js';
 import { EventBus } from './core/EventBus.js';
+import { Modal } from './core/Modal.js';
+import { KeyboardShortcuts } from './core/KeyboardShortcuts.js';
 import { Formatters } from './utils/Formatters.js';
 import { Jalali } from './utils/Jalali.js';
 import { numberToWords } from './utils/NumberToWords.js';
+import { NumberInput } from './utils/NumberInput.js';
 
 const FINORA = {
   version: '0.1.0',
   Storage: StorageService,
-  Theme, Toast, Router, Auth, EventBus,
-  Utils: { Formatters, Jalali, numberToWords }
+  Theme, Toast, Router, Auth, EventBus, Modal, KeyboardShortcuts,
+  Utils: { Formatters, Jalali, numberToWords, NumberInput }
 };
 window.FINORA = FINORA;
 
@@ -102,25 +108,37 @@ function registerRoutes() {
   });
 
   Router.register('invoices', {
-  title: 'فاکتورها',
-  render: () => InvoicesView.render(),
-  onMount: () => InvoicesView.onMount()
-});
+    title: 'فاکتورها',
+    render: () => InvoicesView.render(),
+    onMount: () => InvoicesView.onMount()
+  });
   Router.register('products', {
-  title: 'کالا و انبار',
-  render: () => ProductsView.render(),
-  onMount: () => ProductsView.onMount()
-});
+    title: 'کالا و انبار',
+    render: () => ProductsView.render(),
+    onMount: () => ProductsView.onMount()
+  });
   Router.register('contacts', {
-  title: 'اشخاص',
-  render: () => ContactsView.render(),
-  onMount: () => ContactsView.onMount()
-});
-  Router.register('treasury', { title: 'خزانه و بانک', render: placeholder('خزانه و بانک', 6) });
-  Router.register('cheques', { title: 'چک‌ها', render: placeholder('چک‌ها', 6) });
+    title: 'اشخاص',
+    render: () => ContactsView.render(),
+    onMount: () => ContactsView.onMount()
+  });
+  Router.register('treasury', {
+    title: 'خزانه و بانک',
+    render: () => TreasuryView.render(),
+    onMount: () => TreasuryView.onMount()
+  });
+  Router.register('cheques', {
+    title: 'چک‌ها',
+    render: () => ChequesView.render(),
+    onMount: () => ChequesView.onMount()
+  });
   Router.register('expenses', { title: 'هزینه و درآمد', render: placeholder('هزینه و درآمد', 6) });
   Router.register('reports', { title: 'گزارش سود و زیان', render: placeholder('گزارش سود و زیان', 7) });
-  Router.register('settings', { title: 'تنظیمات', render: placeholder('تنظیمات', 9) });
+  Router.register('settings', {
+    title: 'تنظیمات',
+    render: () => SettingsView.render(),
+    onMount: () => SettingsView.onMount()
+  });
 }
 
 function getGreeting() {
@@ -180,27 +198,19 @@ function setupSidebar() {
   }
 }
 
-function setupKeyboard() {
-  document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-      e.preventDefault();
-      Toast.info('میانبر ذخیره در فازهای بعدی فعال می‌شود');
-    }
-  });
-}
-
 async function bootstrap() {
   try {
     console.log('🚀 Finora Pro v' + FINORA.version);
 
     Theme.init();
+    NumberInput.init();
+    KeyboardShortcuts.init();
     await StorageService.init();
     await Auth.init();
 
     registerRoutes();
     Router.init('pageContent');
     setupSidebar();
-    setupKeyboard();
 
     EventBus.on('route:changed', () => {
       updateHeader();
