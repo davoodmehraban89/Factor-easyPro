@@ -1,5 +1,5 @@
 // ============================================================
-// SettingsView — صفحه‌ی تنظیمات، بکاپ و شرکت
+// SettingsView — صفحه‌ی تنظیمات، بکاپ، شرکت و Excel
 // ============================================================
 
 import { SettingsController } from '../controllers/SettingsController.js';
@@ -10,6 +10,7 @@ import { Modal } from '../core/Modal.js';
 import { Toast } from '../core/Toast.js';
 import { Formatters } from '../utils/Formatters.js';
 import { Auth } from '../core/Auth.js';
+import { ExcelController } from '../controllers/ExcelController.js';
 
 let cache = { company: {}, stats: {} };
 
@@ -19,11 +20,12 @@ class SettingsViewImpl {
     return `
       <div class="page-title">
         <h2>تنظیمات</h2>
-        <p>مدیریت اطلاعات شرکت، پشتیبان‌گیری و تنظیمات سیستم</p>
+        <p>مدیریت اطلاعات شرکت، پشتیبان‌گیری، Excel و تنظیمات سیستم</p>
       </div>
 
       <div class="settings-grid">
         ${this._renderCompanyCard()}
+        ${this._renderExcelCard()}
         ${this._renderShortcutsCard()}
         ${this._renderBackupCard()}
         ${this._renderStatsCard()}
@@ -95,6 +97,224 @@ class SettingsViewImpl {
   }
 
   // ============================================================
+  // کارت Excel (جدید)
+  // ============================================================
+  _renderExcelCard() {
+    const s = cache.stats;
+    return `
+      <div class="card settings-card" style="border-color:#bbf7d0;background:linear-gradient(135deg,#f0fdf4,#f8fafc)">
+        <div class="settings-card-header">
+          <div class="settings-card-icon" style="background:linear-gradient(135deg,#16a34a,#15803d)">📊</div>
+          <div>
+            <h3 class="settings-card-title">Excel — خروجی و ورودی</h3>
+            <p class="settings-card-desc">داده‌ها را به Excel ببر یا از Excel بیار</p>
+          </div>
+        </div>
+
+        <div style="font-size:12.5px;color:var(--text-muted);line-height:1.8;margin-bottom:12px;padding:10px 12px;background:rgba(255,255,255,.6);border-radius:8px">
+          <strong>💡 نکته:</strong> از این بخش می‌تونی کل داده‌ها رو در یه فایل Excel بگیری، یا از یه فایل Excel (که قبلاً آماده کردی) کالا و اشخاص اضافه کنی.
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+          <button class="btn" style="background:linear-gradient(135deg,#16a34a,#15803d)" onclick="window.SettingsView.exportAllExcel()">
+            📥 خروجی کامل (Excel)
+          </button>
+          <button class="btn btn-secondary" onclick="window.SettingsView.openExportSectionModal()">
+            🎯 خروجی انتخابی
+          </button>
+        </div>
+
+        <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)">
+          <div style="font-size:12.5px;font-weight:700;margin-bottom:10px;color:#166534">📤 ورود از Excel</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-secondary" onclick="window.SettingsView.importProductsExcel()">
+              📦 ورود کالاها
+            </button>
+            <button class="btn btn-secondary" onclick="window.SettingsView.importContactsExcel()">
+              👥 ورود اشخاص
+            </button>
+          </div>
+        </div>
+
+        <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)">
+          <div style="font-size:12.5px;font-weight:700;margin-bottom:10px;color:#166534">📄 قالب‌های نمونه</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-secondary btn-inline" style="font-size:12px;min-height:34px" onclick="window.SettingsView.downloadProductsTemplate()">
+              📋 قالب کالاها
+            </button>
+            <button class="btn btn-secondary btn-inline" style="font-size:12px;min-height:34px" onclick="window.SettingsView.downloadContactsTemplate()">
+              📋 قالب اشخاص
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  async exportAllExcel() {
+    try {
+      Toast.info('در حال آماده‌سازی فایل Excel...');
+      const result = await ExcelController.exportAll();
+      Toast.success(`فایل Excel با ${Formatters.toPersianDigits(result.sheets)} شیت دانلود شد`);
+    } catch (err) {
+      console.error(err);
+      Toast.error('خطا در خروجی: ' + err.message);
+    }
+  }
+
+  openExportSectionModal() {
+    const body = `
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px">کدوم بخش رو می‌خوای به Excel ببری؟</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <button class="btn btn-secondary" style="min-height:80px;flex-direction:column;gap:6px" onclick="window.SettingsView._exportSection('products')">
+          <div style="font-size:22px">📦</div>
+          <div style="font-size:12.5px">کالاها</div>
+        </button>
+        <button class="btn btn-secondary" style="min-height:80px;flex-direction:column;gap:6px" onclick="window.SettingsView._exportSection('contacts')">
+          <div style="font-size:22px">👥</div>
+          <div style="font-size:12.5px">اشخاص</div>
+        </button>
+        <button class="btn btn-secondary" style="min-height:80px;flex-direction:column;gap:6px" onclick="window.SettingsView._exportSection('invoices')">
+          <div style="font-size:22px">🧾</div>
+          <div style="font-size:12.5px">فاکتورها</div>
+        </button>
+        <button class="btn btn-secondary" style="min-height:80px;flex-direction:column;gap:6px" onclick="window.SettingsView._exportSection('cheques')">
+          <div style="font-size:22px">💳</div>
+          <div style="font-size:12.5px">چک‌ها</div>
+        </button>
+        <button class="btn btn-secondary" style="min-height:80px;flex-direction:column;gap:6px" onclick="window.SettingsView._exportSection('expenses')">
+          <div style="font-size:22px">💰</div>
+          <div style="font-size:12.5px">هزینه و درآمد</div>
+        </button>
+      </div>
+    `;
+    const footer = `<button class="btn btn-secondary" onclick="FINORA.Modal.close()">بستن</button>`;
+    Modal.open({ title: '🎯 خروجی انتخابی به Excel', body, footer, size: 'md' });
+  }
+
+  async _exportSection(section) {
+    try {
+      const result = await ExcelController.exportSection(section);
+      Toast.success(`فایل دانلود شد (${Formatters.number(result.count)} مورد)`);
+      Modal.close();
+    } catch (err) {
+      Toast.error('خطا: ' + err.message);
+    }
+  }
+
+  // ============================================================
+  // ورودی از Excel
+  // ============================================================
+  importProductsExcel() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xlsx,.xls';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      await this._handleImportFile(file, 'products');
+    };
+    input.click();
+  }
+
+  importContactsExcel() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xlsx,.xls';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      await this._handleImportFile(file, 'contacts');
+    };
+    input.click();
+  }
+
+  async _handleImportFile(file, kind) {
+    try {
+      Toast.info('در حال خواندن فایل...');
+      const preview = await ExcelController.previewFile(file);
+
+      const kindLabel = kind === 'products' ? 'کالاها' : 'اشخاص';
+      const sheetsHtml = preview.sheets.map(s => `
+        <div style="padding:8px 12px;background:var(--bg);border-radius:8px;margin-bottom:6px;font-size:12.5px">
+          <strong>${this._esc(s.name)}</strong>
+          <span style="color:var(--text-muted);margin-right:6px">(${Formatters.number(s.count)} سطر)</span>
+        </div>
+      `).join('');
+
+      const body = `
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
+          فایل <strong>${this._esc(file.name)}</strong> خونده شد. شیت‌های موجود:
+        </p>
+        ${sheetsHtml}
+        <div class="form-group" style="margin-top:14px">
+          <label class="form-label">حالت ورود</label>
+          <select class="form-control" id="importMode">
+            <option value="merge">🔀 ادغام (Merge) — فقط موارد جدید اضافه می‌شن</option>
+            <option value="replace">🔄 جایگزینی (Replace) — همه‌ی ${kindLabel} فعلی پاک و از فایل جایگزین می‌شن</option>
+          </select>
+        </div>
+      `;
+      const footer = `
+        <button class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button>
+        <button class="btn btn-success" onclick="window.SettingsView._confirmImport(${JSON.stringify(kind).replace(/"/g, "'")}, '${this._esc(file.name)}')">✅ شروع ایمپورت</button>
+      `;
+      Modal.open({ title: `📤 ورود ${kindLabel} از Excel`, body, footer, size: 'md' });
+
+      // ذخیره‌ی موقت داده
+      window.__importRawData = preview.raw;
+      window.__importKind = kind;
+    } catch (err) {
+      console.error(err);
+      Toast.error('خطا: ' + err.message);
+    }
+  }
+
+  async _confirmImport(kind, fileName) {
+    const mode = document.getElementById('importMode').value;
+    const rawData = window.__importRawData;
+
+    if (!rawData) {
+      Toast.error('داده‌ای برای ایمپورت نیست');
+      return;
+    }
+
+    try {
+      Toast.info('در حال ایمپورت...');
+      let result;
+      if (kind === 'products') {
+        result = await ExcelController.importProducts(rawData, { mode });
+      } else {
+        result = await ExcelController.importContacts(rawData, { mode });
+      }
+
+      Modal.close();
+      Toast.success(`ایمپورت انجام شد: ${Formatters.number(result.added)} اضافه، ${Formatters.number(result.skipped)} رد شده`);
+
+      // رفرش KPI ها
+      await this.reload();
+      const grid = document.querySelector('.settings-grid');
+      if (grid) grid.innerHTML = this._renderAllCards();
+    } catch (err) {
+      console.error(err);
+      Toast.error('خطا در ایمپورت: ' + err.message);
+    } finally {
+      window.__importRawData = null;
+      window.__importKind = null;
+    }
+  }
+
+  downloadProductsTemplate() {
+    ExcelController.downloadProductsTemplate();
+    Toast.success('قالب کالاها دانلود شد');
+  }
+
+  downloadContactsTemplate() {
+    ExcelController.downloadContactsTemplate();
+    Toast.success('قالب اشخاص دانلود شد');
+  }
+
+  // ============================================================
   // کارت میانبرهای صفحه‌کلید
   // ============================================================
   _renderShortcutsCard() {
@@ -141,15 +361,6 @@ class SettingsViewImpl {
           <button class="btn" onclick="window.SettingsView.saveShortcuts()">💾 ذخیره تنظیمات</button>
           <button class="btn btn-secondary" onclick="window.SettingsView.resetShortcuts()">↺ بازگشت به پیش‌فرض</button>
         </div>
-
-        <div style="margin-top:14px;padding:12px 14px;background:var(--bg);border-radius:8px;font-size:11.5px;color:var(--text-muted);line-height:2">
-          <div><strong style="color:var(--text)">راهنمای سریع:</strong></div>
-          <div>• <kbd style="background:var(--card-bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;font-family:monospace">Enter</kbd> — تأیید فرم</div>
-          <div>• <kbd style="background:var(--card-bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;font-family:monospace">Esc</kbd> — بستن مودال</div>
-          <div>• <kbd style="background:var(--card-bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;font-family:monospace">Ctrl+S</kbd> — ذخیره</div>
-          <div>• <kbd style="background:var(--card-bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;font-family:monospace">Ctrl+Enter</kbd> — تأیید از هر فیلد (حتی توضیحات)</div>
-          <div>• <kbd style="background:var(--card-bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;font-family:monospace">+</kbd> و <kbd style="background:var(--card-bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;font-family:monospace">−</kbd> — روی فیلدهای مبلغ، ضریب صفر</div>
-        </div>
       </div>
     `;
   }
@@ -184,7 +395,6 @@ class SettingsViewImpl {
       onConfirm: () => {
         KeyboardShortcuts.resetSettings();
         Toast.success('تنظیمات به حالت پیش‌فرض برگشت');
-        // رفرش کارت
         const grid = document.querySelector('.settings-grid');
         if (grid) grid.innerHTML = this._renderAllCards();
       }
@@ -200,8 +410,8 @@ class SettingsViewImpl {
         <div class="settings-card-header">
           <div class="settings-card-icon" style="background:linear-gradient(135deg,#3b82f6,#1e40af)">💾</div>
           <div>
-            <h3 class="settings-card-title">پشتیبان‌گیری و بازیابی</h3>
-            <p class="settings-card-desc">از داده‌های خود نسخه‌ی پشتیبان بگیرید تا در صورت نیاز بازیابی کنید</p>
+            <h3 class="settings-card-title">پشتیبان‌گیری JSON</h3>
+            <p class="settings-card-desc">پشتیبان‌گیری کامل از دیتابیس (فقط JSON، نه Excel)</p>
           </div>
         </div>
 
@@ -311,6 +521,7 @@ class SettingsViewImpl {
 
   _renderAllCards() {
     return this._renderCompanyCard()
+      + this._renderExcelCard()
       + this._renderShortcutsCard()
       + this._renderBackupCard()
       + this._renderStatsCard()
@@ -410,7 +621,7 @@ class SettingsViewImpl {
   }
 
   // ============================================================
-  // بکاپ
+  // بکاپ JSON
   // ============================================================
   async downloadBackup() {
     try {
