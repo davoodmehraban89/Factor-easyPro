@@ -552,11 +552,16 @@ class InvoicePrintImpl {
   }
 
   _openPrintWindow(html) {
-    const printWindow = window.open('', '_blank', 'width=900,height=700');
-    if (!printWindow) {
-      Toast.error('لطفاً پاپ‌آپ را فعال کنید');
-      return;
-    }
+    // ساخت iframe مخفی به جای window.open (سازگار با Tauri)
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.style.visibility = 'hidden';
+    document.body.appendChild(iframe);
 
     let pageCss = 'A4 portrait';
     if (this.settings.template === 'thermal') {
@@ -566,7 +571,9 @@ class InvoicePrintImpl {
       pageCss = size + ' ' + (this.settings.orientation || 'portrait');
     }
 
-    printWindow.document.write(`
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(`
       <!DOCTYPE html>
       <html lang="fa" dir="rtl">
       <head>
@@ -605,14 +612,23 @@ class InvoicePrintImpl {
       <body>${html}</body>
       </html>
     `);
-    printWindow.document.close();
+    doc.close();
 
+    // صبر می‌کنیم تا فونت و استایل‌ها لود بشن، بعد پرینت می‌گیریم
     setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-    }, 500);
-  }
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch (err) {
+        Toast.error('خطا در باز کردن پنجره چاپ: ' + err.message);
+      }
 
+      // پاک کردن iframe بعد از بسته شدن پنجره چاپ
+      setTimeout(() => {
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+      }, 2000);
+    }, 800);
+  }
   _paymentLabel(method) {
     const labels = { cash: 'نقدی ☑', credit: 'نسیه/چک ☑', partial: 'پرداخت جزئی ☑' };
     return labels[method] || '—';

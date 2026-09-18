@@ -7,8 +7,54 @@ import { Auth } from '../core/Auth.js';
 import { Jalali } from '../utils/Jalali.js';
 import { ContactController } from './ContactController.js';
 import { ProductController } from './ProductController.js';
+import { Toast } from '../core/Toast.js';
 
 class ExcelControllerImpl {
+  // ============================================================
+  // ذخیره فایل + نمایش پیام + باز کردن خودکار (سازگار با Tauri)
+  // ============================================================
+  async _saveFile(wb, fileName) {
+    const isTauri = '__TAURI_INTERNALS__' in window;
+
+    // حالت مرورگر: دانلود معمولی
+    if (!isTauri) {
+      XLSX.writeFile(wb, fileName);
+      Toast.success(`فایل «${fileName}» دانلود شد`, 'خروجی Excel');
+      return;
+    }
+
+    // حالت Tauri: گرفتن مسیر از کاربر + نوشتن + باز کردن
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const { writeFile } = await import('@tauri-apps/plugin-fs');
+      const { openPath } = await import('@tauri-apps/plugin-opener');
+
+      const filePath = await save({
+        defaultPath: fileName,
+        filters: [{ name: 'Excel', extensions: ['xlsx'] }]
+      });
+
+      if (!filePath) {
+        Toast.info('ذخیره فایل لغو شد');
+        return;
+      }
+
+      const data = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      await writeFile(filePath, new Uint8Array(data));
+
+      Toast.success('فایل با موفقیت ذخیره و باز شد', 'خروجی Excel');
+
+      try {
+        await openPath(filePath);
+      } catch (openErr) {
+        console.warn('خطا در باز کردن فایل:', openErr);
+      }
+    } catch (err) {
+      console.error('خطا در ذخیره فایل:', err);
+      Toast.error('خطا در ذخیره فایل: ' + err.message, 'خروجی Excel');
+    }
+  }
+
   // ============================================================
   // خروجی کامل (Backup Excel)
   // ============================================================
@@ -223,9 +269,9 @@ class ExcelControllerImpl {
     });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(mvData), 'کاردکس');
 
-    // دانلود
+    // ذخیره + پیام
     const date = Jalali.today().replace(/\//g, '-');
-    XLSX.writeFile(wb, `finora-backup-${date}.xlsx`);
+    await this._saveFile(wb, `finora-backup-${date}.xlsx`);
 
     return {
       sheets: 9,
@@ -271,7 +317,7 @@ class ExcelControllerImpl {
           ]);
         });
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), 'کالاها');
-        XLSX.writeFile(wb, `finora-products-${date}.xlsx`);
+        await this._saveFile(wb, `finora-products-${date}.xlsx`);
         return { count: products.length };
       }
 
@@ -290,7 +336,7 @@ class ExcelControllerImpl {
           ]);
         });
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), 'اشخاص');
-        XLSX.writeFile(wb, `finora-contacts-${date}.xlsx`);
+        await this._saveFile(wb, `finora-contacts-${date}.xlsx`);
         return { count: contacts.length };
       }
 
@@ -311,7 +357,7 @@ class ExcelControllerImpl {
           ]);
         });
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), 'فاکتورها');
-        XLSX.writeFile(wb, `finora-invoices-${date}.xlsx`);
+        await this._saveFile(wb, `finora-invoices-${date}.xlsx`);
         return { count: invoices.length };
       }
 
@@ -326,7 +372,7 @@ class ExcelControllerImpl {
           ]);
         });
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), 'چک‌ها');
-        XLSX.writeFile(wb, `finora-cheques-${date}.xlsx`);
+        await this._saveFile(wb, `finora-cheques-${date}.xlsx`);
         return { count: cheques.length };
       }
 
@@ -341,7 +387,7 @@ class ExcelControllerImpl {
           ]);
         });
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), 'هزینه‌ها');
-        XLSX.writeFile(wb, `finora-expenses-${date}.xlsx`);
+        await this._saveFile(wb, `finora-expenses-${date}.xlsx`);
         return { count: expenses.length };
       }
 
@@ -394,7 +440,6 @@ class ExcelControllerImpl {
     const user = Auth.current();
     if (!user) throw new Error('کاربر یافت نشد');
 
-    // پیدا کردن شیت مناسب
     const sheetName = Object.keys(rawData).find(n =>
       n.includes('کالا') || n.toLowerCase().includes('product')
     ) || Object.keys(rawData)[0];
@@ -510,7 +555,7 @@ class ExcelControllerImpl {
   // ============================================================
   // دانلود قالب‌های نمونه
   // ============================================================
-  downloadProductsTemplate() {
+  async downloadProductsTemplate() {
     const data = [
       ['کد', 'نام', 'مشخصه', 'واحد', 'قیمت خرید', 'قیمت فروش', 'نقطه سفارش', 'نوع'],
       ['P001', 'هارد سرور 2.5 اینچ', 'SAS 1TB', 'عدد', 30000000, 37000000, 5, 'کالا'],
@@ -520,10 +565,10 @@ class ExcelControllerImpl {
     const ws = XLSX.utils.aoa_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'کالاها');
-    XLSX.writeFile(wb, 'finora-products-template.xlsx');
+    await this._saveFile(wb, 'finora-products-template.xlsx');
   }
 
-  downloadContactsTemplate() {
+  async downloadContactsTemplate() {
     const data = [
       ['نام', 'نوع', 'نقش', 'موبایل', 'تلفن', 'کد ملی/شناسه', 'کد اقتصادی', 'شماره ثبت', 'کد پستی', 'نشانی'],
       ['شرکت آرا بتن', 'حقوقی', 'مشتری', '09124376991', '', '14008507476', '14008507476', '544926', '1445956311', 'تهران'],
@@ -532,7 +577,7 @@ class ExcelControllerImpl {
     const ws = XLSX.utils.aoa_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'اشخاص');
-    XLSX.writeFile(wb, 'finora-contacts-template.xlsx');
+    await this._saveFile(wb, 'finora-contacts-template.xlsx');
   }
 }
 

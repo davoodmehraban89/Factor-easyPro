@@ -4,10 +4,10 @@
   "description": "فینورا پرو - سامانه جامع حسابداری و صدور فاکتور",
   "main": "index.js",
   "scripts": {
-  "dev": "vite",
-  "build": "vite build",
-  "preview": "vite preview"
-},
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/davoodmehraban89/Factor-easyPro.git"
@@ -21,6 +21,12 @@
   },
   "homepage": "https://github.com/davoodmehraban89/Factor-easyPro#readme",
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
     "vite": "^8.3.0"
+  },
+  "dependencies": {
+    "@tauri-apps/plugin-dialog": "^2.7.3",
+    "@tauri-apps/plugin-fs": "^2.5.2",
+    "@tauri-apps/plugin-opener": "^2.5.5"
   }
 }
