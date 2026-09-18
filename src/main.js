@@ -2,6 +2,7 @@
 // Finora Pro — Main Entry Point
 // ============================================================
 
+import { ProductsView } from './views/ProductsView.js';
 import { StorageService } from './core/StorageService.js';
 import { Theme } from './core/Theme.js';
 import { Toast } from './core/Toast.js';
@@ -99,7 +100,11 @@ function registerRoutes() {
   });
 
   Router.register('invoices', { title: 'فاکتورها', render: placeholder('فاکتورها', 4) });
-  Router.register('products', { title: 'کالا و انبار', render: placeholder('کالا و انبار', 2) });
+  Router.register('products', {
+  title: 'کالا و انبار',
+  render: () => ProductsView.render(),
+  onMount: () => ProductsView.onMount()
+});
   Router.register('contacts', { title: 'اشخاص', render: placeholder('اشخاص', 3) });
   Router.register('treasury', { title: 'خزانه و بانک', render: placeholder('خزانه و بانک', 6) });
   Router.register('cheques', { title: 'چک‌ها', render: placeholder('چک‌ها', 6) });
