@@ -32,60 +32,35 @@ const FINORA = {
 };
 window.FINORA = FINORA;
 
+// تنها منبع تعریف صفحات: نام مسیر، عنوان مسیر، عنوان هدر و ویو
+const ROUTES = [
+  { name: 'dashboard', title: 'داشبورد',            header: 'داشبورد مدیریتی',   view: DashboardView },
+  { name: 'invoices',  title: 'فاکتورها',           header: 'فاکتورها',           view: InvoicesView },
+  { name: 'products',  title: 'کالا و انبار',       header: 'کالا و انبار',       view: ProductsView },
+  { name: 'contacts',  title: 'اشخاص',              header: 'اشخاص',              view: ContactsView },
+  { name: 'treasury',  title: 'خزانه و بانک',       header: 'خزانه و بانک',       view: TreasuryView },
+  { name: 'cheques',   title: 'چک‌ها',              header: 'چک‌ها',              view: ChequesView },
+  { name: 'expenses',  title: 'هزینه و درآمد',      header: 'هزینه و درآمد',      view: ExpensesView },
+  { name: 'reports',   title: 'گزارش سود و زیان',   header: 'گزارش سود و زیان',   view: ReportsView },
+  { name: 'settings',  title: 'تنظیمات',            header: 'تنظیمات',            view: SettingsView }
+];
+
+const DEFAULT_ROUTE = 'dashboard';
+const LAST_ROUTE_KEY = 'finora_pro_last_route';
+
 function registerRoutes() {
-  Router.register('dashboard', {
-    title: 'داشبورد',
-    render: () => DashboardView.render(),
-    onMount: () => DashboardView.onMount()
+  ROUTES.forEach(({ name, title, view }) => {
+    Router.register(name, {
+      title,
+      render: () => view.render(),
+      onMount: () => view.onMount()
+    });
   });
+}
 
-  Router.register('invoices', {
-    title: 'فاکتورها',
-    render: () => InvoicesView.render(),
-    onMount: () => InvoicesView.onMount()
-  });
-
-  Router.register('products', {
-    title: 'کالا و انبار',
-    render: () => ProductsView.render(),
-    onMount: () => ProductsView.onMount()
-  });
-
-  Router.register('contacts', {
-    title: 'اشخاص',
-    render: () => ContactsView.render(),
-    onMount: () => ContactsView.onMount()
-  });
-
-  Router.register('treasury', {
-    title: 'خزانه و بانک',
-    render: () => TreasuryView.render(),
-    onMount: () => TreasuryView.onMount()
-  });
-
-  Router.register('cheques', {
-    title: 'چک‌ها',
-    render: () => ChequesView.render(),
-    onMount: () => ChequesView.onMount()
-  });
-
-  Router.register('expenses', {
-    title: 'هزینه و درآمد',
-    render: () => ExpensesView.render(),
-    onMount: () => ExpensesView.onMount()
-  });
-
-  Router.register('reports', {
-    title: 'گزارش سود و زیان',
-    render: () => ReportsView.render(),
-    onMount: () => ReportsView.onMount()
-  });
-
-  Router.register('settings', {
-    title: 'تنظیمات',
-    render: () => SettingsView.render(),
-    onMount: () => SettingsView.onMount()
-  });
+function getStartRoute() {
+  const saved = localStorage.getItem(LAST_ROUTE_KEY);
+  return ROUTES.some(r => r.name === saved) ? saved : DEFAULT_ROUTE;
 }
 
 function getGreeting() {
@@ -102,18 +77,8 @@ function updateHeader() {
 
   const titleEl = document.getElementById('pageTitle');
   if (titleEl) {
-    const titles = {
-      dashboard: 'داشبورد مدیریتی',
-      invoices: 'فاکتورها',
-      products: 'کالا و انبار',
-      contacts: 'اشخاص',
-      treasury: 'خزانه و بانک',
-      cheques: 'چک‌ها',
-      expenses: 'هزینه و درآمد',
-      reports: 'گزارش سود و زیان',
-      settings: 'تنظیمات'
-    };
-    titleEl.textContent = titles[Router.current()] || 'فینورا پرو';
+    const route = ROUTES.find(r => r.name === Router.current());
+    titleEl.textContent = route ? route.header : 'فینورا پرو';
   }
 }
 
@@ -145,6 +110,31 @@ function setupSidebar() {
   }
 }
 
+function showBootstrapError(err) {
+  const splash = document.getElementById('splash');
+  if (!splash) return;
+  splash.style.display = '';
+
+  // با textContent ساخته می‌شود تا متن خطا هرگز به‌عنوان HTML تفسیر نشود
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'padding:20px;text-align:center;color:#fff;max-width:400px';
+
+  const icon = document.createElement('div');
+  icon.style.cssText = 'font-size:40px;margin-bottom:12px';
+  icon.textContent = '⚠️';
+
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:16px;font-weight:700';
+  title.textContent = 'خطا در بارگذاری';
+
+  const detail = document.createElement('div');
+  detail.style.cssText = 'font-size:12px;margin-top:8px;opacity:.85';
+  detail.textContent = err && err.message ? err.message : String(err);
+
+  wrap.append(icon, title, detail);
+  splash.replaceChildren(wrap);
+}
+
 async function bootstrap() {
   try {
     console.log('🚀 Finora Pro v' + FINORA.version);
@@ -153,7 +143,7 @@ async function bootstrap() {
     NumberInput.init();
     KeyboardShortcuts.init();
     await StorageService.init();
-    await Auth.init();
+    await Auth.init(); // تا ورود موفق (صفحه قفل) اینجا منتظر می‌ماند
 
     registerRoutes();
     Router.init('pageContent');
@@ -164,27 +154,16 @@ async function bootstrap() {
       updateStats();
     });
 
-    const lastRoute = localStorage.getItem('finora_pro_last_route') || 'dashboard';
-    await Router.go(lastRoute);
+    await Router.go(getStartRoute());
 
     updateHeader();
     updateStats();
     setInterval(updateHeader, 60000);
 
     document.getElementById('splash').style.display = 'none';
-
-    setTimeout(() => Toast.success('فینورا پرو با موفقیت بارگذاری شد', 'خوش آمدید'), 300);
   } catch (err) {
     console.error('Bootstrap failed:', err);
-    const splash = document.getElementById('splash');
-    if (splash) {
-      splash.innerHTML = `
-        <div style="padding:20px;text-align:center;color:#fff;max-width:400px">
-          <div style="font-size:40px;margin-bottom:12px">⚠️</div>
-          <div style="font-size:16px;font-weight:700">خطا در بارگذاری</div>
-          <div style="font-size:12px;margin-top:8px;opacity:.85">${err.message}</div>
-        </div>`;
-    }
+    showBootstrapError(err);
   }
 }
 
