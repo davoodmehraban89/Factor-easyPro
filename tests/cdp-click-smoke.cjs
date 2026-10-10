@@ -1,0 +1,3 @@
+process.env.CDP_PORT='9231';
+process.env.CDP_EXPR=`(async()=>{const b=document.querySelector('#pageContent button[onclick]');b.click();await new Promise(r=>setTimeout(r,600));return JSON.stringify({hash:location.hash,view:typeof window.InvoicesView,html:document.getElementById('pageContent')?.innerText.slice(0,200),error:document.querySelector('.toast')?.innerText})})()`;
+require('./cdp-smoke.cjs');

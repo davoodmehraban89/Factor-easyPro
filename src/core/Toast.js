@@ -20,6 +20,8 @@ class ToastManager {
 
   show(message, type = 'info', title = '') {
     const c = this._ensure();
+    // Keep the notification host last in the body so it paints above dialogs.
+    if (c.parentElement === document.body) document.body.appendChild(c);
     const el = document.createElement('div');
     el.className = `toast toast-${type}`;
     el.innerHTML = `
@@ -31,7 +33,9 @@ class ToastManager {
       <button class="toast-close" aria-label="بستن">×</button>`;
     el.querySelector('.toast-close').onclick = () => el.remove();
     c.appendChild(el);
-    setTimeout(() => {
+    // Errors stay visible until dismissed so users can read and report them.
+    if (type !== 'error') setTimeout(() => {
+      if (!el.isConnected) return;
       el.style.animation = 'slideOut .3s ease forwards';
       setTimeout(() => el.remove(), 300);
     }, DURATIONS[type] || 4000);

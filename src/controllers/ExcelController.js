@@ -4,6 +4,7 @@
 
 import { StorageService } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
+import { DataScope } from '../core/DataScope.js';
 import { Jalali } from '../utils/Jalali.js';
 import { ContactController } from './ContactController.js';
 import { ProductController } from './ProductController.js';
@@ -63,20 +64,20 @@ class ExcelControllerImpl {
     if (!user) throw new Error('کاربر یافت نشد');
 
     const [companies, contacts, products, invoices, cheques, treasury, expenses, units, categories] = await Promise.all([
-      StorageService.getByOwner('companies', user.id),
-      StorageService.getByOwner('contacts', user.id),
-      StorageService.getByOwner('products', user.id),
-      StorageService.getByOwner('invoices', user.id),
-      StorageService.getByOwner('cheques', user.id),
-      StorageService.getByOwner('treasury', user.id),
-      StorageService.getByOwner('expenses', user.id),
-      StorageService.getByOwner('units', user.id),
-      StorageService.getByOwner('categories', user.id)
+      DataScope.list('companies'),
+      DataScope.list('contacts'),
+      DataScope.list('products'),
+      DataScope.list('invoices'),
+      DataScope.list('cheques'),
+      DataScope.list('treasury'),
+      DataScope.list('expenses'),
+      DataScope.list('units'),
+      DataScope.list('categories')
     ]);
 
     const accounts = treasury.filter(t => t.recordType === 'account');
     const transactions = treasury.filter(t => t.recordType === 'transaction');
-    const stockMovements = await StorageService.getByOwner('stock_movements', user.id);
+    const stockMovements = await DataScope.list('stock_movements');
 
     const wb = XLSX.utils.book_new();
 
@@ -301,8 +302,8 @@ class ExcelControllerImpl {
 
     switch (section) {
       case 'products': {
-        const products = await StorageService.getByOwner('products', user.id);
-        const units = await StorageService.getByOwner('units', user.id);
+        const products = await DataScope.list('products');
+        const units = await DataScope.list('units');
         const stockMap = await ProductController.getStockMap(products.map(p => p.id));
         const data = [['کد', 'نام', 'مشخصه', 'واحد', 'قیمت خرید', 'قیمت فروش', 'نقطه سفارش', 'موجودی']];
         products.forEach(p => {
@@ -322,7 +323,7 @@ class ExcelControllerImpl {
       }
 
       case 'contacts': {
-        const contacts = await StorageService.getByOwner('contacts', user.id);
+        const contacts = await DataScope.list('contacts');
         const balanceMap = await ContactController.getBalanceMap(contacts.map(c => c.id));
         const data = [['نام', 'نوع', 'نقش', 'موبایل', 'تلفن', 'کد ملی/شناسه', 'کد پستی', 'نشانی', 'مانده']];
         contacts.forEach(c => {
@@ -341,7 +342,7 @@ class ExcelControllerImpl {
       }
 
       case 'invoices': {
-        const invoices = await StorageService.getByOwner('invoices', user.id);
+        const invoices = await DataScope.list('invoices');
         const data = [['شماره', 'تاریخ', 'نوع', 'خریدار', 'جمع', 'تخفیف', 'مالیات', 'قابل پرداخت', 'پرداخت‌شده', 'باقیمانده']];
         invoices.forEach(inv => {
           data.push([
@@ -362,7 +363,7 @@ class ExcelControllerImpl {
       }
 
       case 'cheques': {
-        const cheques = await StorageService.getByOwner('cheques', user.id);
+        const cheques = await DataScope.list('cheques');
         const data = [['نوع', 'طرف حساب', 'شماره صیادی', 'بانک', 'مبلغ', 'سررسید', 'وضعیت']];
         cheques.forEach(c => {
           data.push([
@@ -377,7 +378,7 @@ class ExcelControllerImpl {
       }
 
       case 'expenses': {
-        const expenses = await StorageService.getByOwner('expenses', user.id);
+        const expenses = await DataScope.list('expenses');
         const data = [['نوع', 'تاریخ', 'سرفصل', 'شرح', 'مبلغ']];
         expenses.forEach(e => {
           data.push([
@@ -448,7 +449,7 @@ class ExcelControllerImpl {
     if (rows.length === 0) throw new Error('شیت کالاها خالی است');
 
     const mode = options.mode || 'merge';
-    const existing = await StorageService.getByOwner('products', user.id);
+    const existing = await DataScope.list('products');
 
     if (mode === 'replace') {
       for (const p of existing) {
@@ -484,7 +485,7 @@ class ExcelControllerImpl {
         isActiveBuy: true,
         description: ''
       };
-      await StorageService.put('products', product);
+      await StorageService.put('products', await DataScope.stamp('products', product));
       added++;
     }
 
@@ -506,7 +507,7 @@ class ExcelControllerImpl {
     if (rows.length === 0) throw new Error('شیت اشخاص خالی است');
 
     const mode = options.mode || 'merge';
-    const existing = await StorageService.getByOwner('contacts', user.id);
+    const existing = await DataScope.list('contacts');
 
     if (mode === 'replace') {
       for (const c of existing) {
@@ -545,7 +546,7 @@ class ExcelControllerImpl {
         note: '',
         isActive: true
       };
-      await StorageService.put('contacts', contact);
+      await StorageService.put('contacts', await DataScope.stamp('contacts', contact));
       added++;
     }
 

@@ -4,6 +4,8 @@
 
 import { StorageService } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
+import { DataScope } from '../core/DataScope.js';
+import { RetailPostingService } from '../core/RetailPostingService.js';
 import { Jalali } from '../utils/Jalali.js';
 
 const DEFAULT_EXPENSE_CATEGORIES = [
@@ -20,7 +22,7 @@ class ExpenseControllerImpl {
   async getAll(filter = {}) {
     const user = Auth.current();
     if (!user) return [];
-    let list = await StorageService.getByOwner('expenses', user.id);
+    let list = await DataScope.list('expenses');
 
     if (filter.kind) list = list.filter(e => e.kind === filter.kind);
     if (filter.category) list = list.filter(e => e.category === filter.category);
@@ -56,12 +58,15 @@ class ExpenseControllerImpl {
       description: (data.description || '').trim(),
       refNumber: (data.refNumber || '').trim()
     };
-    return await StorageService.put('expenses', expense);
+    const stamped = await DataScope.stamp('expenses', expense);
+    if (await RetailPostingService.isEnabled()) return RetailPostingService.postExpense(stamped);
+    return await StorageService.put('expenses', stamped);
   }
 
   async update(id, data) {
     const existing = await StorageService.get('expenses', id);
-    if (!existing) throw new Error('سند یافت نشد');
+    if (!existing || existing.companyId !== await DataScope.companyId()) throw new Error('سند در شرکت فعال یافت نشد');
+    if (existing.financePosted) throw new Error('سند قطعی مالی قابل ویرایش مستقیم نیست');
     const updated = {
       ...existing,
       kind: data.kind === 'income' ? 'income' : 'expense',
@@ -72,17 +77,20 @@ class ExpenseControllerImpl {
       description: (data.description || '').trim(),
       refNumber: (data.refNumber || '').trim()
     };
-    return await StorageService.put('expenses', updated);
+    return await StorageService.put('expenses', await DataScope.stamp('expenses', updated));
   }
 
   async delete(id) {
+    const existing = await StorageService.get('expenses', id);
+    if (!existing || existing.companyId !== await DataScope.companyId()) throw new Error('سند در شرکت فعال یافت نشد');
+    if (existing.financePosted) throw new Error('سند مالی قطعی حذف نمی‌شود؛ اصلاح از مسیر سند برگشت انجام شود');
     return await StorageService.delete('expenses', id);
   }
 
   async getCategories(kind = null) {
     const user = Auth.current();
     if (!user) return [];
-    const all = await StorageService.getByOwner('expenses', user.id);
+    const all = await DataScope.list('expenses');
     const custom = new Set();
     all.forEach(e => {
       if (kind && e.kind !== kind) return;

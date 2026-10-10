@@ -12,7 +12,7 @@ import { Formatters } from '../utils/Formatters.js';
 import { Auth } from '../core/Auth.js';
 import { ExcelController } from '../controllers/ExcelController.js';
 
-let cache = { company: {}, stats: {} };
+let cache = { company: {}, stats: {}, invoiceSettings: { numberingMode: 'auto', nextNumber: 1 } };
 
 class SettingsViewImpl {
   async render() {
@@ -25,6 +25,7 @@ class SettingsViewImpl {
 
       <div class="settings-grid">
         ${this._renderCompanyCard()}
+        ${this._renderInvoiceSettingsCard()}
         ${this._renderExcelCard()}
         ${this._renderShortcutsCard()}
         ${this._renderBackupCard()}
@@ -40,8 +41,19 @@ class SettingsViewImpl {
   }
 
   async reload() {
-    cache.company = await SettingsController.getCompanyInfo();
-    cache.stats = await this._collectStats();
+    const results = await Promise.allSettled([
+      SettingsController.getCompanyInfo(),
+      SettingsController.getInvoiceSettings(),
+      this._collectStats()
+    ]);
+    const defaults = [{}, { numberingMode: 'auto', nextNumber: 1 }, {}];
+    const values = results.map((result, index) => {
+      if (result.status === 'fulfilled') return result.value;
+      console.error('Settings load failed:', index, result.reason);
+      Toast.error('بخشی از تنظیمات بارگذاری نشد: ' + (result.reason?.message || 'خطای نامشخص'));
+      return defaults[index];
+    });
+    [cache.company, cache.invoiceSettings, cache.stats] = values;
   }
 
   async _collectStats() {
@@ -89,11 +101,56 @@ class SettingsViewImpl {
         ` : `
           <div class="empty-mini">هنوز اطلاعاتی وارد نشده</div>
         `}
-        <button class="btn" onclick="window.SettingsView.openCompanyModal()">
-          ${c.name ? '✏️ ویرایش اطلاعات' : '➕ وارد کردن اطلاعات'}
-        </button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn" onclick="window.SettingsView.openCompanyModal()">${c.name ? '✏️ ویرایش اطلاعات' : '➕ وارد کردن اطلاعات'}</button>
+          <button class="btn" onclick="window.SettingsView.openCompanySwitcher()">🔄 تغییر شرکت</button>
+          ${Auth.isAdmin() ? '<button class="btn" onclick="window.SettingsView.createCompany()">➕ شرکت جدید</button>' : ''}
+        </div>
       </div>
     `;
+  }
+
+  _renderInvoiceSettingsCard() {
+    const s = cache.invoiceSettings || { numberingMode: 'auto', nextNumber: 1 };
+    return `
+      <div class="card settings-card">
+        <div class="settings-card-header">
+          <div class="settings-card-icon">🧾</div>
+          <div>
+            <h3 class="settings-card-title">تنظیمات فاکتور</h3>
+            <p class="settings-card-desc">نحوه شماره‌گذاری فاکتورهای جدید</p>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">نحوه شماره‌گذاری</label>
+          <select class="form-control" id="invoiceNumberingMode">
+            <option value="auto" ${s.numberingMode === 'auto' ? 'selected' : ''}>خودکار</option>
+            <option value="manual" ${s.numberingMode === 'manual' ? 'selected' : ''}>دستی</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">شماره بعدی فاکتور</label>
+          <input class="form-control" id="invoiceNextNumber" type="number" min="1" value="${Number(s.nextNumber) || 1}" />
+        </div>
+        <button class="btn" onclick="window.SettingsView.saveInvoiceSettings()">💾 ذخیره تنظیمات فاکتور</button>
+      </div>
+    `;
+  }
+
+  async saveInvoiceSettings() {
+    const numberingMode = document.getElementById('invoiceNumberingMode').value;
+    const nextNumber = Number(document.getElementById('invoiceNextNumber').value);
+    if (!Number.isInteger(nextNumber) || nextNumber < 1) {
+      Toast.warning('شماره بعدی باید عدد صحیح بزرگ‌تر از صفر باشد');
+      return;
+    }
+    try {
+      cache.invoiceSettings = await SettingsController.saveInvoiceSettings({ numberingMode, nextNumber });
+      Toast.success('تنظیمات فاکتور ذخیره شد');
+    } catch (err) {
+      console.error('Invoice settings save failed:', err);
+      Toast.error('خطا در ذخیره تنظیمات فاکتور: ' + err.message);
+    }
   }
 
   // ============================================================
@@ -410,8 +467,8 @@ class SettingsViewImpl {
         <div class="settings-card-header">
           <div class="settings-card-icon" style="background:linear-gradient(135deg,#3b82f6,#1e40af)">💾</div>
           <div>
-            <h3 class="settings-card-title">پشتیبان‌گیری JSON</h3>
-            <p class="settings-card-desc">پشتیبان‌گیری کامل از دیتابیس (فقط JSON، نه Excel)</p>
+            <h3 class="settings-card-title">پشتیبان‌گیری رمزگذاری‌شده</h3>
+            <p class="settings-card-desc">اطلاعات عملیاتی و حسابداری شرکت فعال؛ بازیابی بدون بازنویسی کاربران و تنظیمات سراسری</p>
           </div>
         </div>
 
@@ -505,7 +562,7 @@ class SettingsViewImpl {
           <div class="settings-card-icon">ℹ️</div>
           <div>
             <h3 class="settings-card-title">درباره فینورا پرو</h3>
-            <p class="settings-card-desc">نسخه ۰.۱.۰</p>
+            <p class="settings-card-desc">نسخه ۲.۰.۰</p>
           </div>
         </div>
         <div style="font-size:13px;line-height:1.9;color:var(--text-muted)">
@@ -521,6 +578,7 @@ class SettingsViewImpl {
 
   _renderAllCards() {
     return this._renderCompanyCard()
+      + this._renderInvoiceSettingsCard()
       + this._renderExcelCard()
       + this._renderShortcutsCard()
       + this._renderBackupCard()
@@ -532,6 +590,22 @@ class SettingsViewImpl {
   // ============================================================
   // فرم اطلاعات شرکت
   // ============================================================
+  async openCompanySwitcher() {
+    const companies = await globalThis.FINORA.Company.list();
+    const body = companies.map(c => `<button class="btn" style="width:100%;margin:4px 0" onclick="window.SettingsView.selectCompany('${c.id}')">${this._esc(c.name || 'شرکت')}</button>`).join('');
+    Modal.open({ title: 'تغییر شرکت فعال', body: body || '<div class="empty-mini">شرکتی یافت نشد</div>', footer: '', size: 'sm' });
+  }
+
+  async selectCompany(id) {
+    await globalThis.FINORA.Company.select(id); Modal.close(); await this.reload(); Toast.success('شرکت فعال تغییر کرد');
+  }
+
+  async createCompany() {
+    const name = prompt('نام شرکت جدید را وارد کنید:'); if (!name?.trim()) return;
+    const company = await globalThis.FINORA.Company.create({ name: name.trim(), entityType: 'legal' });
+    await globalThis.FINORA.Company.select(company.id); await this.reload(); Toast.success('شرکت جدید ایجاد شد');
+  }
+
   openCompanyModal() {
     const c = cache.company;
     const body = `
@@ -636,19 +710,19 @@ class SettingsViewImpl {
   openRestoreModal() {
     const body = `
       <div class="backup-warning" style="margin-bottom:14px">
-        ⚠️ <strong>هشدار:</strong> در حالت Merge، داده‌های تکراری skip می‌شن. در حالت Replace، همه‌چیز با بکاپ جایگزین می‌شه.
+        ⚠️ <strong>هشدار:</strong> در حالت Merge، داده‌های تکراری skip می‌شن. در حالت Replace، فقط رکوردهای دارای شناسه یکسان بازنویسی می‌شوند و سایر داده‌ها حذف نمی‌شوند.
       </div>
 
       <div class="form-group">
-        <label class="form-label">فایل بکاپ (JSON)</label>
-        <input type="file" class="form-control" id="restoreFile" accept=".json,application/json" />
+        <label class="form-label">فایل بکاپ رمزگذاری‌شده یا JSON</label>
+        <input type="file" class="form-control" id="restoreFile" accept=".json,.fbackup,application/json,application/octet-stream" />
       </div>
 
       <div class="form-group">
         <label class="form-label">حالت بازیابی</label>
         <select class="form-control" id="restoreMode">
           <option value="merge">🔀 ادغام (Merge) — داده‌های جدید اضافه می‌شن</option>
-          <option value="replace">🔄 جایگزینی (Replace) — همه‌چیز با بکاپ عوض می‌شه</option>
+          <option value="replace">🔄 بازنویسی شناسه‌های یکسان (Replace) — بدون حذف سایر رکوردها</option>
         </select>
       </div>
     `;

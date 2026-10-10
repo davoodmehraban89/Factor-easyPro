@@ -10,6 +10,8 @@ import { Toast } from '../core/Toast.js';
 import { Formatters } from '../utils/Formatters.js';
 import { numberToWords } from '../utils/NumberToWords.js';
 import { NumberInput } from '../utils/NumberInput.js';
+import { SettingsController } from '../controllers/SettingsController.js';
+import { RetailPostingService } from '../core/RetailPostingService.js';
 
 let ctx = {
   editId: null,
@@ -17,6 +19,8 @@ let ctx = {
   contacts: [],
   products: [],
   units: [],
+  invoices: [],
+  warehouses: [],
   rowCounter: 0
 };
 
@@ -29,6 +33,8 @@ class InvoiceFormViewImpl {
     ctx.contacts = await ContactController.getAll();
     ctx.products = await ProductController.getProducts();
     ctx.units = await ProductController.getUnits();
+    ctx.invoices = await InvoiceController.getAll();
+    ctx.warehouses = await RetailPostingService.isEnabled() ? await RetailPostingService.warehouses() : [];
     ctx.rowCounter = 0;
 
     if (invoiceId) {
@@ -50,6 +56,11 @@ class InvoiceFormViewImpl {
         paidAmount: 0,
         description: ''
       };
+    }
+
+    ctx.invoiceSettings = await SettingsController.getInvoiceSettings();
+    if (!invoiceId) {
+      ctx.data.number = await InvoiceController.getNextNumber(ctx.data.kind);
     }
 
     // اگه فاکتور جدید بدون اقلام، یک ردیف خالی اضافه کن
@@ -105,9 +116,8 @@ class InvoiceFormViewImpl {
       `<option value="${k.value}" ${d.kind === k.value ? 'selected' : ''}>${k.label}</option>`
     ).join('');
 
-    const contactOptions = ctx.contacts.map(c =>
-      `<option value="${c.id}" ${d.contactId === c.id ? 'selected' : ''}>${this._esc(c.name)}</option>`
-    ).join('');
+    const selectedContact = ctx.contacts.find(c => c.id === d.contactId);
+    const selectedContactLabel = selectedContact ? selectedContact.name : (d.contactName || '');
 
     return `
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
@@ -117,7 +127,7 @@ class InvoiceFormViewImpl {
         </div>
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">شماره فاکتور</label>
-          <input type="text" class="form-control" value="${d.number ? '#' + d.number : '(خودکار)'}" disabled style="background:var(--bg)" />
+          <input type="text" class="form-control" id="invNumber" value="${this._esc(d.number || '')}" ${ctx.invoiceSettings?.numberingMode === 'manual' && !ctx.editId ? '' : 'disabled'} style="background:var(--bg)" placeholder="شماره فاکتور" />
         </div>
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">تاریخ (شمسی)</label>
@@ -125,14 +135,26 @@ class InvoiceFormViewImpl {
         </div>
       </div>
 
+      ${ctx.warehouses.length ? `<div class="form-group" style="margin-bottom:12px">
+        <label class="form-label">انبار محل گردش کالا</label><select class="form-control" id="invWarehouse">
+        ${ctx.warehouses.map(w=>`<option value="${this._esc(w.id)}" ${(d.warehouseId||ctx.warehouses.find(x=>x.isDefault)?.id)===w.id?'selected':''}>${this._esc(w.name)}</option>`).join('')}
+        </select></div>` : ''}
+      <div class="form-group" id="invOriginalWrap" style="margin-bottom:12px;${['sale_return','purchase_return'].includes(d.kind)?'':'display:none'}">
+        <label class="form-label">شماره فاکتور اولیه (الزامی برای مرجوعی)</label>
+        <select class="form-control" id="invOriginalInvoice">
+        <option value="">انتخاب فاکتور مرجع</option>
+        ${ctx.invoices.filter(i=>['sale','non_formal','purchase'].includes(i.kind)&&!i.isPreInvoice)
+          .map(i=>`<option data-kind="${this._esc(i.kind)}" value="${this._esc(i.id)}" ${d.originalInvoiceId===i.id?'selected':''}>${this._esc('#'+i.number+' — '+(i.contactName||''))}</option>`).join('')}
+        </select></div>
       <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:14px">
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">طرف حساب</label>
           <div style="display:flex;gap:6px">
-            <select class="form-control" id="invContact" style="flex:1">
-              <option value="">— انتخاب کنید —</option>
-              ${contactOptions}
-            </select>
+            <div style="position:relative;flex:1;min-width:0">
+              <input type="hidden" id="invContact" value="${this._esc(d.contactId || '')}" />
+              <input type="text" class="form-control" id="invContactSearch" autocomplete="off" value="${this._esc(selectedContactLabel)}" placeholder="جستجوی نام یا کد طرف حساب" onfocus="window.InvoiceFormView._showContactOptions()" oninput="window.InvoiceFormView._showContactOptions(true)" />
+              <div id="invContactOptions" style="display:none;position:absolute;z-index:10010;top:100%;right:0;left:0;max-height:230px;overflow:auto;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 20px #0002"></div>
+            </div>
             <button class="btn btn-secondary" style="min-height:42px;padding:0 12px" onclick="window.InvoiceFormView._openQuickContact()" title="افزودن شخص جدید">➕</button>
           </div>
         </div>
@@ -153,7 +175,7 @@ class InvoiceFormViewImpl {
         </div>
       </div>
 
-      <div class="table-wrap" style="max-height:340px;overflow-y:auto">
+      <div class="table-wrap" style="overflow:visible">
         <table>
           <thead>
             <tr>
@@ -268,17 +290,17 @@ class InvoiceFormViewImpl {
     const row = document.createElement('tr');
     row.dataset.idx = idx;
 
-    const productOptions = ctx.products.map(p =>
-      `<option value="${p.id}" ${item.productId === p.id ? 'selected' : ''}>${this._esc(p.name)}${p.code ? ' (' + this._esc(p.code) + ')' : ''}</option>`
-    ).join('');
+    const selectedProduct = ctx.products.find(p => p.id === item.productId);
+    const selectedProductLabel = selectedProduct ? selectedProduct.name : (item.productName || '');
 
     row.innerHTML = `
       <td style="text-align:center;font-weight:700">${Formatters.toPersianDigits(idx + 1)}</td>
       <td>
-        <select class="form-control row-product" style="min-height:36px" onchange="window.InvoiceFormView._onProductChange(${idx}, this.value)">
-          <option value="">— انتخاب کالا —</option>
-          ${productOptions}
-        </select>
+        <div style="position:relative;min-width:190px">
+          <input type="hidden" class="row-product" value="${this._esc(item.productId || '')}" />
+          <input type="text" class="form-control row-product-search" autocomplete="off" value="${this._esc(selectedProductLabel)}" placeholder="جستجوی کالا یا کد" onfocus="window.InvoiceFormView._showProductOptions(${idx})" oninput="window.InvoiceFormView._showProductOptions(${idx}, true)" />
+          <div class="row-product-options" style="display:none;position:absolute;z-index:10010;top:100%;right:0;left:0;max-height:220px;overflow:auto;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 20px #0002"></div>
+        </div>
       </td>
       <td><input type="text" class="form-control row-unit" style="min-height:36px;text-align:center" value="${this._esc(item.unit)}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'unit', this.value)" /></td>
       <td><input type="text" inputmode="numeric" class="form-control row-qty" style="min-height:36px;text-align:center" value="${NumberInput.format(item.qty)}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'qty', this.value)" /></td>
@@ -298,6 +320,57 @@ class InvoiceFormViewImpl {
       </td>
     `;
     tbody.appendChild(row);
+  }
+
+  _matchesOption(record, query) {
+    const normalize = value => String(value ?? '').toLocaleLowerCase('fa').replace(/ي/g, 'ی').replace(/ك/g, 'ک').trim();
+    return normalize([record.name, record.code, record.customerCode, record.contactCode].join(' ')).includes(normalize(query));
+  }
+
+  _showContactOptions(changed = false) {
+    const input = document.getElementById('invContactSearch');
+    const list = document.getElementById('invContactOptions');
+    const hidden = document.getElementById('invContact');
+    if (!input || !list || !hidden) return;
+    if (changed) hidden.value = '';
+    const matches = ctx.contacts.filter(c => this._matchesOption(c, input.value)).slice(0, 60);
+    list.innerHTML = matches.length ? matches.map(c =>
+      `<div class="contact-option" data-id="${this._esc(c.id)}" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border)">${this._esc(c.name)} ${c.code ? '— ' + this._esc(c.code) : ''}</div>`
+    ).join('') : '<div style="padding:10px">موردی یافت نشد</div>';
+    list.style.display = 'block';
+    list.querySelectorAll('.contact-option').forEach(el => el.addEventListener('mousedown', event => {
+      event.preventDefault();
+      const contact = ctx.contacts.find(c => c.id === el.dataset.id);
+      if (!contact) return;
+      hidden.value = contact.id;
+      input.value = contact.name;
+      list.style.display = 'none';
+    }));
+  }
+
+  _showProductOptions(idx, changed = false) {
+    const row = document.querySelector(`#itemsBody tr[data-idx="${idx}"]`);
+    const input = row?.querySelector('.row-product-search');
+    const list = row?.querySelector('.row-product-options');
+    if (!input || !list) return;
+    if (changed) {
+      row.querySelector('.row-product').value = '';
+      ctx.data.items[idx].productId = null;
+    }
+    const matches = ctx.products.filter(p => this._matchesOption(p, input.value)).slice(0, 60);
+    list.innerHTML = matches.length ? matches.map(p =>
+      `<div class="product-option" data-id="${this._esc(p.id)}" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border)">${this._esc(p.name)} ${p.code ? '— ' + this._esc(p.code) : ''}</div>`
+    ).join('') : '<div style="padding:10px">کالایی یافت نشد</div>';
+    list.style.display = 'block';
+    list.querySelectorAll('.product-option').forEach(el => el.addEventListener('mousedown', event => {
+      event.preventDefault();
+      const product = ctx.products.find(p => p.id === el.dataset.id);
+      if (!product) return;
+      row.querySelector('.row-product').value = product.id;
+      input.value = product.name;
+      list.style.display = 'none';
+      this._onProductChange(idx, product.id);
+    }));
   }
 
   _addRow() {
@@ -356,9 +429,26 @@ class InvoiceFormViewImpl {
     this._recalc();
   }
 
-  _onKindChange() {
+  async _onKindChange() {
     const kind = document.getElementById('invKind').value;
     ctx.data.kind = kind;
+    if (!ctx.editId) {
+      const number = await InvoiceController.getNextNumber(kind);
+      ctx.data.number = number;
+      const el = document.getElementById('invNumber');
+      if (el) el.value = number;
+    }
+    const originalWrap = document.getElementById('invOriginalWrap');
+    if (originalWrap) originalWrap.style.display = ['sale_return','purchase_return'].includes(kind) ? '' : 'none';
+    const originalSelect = document.getElementById('invOriginalInvoice');
+    if (originalSelect) {
+      for (const option of originalSelect.options) {
+        if (!option.value) continue;
+        option.disabled = kind === 'sale_return' ? !['sale','non_formal'].includes(option.dataset.kind) :
+          kind === 'purchase_return' ? option.dataset.kind !== 'purchase' : false;
+      }
+      if (originalSelect.selectedOptions[0]?.disabled) originalSelect.value = '';
+    }
     const vatRow = document.getElementById('vatRow');
     const sumVatRow = document.getElementById('sumVatRow');
     if (kind === 'non_formal') {
@@ -550,14 +640,6 @@ class InvoiceFormViewImpl {
       Toast.success('کالا اضافه شد و به فاکتور اضافه می‌شود');
       Modal.close();
 
-      // اضافه کردن به dropdown همه‌ی ردیف‌ها
-      document.querySelectorAll('#itemsBody .row-product').forEach(select => {
-        const opt = document.createElement('option');
-        opt.value = newProduct.id;
-        opt.textContent = newProduct.name + (newProduct.code ? ` (${newProduct.code})` : '');
-        select.appendChild(opt);
-      });
-
       const emptyIdx = ctx.data.items.findIndex(it => !it.productId);
       let targetIdx;
       if (emptyIdx >= 0) {
@@ -613,12 +695,13 @@ class InvoiceFormViewImpl {
         entityType: 'natural', role: 'customer', name, mobile
       });
       Toast.success('شخص اضافه شد');
+      ctx.contacts.push(newContact);
       const select = document.getElementById('invContact');
-      const opt = document.createElement('option');
-      opt.value = newContact.id;
-      opt.textContent = newContact.name;
-      opt.selected = true;
-      select.appendChild(opt);
+      if (select) select.value = newContact.id;
+      const search = document.getElementById('invContactSearch');
+      if (search) search.value = newContact.name;
+      const options = document.getElementById('invContactOptions');
+      if (options) options.style.display = 'none';
       Modal.close();
     } catch (err) {
       Toast.error('خطا: ' + err.message);
@@ -646,8 +729,10 @@ class InvoiceFormViewImpl {
       return;
     }
 
+    this._recalc(); // read payment state from the same calculation shown in the summary
     const data = {
       kind: document.getElementById('invKind').value,
+      number: document.getElementById('invNumber')?.value,
       isPreInvoice: document.getElementById('invPreInvoice').checked,
       date: document.getElementById('invDate').value,
       contactId: contact.id,
@@ -658,10 +743,14 @@ class InvoiceFormViewImpl {
       vatEnabled: document.getElementById('invVatEnabled')?.checked || false,
       vatRate: NumberInput.parse(document.getElementById('invVatRate')?.value),
       paymentMethod: document.getElementById('invPayment').value,
-      paidAmount: NumberInput.parse(document.getElementById('invPaidAmount')?.value),
+      paidAmount: ctx.totals?.paidAmount ?? 0,
+      originalInvoiceId: document.getElementById('invOriginalInvoice')?.value || null,
+      warehouseId: document.getElementById('invWarehouse')?.value || null,
       description: document.getElementById('invDescription').value
     };
 
+    if (this._saving) return;
+    this._saving = true;
     try {
       const saved = await InvoiceController.save(data, ctx.editId);
       Toast.success(ctx.editId ? 'فاکتور ویرایش شد' : `فاکتور #${saved.number} صادر شد`);
@@ -675,6 +764,8 @@ class InvoiceFormViewImpl {
     } catch (err) {
       console.error(err);
       Toast.error('خطا: ' + err.message);
+    } finally {
+      this._saving = false;
     }
   }
 

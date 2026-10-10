@@ -4,13 +4,15 @@
 
 import { StorageService } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
+import { DataScope } from '../core/DataScope.js';
+import { RetailPostingService } from '../core/RetailPostingService.js';
 
 class ProductControllerImpl {
   // ----- واحدها -----
   async getUnits() {
     const user = Auth.current();
     if (!user) return [];
-    const all = await StorageService.getByOwner('units', user.id);
+    const all = await DataScope.list('units');
     return all.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fa'));
   }
 
@@ -22,7 +24,7 @@ class ProductControllerImpl {
       name: (name || '').trim(),
       symbol: (symbol || '').trim()
     };
-    return await StorageService.put('units', unit);
+    return await StorageService.put('units', await DataScope.stamp('units', unit));
   }
 
   async deleteUnit(id) {
@@ -32,7 +34,7 @@ class ProductControllerImpl {
   // ----- گروه‌ها -----
   async getCategories() {
     const user = Auth.current();
-    const all = await StorageService.getByOwner('categories', user.id);
+    const all = await DataScope.list('categories');
     return all.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fa'));
   }
 
@@ -44,7 +46,7 @@ class ProductControllerImpl {
       parentId,
       name: (name || '').trim()
     };
-    return await StorageService.put('categories', cat);
+    return await StorageService.put('categories', await DataScope.stamp('categories', cat));
   }
 
   async deleteCategory(id) {
@@ -54,7 +56,7 @@ class ProductControllerImpl {
   // ----- کالاها -----
   async getProducts(filter = {}) {
     const user = Auth.current();
-    let list = await StorageService.getByOwner('products', user.id);
+    let list = await DataScope.list('products');
 
     if (filter.search) {
       const q = String(filter.search).toLowerCase();
@@ -120,12 +122,18 @@ class ProductControllerImpl {
       minStock: Number(data.minStock) || 0,
       description: (data.description || '').trim()
     };
-    return await StorageService.put('products', product);
+    return await StorageService.put('products', await DataScope.stamp('products', product));
   }
 
   async updateProduct(id, data) {
     const existing = await StorageService.get('products', id);
-    if (!existing) throw new Error('کالا یافت نشد');
+    if (!existing || existing.companyId !== await DataScope.companyId()) throw new Error('کالا در شرکت فعال یافت نشد');
+    if (await RetailPostingService.isEnabled() && data.trackInventory !== undefined &&
+      (data.trackInventory !== false) !== (existing.trackInventory !== false)) {
+      const movements = await DataScope.list('stock_movements');
+      if (movements.some(m => m.productId === id))
+        throw new Error('نوع کالای دارای گردش انبار را نمی‌توان به خدمت یا برعکس تغییر داد');
+    }
     const updated = {
       ...existing,
       code: (data.code || '').trim(),
@@ -142,23 +150,22 @@ class ProductControllerImpl {
       minStock: Number(data.minStock) || 0,
       description: (data.description || '').trim()
     };
-    return await StorageService.put('products', updated);
+    return await StorageService.put('products', await DataScope.stamp('products', updated));
   }
 
   async deleteProduct(id) {
-    const user = Auth.current();
-    const movements = await StorageService.getByOwner('stock_movements', user.id);
-    const related = movements.filter(m => m.productId === id);
-    for (const m of related) {
-      await StorageService.delete('stock_movements', m.id);
-    }
+    const product = await StorageService.get('products',id);
+    if (!product || product.companyId !== await DataScope.companyId()) throw new Error('کالا در این شرکت پیدا نشد');
+    const movements = await DataScope.list('stock_movements');
+    if (movements.some(m => m.productId === id))
+      throw new Error('کالای دارای گردش انبار قابل حذف نیست؛ کالا را غیرفعال کنید');
     return await StorageService.delete('products', id);
   }
 
   // ----- موجودی -----
   async getStock(productId) {
     const user = Auth.current();
-    const movements = await StorageService.getByOwner('stock_movements', user.id);
+    const movements = await DataScope.list('stock_movements');
     const productMoves = movements.filter(m => m.productId === productId);
     let stock = 0;
     productMoves.forEach(m => {
@@ -171,7 +178,7 @@ class ProductControllerImpl {
 
   async getStockMap(productIds) {
     const user = Auth.current();
-    const movements = await StorageService.getByOwner('stock_movements', user.id);
+    const movements = await DataScope.list('stock_movements');
     const map = {};
     productIds.forEach(id => map[id] = 0);
     movements.forEach(m => {
@@ -184,6 +191,8 @@ class ProductControllerImpl {
   }
 
   async addStockMovement(productId, type, qty, refType = 'manual', refId = null, note = '') {
+    if (await RetailPostingService.isEnabled())
+      throw new Error('گردش دستی موجودی در شرکت یکپارچه مجاز نیست؛ از خرید، فروش، انتقال یا انبارگردانی استفاده کنید');
     const user = Auth.current();
     const movement = {
       id: StorageService.uid('mv_'),
@@ -196,12 +205,12 @@ class ProductControllerImpl {
       note,
       date: new Date().toISOString()
     };
-    return await StorageService.put('stock_movements', movement);
+    return await StorageService.put('stock_movements', await DataScope.stamp('stock_movements', movement));
   }
 
   async getMovements(productId) {
     const user = Auth.current();
-    const all = await StorageService.getByOwner('stock_movements', user.id);
+    const all = await DataScope.list('stock_movements');
     return all
       .filter(m => m.productId === productId)
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -260,6 +269,15 @@ class ProductControllerImpl {
    * جمع ارزش موجودی انبار (بر اساس قیمت خرید و فروش)
    */
   async getTotalStockValue() {
+    if (await RetailPostingService.isEnabled()) {
+      const products = await this.getProducts({ type: 'good' });
+      const sellById = new Map(products.map(p => [p.id, Number(p.sellPrice) || 0]));
+      const balances = await RetailPostingService.stockBalances();
+      const totalBuyValue = balances.reduce((sum, b) => sum + b.value, 0);
+      const totalSellValue = Math.round(balances.reduce((sum, b) =>
+        sum + b.quantityUnits / 1000 * (sellById.get(b.productId) || 0), 0));
+      return { totalBuyValue, totalSellValue, potentialProfit: totalSellValue - totalBuyValue };
+    }
     const products = await this.getProducts({ type: 'good' });
     const ids = products.map(p => p.id);
     const stockMap = await this.getStockMap(ids);
@@ -280,7 +298,7 @@ class ProductControllerImpl {
   async getMovementSummary() {
     const user = Auth.current();
     if (!user) return { total: 0, in: 0, out: 0, adjust: 0 };
-    const all = await StorageService.getByOwner('stock_movements', user.id);
+    const all = await DataScope.list('stock_movements');
     const summary = { total: all.length, in: 0, out: 0, adjust: 0 };
     all.forEach(m => {
       if (m.type === 'in') summary.in++;

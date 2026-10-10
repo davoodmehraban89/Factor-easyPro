@@ -4,12 +4,14 @@
 
 import { StorageService } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
+import { DataScope } from '../core/DataScope.js';
+import { RetailPostingService } from '../core/RetailPostingService.js';
 
 class ChequeControllerImpl {
   async getAll(filter = {}) {
     const user = Auth.current();
     if (!user) return [];
-    let list = await StorageService.getByOwner('cheques', user.id);
+    let list = await DataScope.list('cheques');
 
     if (filter.direction) list = list.filter(c => c.direction === filter.direction);
     if (filter.status) list = list.filter(c => c.status === filter.status);
@@ -53,12 +55,15 @@ class ChequeControllerImpl {
       refInvoiceNumber: data.refInvoiceNumber || null,
       description: (data.description || '').trim()
     };
-    return await StorageService.put('cheques', cheque);
+    const scoped = await DataScope.stamp('cheques', cheque);
+    if (await RetailPostingService.isEnabled()) return RetailPostingService.postCheque(scoped);
+    return await StorageService.put('cheques', scoped);
   }
 
   async update(id, data) {
     const existing = await StorageService.get('cheques', id);
-    if (!existing) throw new Error('چک یافت نشد');
+    if (!existing || existing.companyId !== await DataScope.companyId()) throw new Error('چک در شرکت فعال یافت نشد');
+    if (existing.financePosted) throw new Error('مشخصات چک دارای سند مالی قطعی قابل ویرایش مستقیم نیست');
     const updated = {
       ...existing,
       direction: data.direction || existing.direction,
@@ -77,18 +82,22 @@ class ChequeControllerImpl {
       refInvoiceNumber: data.refInvoiceNumber || existing.refInvoiceNumber,
       description: (data.description || '').trim()
     };
-    return await StorageService.put('cheques', updated);
+    return await StorageService.put('cheques', await DataScope.stamp('cheques', updated));
   }
 
   async changeStatus(id, status) {
     const cheque = await StorageService.get('cheques', id);
-    if (!cheque) throw new Error('چک یافت نشد');
+    if (!cheque || cheque.companyId !== await DataScope.companyId()) throw new Error('چک در شرکت فعال یافت نشد');
+    if (cheque.financePosted) return RetailPostingService.changeChequeStatus(id,status);
     cheque.status = status;
     cheque.statusChangedAt = new Date().toISOString();
-    return await StorageService.put('cheques', cheque);
+    return await StorageService.put('cheques', await DataScope.stamp('cheques', cheque));
   }
 
   async delete(id) {
+    const cheque = await StorageService.get('cheques', id);
+    if (!cheque || cheque.companyId !== await DataScope.companyId()) throw new Error('چک در شرکت فعال یافت نشد');
+    if (cheque.financePosted) throw new Error('چک دارای سند مالی قطعی قابل حذف نیست');
     return await StorageService.delete('cheques', id);
   }
 

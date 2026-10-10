@@ -4,12 +4,14 @@
 
 import { StorageService } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
+import { DataScope } from '../core/DataScope.js';
+import { RetailPostingService } from '../core/RetailPostingService.js';
 
 class ContactControllerImpl {
   async getAll(filter = {}) {
     const user = Auth.current();
     if (!user) return [];
-    let list = await StorageService.getByOwner('contacts', user.id);
+    let list = await DataScope.list('contacts');
 
     if (filter.search) {
       const q = String(filter.search).toLowerCase();
@@ -55,7 +57,7 @@ class ContactControllerImpl {
       note: (data.note || '').trim(),
       isActive: true
     };
-    return await StorageService.put('contacts', contact);
+    return await StorageService.put('contacts', await DataScope.stamp('contacts', contact));
   }
 
   async update(id, data) {
@@ -77,22 +79,48 @@ class ContactControllerImpl {
       tags: Array.isArray(data.tags) ? data.tags : existing.tags || [],
       note: (data.note || '').trim()
     };
-    return await StorageService.put('contacts', updated);
+    return await StorageService.put('contacts', await DataScope.stamp('contacts', updated));
   }
 
   async delete(id) {
-    return await StorageService.delete('contacts', id);
+    const contact = await StorageService.get('contacts',id);
+    if (!contact || contact.companyId !== await DataScope.companyId()) throw new Error('شخص در شرکت فعال یافت نشد');
+    const invoices=await DataScope.list('invoices');
+    const cheques=await DataScope.list('cheques');
+    const receipts=await DataScope.list('treasury');
+    if (invoices.some(x=>x.contactId===id)||cheques.some(x=>x.contactId===id)||
+        receipts.some(x=>x.contactId===id))
+      throw new Error('حذف شخص دارای گردش مالی مجاز نیست؛ اطلاعات را غیرفعال کنید');
+    return await StorageService.delete('contacts',id);
   }
 
+  async _financialContactRows(contactId=null) {
+    const [accounts,entries,lines]=await Promise.all([
+      DataScope.list('account_chart'),DataScope.list('journal_entries'),DataScope.list('journal_lines')
+    ]);
+    const relevant=new Set(accounts.filter(a=>['102','201'].includes(a.code)).map(a=>a.id));
+    const posted=new Map(entries.filter(j=>j.status==='posted').map(j=>[j.id,j]));
+    return lines.filter(l=>relevant.has(l.accountId)&&posted.has(l.journalId)&&
+      (!contactId||l.contactId===contactId)&&!!l.contactId).map(l=>{
+      const journal=posted.get(l.journalId);
+      return {contactId:l.contactId,date:journal.date,refId:journal.sourceId,
+        type:journal.sourceType,typeLabel:journal.description,refNumber:'',
+        debit:l.debit,credit:l.credit,note:journal.description||'',dateISO:journal.postedAt||journal.date};
+    });
+  }
   /**
    * محاسبه‌ی مانده حساب
    */
   async getBalance(contactId) {
+    if (await RetailPostingService.isEnabled()) {
+      const rows=await this._financialContactRows(contactId);
+      return rows.reduce((sum,row)=>sum+row.debit-row.credit,0);
+    }
     const user = Auth.current();
     if (!user) return 0;
 
-    const invoices = await StorageService.getByOwner('invoices', user.id);
-    const transactions = await StorageService.getByOwner('treasury', user.id);
+    const invoices = await DataScope.list('invoices');
+    const transactions = await DataScope.list('treasury');
 
     const contactInvoices = invoices.filter(i => i.contactId === contactId && !i.isPreInvoice);
     const invoiceTotal = contactInvoices.filter(i => i.kind === 'sale').reduce((s, i) => s + (Number(i.grandTotal) || 0), 0);
@@ -109,9 +137,16 @@ class ContactControllerImpl {
   }
 
   async getBalanceMap(contactIds) {
+    if (await RetailPostingService.isEnabled()) {
+      const rows=await this._financialContactRows();
+      const result=Object.fromEntries(contactIds.map(id=>[id,0]));
+      for(const row of rows) if(Object.hasOwn(result,row.contactId))
+        result[row.contactId]+=row.debit-row.credit;
+      return result;
+    }
     const user = Auth.current();
-    const invoices = await StorageService.getByOwner('invoices', user.id);
-    const transactions = await StorageService.getByOwner('treasury', user.id);
+    const invoices = await DataScope.list('invoices');
+    const transactions = await DataScope.list('treasury');
     const map = {};
     contactIds.forEach(id => map[id] = { invoices: 0, returns: 0, receipts: 0, payments: 0 });
 
@@ -145,13 +180,22 @@ class ContactControllerImpl {
    * تمام تراکنش‌ها (فاکتورها، برگشت‌ها، دریافت‌ها، پرداخت‌ها، چک‌ها) با مانده تجمعی
    */
   async getLedger(contactId) {
+    if (await RetailPostingService.isEnabled()) {
+      const entries=(await this._financialContactRows(contactId)).sort((a,b)=>a.date.localeCompare(b.date));
+      let running=0,totalDebit=0,totalCredit=0;
+      const rows=entries.map(e=>{
+        running+=e.debit-e.credit;totalDebit+=e.debit;totalCredit+=e.credit;
+        return {...e,balance:running};
+      });
+      return {rows,totalDebit,totalCredit,finalBalance:running};
+    }
     const user = Auth.current();
     if (!user) return { rows: [], totalDebit: 0, totalCredit: 0, finalBalance: 0 };
 
     const [invoices, transactions, cheques] = await Promise.all([
-      StorageService.getByOwner('invoices', user.id),
-      StorageService.getByOwner('treasury', user.id),
-      StorageService.getByOwner('cheques', user.id)
+      DataScope.list('invoices'),
+      DataScope.list('treasury'),
+      DataScope.list('cheques')
     ]);
 
     const entries = [];
@@ -311,7 +355,7 @@ class ContactControllerImpl {
     const user = Auth.current();
     if (!user) return { totalDebt: 0, totalCredit: 0, debtorsCount: 0, creditorsCount: 0 };
 
-    const contacts = await StorageService.getByOwner('contacts', user.id);
+    const contacts = await DataScope.list('contacts');
     const ids = contacts.map(c => c.id);
     const balanceMap = await this.getBalanceMap(ids);
 
@@ -331,7 +375,7 @@ class ContactControllerImpl {
 
   async getAllTags() {
     const user = Auth.current();
-    const all = await StorageService.getByOwner('contacts', user.id);
+    const all = await DataScope.list('contacts');
     const set = new Set();
     all.forEach(c => (c.tags || []).forEach(t => set.add(t)));
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'fa'));

@@ -566,7 +566,7 @@ class ReportsViewImpl {
         <h1>گزارش ${tabNames[currentTab]}</h1>
         <div class="header-info">بازه: ${rangeText} | تاریخ چاپ: ${Jalali.today()}</div>
         ${content}
-        <div class="footer">فینورا پرو - سامانه مدیریت کسب‌وکار</div>
+        <div class="footer">Factor-easyPro - سامانه مدیریت کسب‌وکار</div>
       </body>
       </html>
     `);

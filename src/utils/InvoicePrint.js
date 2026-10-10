@@ -5,6 +5,7 @@
 import { InvoiceController } from '../controllers/InvoiceController.js';
 import { ContactController } from '../controllers/ContactController.js';
 import { StorageService } from '../core/StorageService.js';
+import { DataScope } from '../core/DataScope.js';
 import { Auth } from '../core/Auth.js';
 import { Modal } from '../core/Modal.js';
 import { Toast } from '../core/Toast.js';
@@ -179,15 +180,15 @@ class InvoicePrintImpl {
     const inv = await InvoiceController.get(invoiceId);
     if (!inv) throw new Error('فاکتور یافت نشد');
 
-    const user = Auth.current();
-    const companies = await StorageService.getByOwner('companies', user.id);
-    const seller = companies[0] || {
+    const companyId = await DataScope.companyId();
+    const seller = await StorageService.get('companies', companyId) || {
       name: 'شرکت شما',
       phone: '', address: '', national_id: '', economic_code: '',
       reg_number: '', postal_code: '', footer: ''
     };
 
-    const contact = inv.contactId ? await StorageService.get('contacts', inv.contactId) : {};
+    const matchedContact = inv.contactId ? await StorageService.get('contacts', inv.contactId) : null;
+    const contact = matchedContact?.companyId === companyId ? matchedContact : {};
 
     let balance = 0;
     if (this.settings.showBalance !== 'none' && inv.contactId) {
@@ -245,26 +246,15 @@ class InvoicePrintImpl {
 
     return `
       <div class="print-doc" dir="rtl" style="direction:rtl;text-align:right;font-family:'Vazirmatn FD',Tahoma,sans-serif;color:#000;padding:6mm">
-        <table style="width:100%;border-collapse:collapse;border:2px solid ${color};margin-bottom:4px">
-          <tr>
-            <td style="width:28%;border:1px solid ${color};padding:6px;font-size:11px;vertical-align:middle;text-align:center">
-              <div style="font-weight:bold;font-size:7.5px;color:${color}">فینورا پرو</div>
-            </td>
-            <td style="width:44%;border:1px solid ${color};padding:8px;text-align:center;vertical-align:middle;background:#f0fdfa">
-              <h1 style="font-size:16px;margin:0;font-weight:bold;color:${color}">${headerTitle}</h1>
-            </td>
-            <td style="width:28%;border:1px solid ${color};padding:6px;font-size:10.5px;vertical-align:middle">
-              <div style="display:flex;align-items:center;line-height:1.7;gap:4px">
-                <span style="display:inline-block;min-width:72px;text-align:left;white-space:nowrap">شماره سریال:</span>
-                <strong style="color:#b91c1c">${Formatters.toPersianDigits(inv.number)}</strong>
-              </div>
-              <div style="display:flex;align-items:center;line-height:1.7;gap:4px">
-                <span style="display:inline-block;min-width:72px;text-align:left;white-space:nowrap">تاریخ صدور:</span>
-                <strong>${Formatters.toPersianDigits(inv.date)}</strong>
-              </div>
-            </td>
-          </tr>
-        </table>
+        <div style="position:relative;min-height:65px;margin-bottom:8px;display:flex;align-items:flex-start;justify-content:center;padding:10px 0 6px">
+          <h1 style="font-size:17px;margin:0;font-weight:bold;color:#111;text-align:center">${headerTitle}</h1>
+          <div style="position:absolute;left:0;top:4px;direction:rtl;text-align:right;font-size:10.5px;line-height:2;white-space:nowrap">
+            <div style="display:grid;grid-template-columns:86px auto;column-gap:5px;align-items:baseline">
+              <span>شماره سریال:</span><strong>${Formatters.toPersianDigits(inv.number)}</strong>
+              <span>تاریخ صدور:</span><strong>${Formatters.toPersianDigits(inv.date)}</strong>
+            </div>
+          </div>
+        </div>
 
         <table style="width:100%;border-collapse:collapse;border:1.5px solid ${color};font-size:10.5px;margin-bottom:4px">
           <tr style="background:#f8fafc;font-weight:bold">
@@ -545,7 +535,7 @@ class InvoicePrintImpl {
           ${seller.footer ? this._esc(seller.footer) : 'از خرید شما سپاسگزاریم'}
         </div>
         <div style="text-align:center;font-size:9px;margin-top:4px;color:#64748b">
-          فینورا پرو
+          Factor-easyPro
         </div>
       </div>
     `;
@@ -565,7 +555,7 @@ class InvoicePrintImpl {
 
     let pageCss = 'A4 portrait';
     if (this.settings.template === 'thermal') {
-      pageCss = '80mm auto';
+      pageCss = '80mm 297mm';
     } else {
       const size = this.settings.paperSize === 'A5' ? 'A5' : 'A4';
       pageCss = size + ' ' + (this.settings.orientation || 'portrait');
@@ -579,7 +569,7 @@ class InvoicePrintImpl {
       <head>
         <meta charset="UTF-8" />
         <title>چاپ فاکتور</title>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/Vazirmatn-FD-font-face.css" />
+        <!-- Offline-first printing: use bundled/system fonts, no external network dependency. -->
         <style>
           @page {
             size: ${pageCss};
@@ -597,6 +587,9 @@ class InvoicePrintImpl {
           body { padding: 4px; }
           table { direction: rtl; }
           td, th { direction: rtl; }
+          thead { display: table-header-group; }
+          tfoot { display: table-footer-group; }
+          tr, td, th { break-inside: avoid; page-break-inside: avoid; }
           .print-doc { direction: rtl !important; }
 
           @media print {
@@ -614,8 +607,8 @@ class InvoicePrintImpl {
     `);
     doc.close();
 
-    // صبر می‌کنیم تا فونت و استایل‌ها لود بشن، بعد پرینت می‌گیریم
-    setTimeout(() => {
+    // Print only after iframe fonts/layout settle; never require external font CDNs.
+    Promise.resolve(doc.fonts?.ready).catch(() => {}).then(() => setTimeout(() => {
       try {
         iframe.contentWindow.focus();
         iframe.contentWindow.print();
@@ -626,8 +619,8 @@ class InvoicePrintImpl {
       // پاک کردن iframe بعد از بسته شدن پنجره چاپ
       setTimeout(() => {
         if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-      }, 2000);
-    }, 800);
+      }, 5000);
+    }, 200));
   }
   _paymentLabel(method) {
     const labels = { cash: 'نقدی ☑', credit: 'نسیه/چک ☑', partial: 'پرداخت جزئی ☑' };

@@ -4,6 +4,7 @@
 
 import { StorageService } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
+import { DataScope } from '../core/DataScope.js';
 import { Jalali } from '../utils/Jalali.js';
 
 class ReportControllerImpl {
@@ -11,12 +12,12 @@ class ReportControllerImpl {
     const user = Auth.current();
     if (!user) throw new Error('کاربر یافت نشد');
     const [invoices, products, expenses, contacts, cheques, treasury] = await Promise.all([
-      StorageService.getByOwner('invoices', user.id),
-      StorageService.getByOwner('products', user.id),
-      StorageService.getByOwner('expenses', user.id),
-      StorageService.getByOwner('contacts', user.id),
-      StorageService.getByOwner('cheques', user.id),
-      StorageService.getByOwner('treasury', user.id)
+      DataScope.list('invoices'),
+      DataScope.list('products'),
+      DataScope.list('expenses'),
+      DataScope.list('contacts'),
+      DataScope.list('cheques'),
+      DataScope.list('treasury')
     ]);
     return { invoices: invoices || [], products: products || [], expenses: expenses || [], contacts: contacts || [], cheques: cheques || [], treasury: treasury || [] };
   }

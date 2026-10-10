@@ -11,6 +11,7 @@ import { ProductsView } from './views/ProductsView.js';
 import { ExpensesView } from './views/ExpensesView.js';
 import { DashboardView } from './views/DashboardView.js';
 import { ReportsView } from './views/ReportsView.js';
+import { AccountingView } from './views/AccountingView.js';
 import { StorageService } from './core/StorageService.js';
 import { Theme } from './core/Theme.js';
 import { Toast } from './core/Toast.js';
@@ -23,11 +24,13 @@ import { Formatters } from './utils/Formatters.js';
 import { Jalali } from './utils/Jalali.js';
 import { numberToWords } from './utils/NumberToWords.js';
 import { NumberInput } from './utils/NumberInput.js';
+import { LicenseService } from './core/LicenseService.js';
+import { CompanyService } from './core/CompanyService.js';
 
 const FINORA = {
-  version: '0.1.0',
+  version: '1.1.1',
   Storage: StorageService,
-  Theme, Toast, Router, Auth, EventBus, Modal, KeyboardShortcuts,
+  Theme, Toast, Router, Auth, EventBus, Modal, KeyboardShortcuts, License: LicenseService, Company: CompanyService,
   Utils: { Formatters, Jalali, numberToWords, NumberInput }
 };
 window.FINORA = FINORA;
@@ -42,6 +45,7 @@ const ROUTES = [
   { name: 'cheques',   title: 'چک‌ها',              header: 'چک‌ها',              view: ChequesView },
   { name: 'expenses',  title: 'هزینه و درآمد',      header: 'هزینه و درآمد',      view: ExpensesView },
   { name: 'reports',   title: 'گزارش سود و زیان',   header: 'گزارش سود و زیان',   view: ReportsView },
+  { name: 'accounting', title: 'حسابداری',         header: 'حسابداری دوبل',      view: AccountingView },
   { name: 'settings',  title: 'تنظیمات',            header: 'تنظیمات',            view: SettingsView }
 ];
 
@@ -143,7 +147,10 @@ async function bootstrap() {
     NumberInput.init();
     KeyboardShortcuts.init();
     await StorageService.init();
+    await LicenseService.init();
     await Auth.init(); // تا ورود موفق (صفحه قفل) اینجا منتظر می‌ماند
+    await CompanyService.init();
+    await CompanyService.requireSelection();
 
     registerRoutes();
     Router.init('pageContent');

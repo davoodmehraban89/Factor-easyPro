@@ -1,10 +1,10 @@
 // ============================================================
 // StorageService — IndexedDB wrapper
-// v4: تراکنش چندجدولی، مهاجرت درست ایندکس‌ها، ورود/خروج امن داده
+// v5: جدول‌های حسابداری دوبل و مهاجرت سازگار با نسخه‌های قبلی
 // ============================================================
 
 const DB_NAME = 'finora_pro_db';
-const DB_VERSION = 4;
+const DB_VERSION = 6;
 
 const STORES = [
   'users', 'companies', 'contacts', 'products',
@@ -12,7 +12,10 @@ const STORES = [
   'treasury',
   'invoices', 'invoice_items', 'stock_movements',
   'transactions', 'cheques', 'expenses',
-  'settings', 'logs'
+  'settings', 'logs',
+  'account_chart', 'fiscal_periods', 'journal_entries', 'journal_lines',
+  'warehouses', 'inventory_balances', 'stocktakes', 'stocktake_lines',
+  'settlements', 'account_mappings'
 ];
 
 // جدول‌هایی که ایندکس ownerUserId ندارند
@@ -22,7 +25,17 @@ const NO_OWNER_INDEX = new Set(['settings', 'logs']);
 const INDEXES = {
   invoices: [['date', 'date'], ['number', 'number'], ['clientUuid', 'clientUuid']],
   stock_movements: [['productId', 'productId']],
-  invoice_items: [['invoiceId', 'invoiceId']]
+  invoice_items: [['invoiceId', 'invoiceId']],
+  account_chart: [['companyId', 'companyId'], ['code', 'code']],
+  fiscal_periods: [['companyId', 'companyId']],
+  journal_entries: [['companyId', 'companyId'], ['sourceKey', 'sourceKey', { unique: true }]],
+  journal_lines: [['journalId', 'journalId'], ['companyId', 'companyId']],
+  warehouses: [['companyId', 'companyId']],
+  inventory_balances: [['companyId', 'companyId'], ['warehouseId', 'warehouseId'], ['productId', 'productId']],
+  stocktakes: [['companyId', 'companyId'], ['warehouseId', 'warehouseId']],
+  stocktake_lines: [['companyId', 'companyId'], ['stocktakeId', 'stocktakeId']],
+  settlements: [['companyId', 'companyId'], ['invoiceId', 'invoiceId'], ['transactionId', 'transactionId']],
+  account_mappings: [['companyId', 'companyId']]
 };
 
 // فیلدهای مربوط به رمز عبور کاربران؛ هرگز در فایل پشتیبان نمی‌روند
@@ -142,6 +155,7 @@ class StorageServiceImpl {
    * fetch، setTimeout یا هر چیز غیر IndexedDB باعث commit زودهنگام می‌شود.
    */
   async transaction(storeNames, fn, mode = 'readwrite') {
+    if (mode === 'readwrite' && globalThis.FINORA?.License) globalThis.FINORA.License.assertWritable();
     const db = await this.init();
     const names = Array.isArray(storeNames) ? storeNames : [storeNames];
 
@@ -200,6 +214,12 @@ class StorageServiceImpl {
     return r || [];
   }
 
+  async getByCompany(store, companyId) {
+    if (!companyId) return [];
+    const all = await this.getAll(store);
+    return all.filter(row => row.companyId === companyId);
+  }
+
   async getAllByIndex(store, indexName, key) {
     const r = await this._exec(store, 'readonly', s => s.index(indexName).getAll(key));
     return r || [];
@@ -210,6 +230,7 @@ class StorageServiceImpl {
   }
 
   async put(store, obj) {
+    if (globalThis.FINORA?.License && !['users', 'settings', 'logs'].includes(store)) globalThis.FINORA.License.assertWritable();
     this._touch(obj);
     await this._exec(store, 'readwrite', s => s.put(obj));
     return obj;
@@ -224,6 +245,7 @@ class StorageServiceImpl {
   }
 
   async delete(store, id) {
+    if (globalThis.FINORA?.License && !['users', 'settings', 'logs'].includes(store)) globalThis.FINORA.License.assertWritable();
     await this._exec(store, 'readwrite', s => s.delete(id));
   }
 
@@ -255,7 +277,7 @@ class StorageServiceImpl {
     }
 
     return {
-      app: 'Finora Pro',
+      app: 'Factor-easyPro',
       version: DB_VERSION,
       exportedAt: new Date().toISOString(),
       data
@@ -271,7 +293,7 @@ class StorageServiceImpl {
     if (!json || typeof json !== 'object' || !json.data || typeof json.data !== 'object') {
       throw new Error('فرمت فایل نامعتبر است');
     }
-    if (json.app && json.app !== 'Finora Pro') {
+    if (json.app && !['Finora Pro', 'Factor-easyPro'].includes(json.app)) {
       throw new Error('این فایل پشتیبان فینورا پرو نیست');
     }
     if (typeof json.version === 'number' && json.version > DB_VERSION) {

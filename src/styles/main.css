@@ -250,10 +250,10 @@ a { color: inherit; }
 .btn-success { background: var(--success); }
 .btn-warning { background: var(--warning); }
 
-/* Toast */
+/* Notifications must render above invoice and other modal backdrops. */
 .toast-container {
-  position: fixed; top: 80px; left: 20px;
-  z-index: 9999;
+  position: fixed; top: 20px; left: 20px;
+  z-index: 2147483647;
   display: flex; flex-direction: column;
   gap: 10px; max-width: 380px;
 }

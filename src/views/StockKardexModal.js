@@ -313,7 +313,7 @@ class StockKardexModalImpl {
           </thead>
           <tbody>${rowsHtml}</tbody>
         </table>
-        <div class="footer">فینورا پرو - سامانه مدیریت کسب‌وکار</div>
+        <div class="footer">Factor-easyPro - سامانه مدیریت کسب‌وکار</div>
       </body>
       </html>
     `);

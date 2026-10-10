@@ -5,20 +5,37 @@
 import { StorageService } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
 import { ProductController } from './ProductController.js';
+import { SettingsController } from './SettingsController.js';
+import { LicenseService } from '../core/LicenseService.js';
+import { DataScope } from '../core/DataScope.js';
+import { RetailPostingService } from '../core/RetailPostingService.js';
 
 class InvoiceControllerImpl {
   // شماره‌ی بعدی سریال (بر اساس نوع سند)
   async getNextNumber(kind = 'sale') {
-    const user = Auth.current();
-    const all = await StorageService.getByOwner('invoices', user.id);
+    const all = await DataScope.list('invoices');
     const kindInvoices = all.filter(i => i.kind === kind && !i.isPreInvoice);
-    if (kindInvoices.length === 0) return 1;
-    const maxNum = Math.max(...kindInvoices.map(i => Number(i.number) || 0));
-    return maxNum + 1;
+    const maxNum = kindInvoices.length ? Math.max(...kindInvoices.map(i => Number(i.number) || 0)) : 0;
+    const settings = await SettingsController.getInvoiceSettings();
+    return Math.max(maxNum + 1, Number(settings.nextNumber) || 1);
+  }
+
+  async _assertUniqueNumber(number, excludeId = null) {
+    const all = await DataScope.list('invoices');
+    if (all.some(i => i.id !== excludeId && !i.isPreInvoice && String(i.number) === String(number))) {
+      throw new Error('شماره فاکتور تکراری است');
+    }
   }
 
   // ذخیره‌ی فاکتور (ایجاد یا ویرایش)
   async save(data, id = null) {
+    if (id) {
+      const previous = await StorageService.get('invoices', id);
+      if (!previous || previous.companyId !== await DataScope.companyId())
+        throw new Error('فاکتور در شرکت فعال یافت نشد');
+      if (previous.financePosted)
+        throw new Error('فاکتور ثبت‌شده در حسابداری قطعی است؛ ویرایش مستقیم حتی به پیش‌فاکتور مجاز نیست');
+    }
     const user = Auth.current();
     const items = (data.items || []).map(it => {
       const qty = Number(it.qty) || 0;
@@ -75,6 +92,7 @@ class InvoiceControllerImpl {
 
     const baseData = {
       ownerUserId: user.id,
+      companyId: await DataScope.companyId(),
       kind: data.kind || 'sale',
       isPreInvoice: !!data.isPreInvoice,
       date: data.date || this._todayJalali(),
@@ -93,24 +111,62 @@ class InvoiceControllerImpl {
       paidAmount,
       remaining,
       description: (data.description || '').trim(),
-      status: remaining === 0 ? 'paid' : (paidAmount > 0 ? 'partial' : 'unpaid')
+      status: remaining === 0 ? 'paid' : (paidAmount > 0 ? 'partial' : 'unpaid'),
+      originalInvoiceId: data.originalInvoiceId || null,
+      warehouseId: data.warehouseId || null
     };
+
+    // V2: once activated, issuance, stock movement, settlement and general ledger
+    // must commit together. Existing posted documents are never silently rewritten.
+    if (await RetailPostingService.isEnabled() && !baseData.isPreInvoice) {
+      LicenseService.assertWritable();
+      const previous = id ? await StorageService.get('invoices', id) : null;
+      if (id && (!previous || previous.companyId !== baseData.companyId || !previous.isPreInvoice))
+        throw new Error('فاکتور قطعی قابل ویرایش مستقیم نیست؛ اصلاح از مسیر مرجوعی یا سند معکوس انجام شود');
+      const settings = await SettingsController.getInvoiceSettings();
+      const minimum = await this.getNextNumber(baseData.kind);
+      const typed = String(data.number ?? '').trim().replace(/[۰-۹]/g, c => String(c.charCodeAt(0)-1776));
+      const number = settings.numberingMode === 'manual' && typed ? typed : String(minimum);
+      if (!/^\d+$/.test(number) || !Number.isSafeInteger(Number(number)) || Number(number)<minimum)
+        throw new Error('شماره فاکتور از محدوده مجاز کوچک‌تر است');
+      const issued = await RetailPostingService.issueInvoice({ ...baseData,
+        id: id || StorageService.uid('inv_'), clientUuid: previous?.clientUuid || this._uuid(), number });
+      await LicenseService.recordIssuedInvoice();
+      await SettingsController.saveInvoiceSettings({ ...settings,
+        nextNumber: Math.max(Number(settings.nextNumber)||1, Number(number)+1) });
+      return issued;
+    }
 
     let saved;
     if (id) {
       const existing = await StorageService.get('invoices', id);
       if (!existing) throw new Error('فاکتور یافت نشد');
+      const becomesIssued = !!existing.isPreInvoice && !baseData.isPreInvoice;
+      if (becomesIssued) LicenseService.assertWritable();
       saved = { ...existing, ...baseData };
-      await StorageService.put('invoices', saved);
+      await StorageService.put('invoices', await DataScope.stamp('invoices', saved));
+      if (becomesIssued) await LicenseService.recordIssuedInvoice();
     } else {
-      const number = await this.getNextNumber(baseData.kind);
+      if (!baseData.isPreInvoice) LicenseService.assertWritable();
+      const settings = await SettingsController.getInvoiceSettings();
+      const minimum = await this.getNextNumber(baseData.kind);
+      const rawNumber = String(data.number ?? '').trim().replace(/[۰-۹]/g, ch => String(ch.charCodeAt(0) - 1776)).replace(/[٠-٩]/g, ch => String(ch.charCodeAt(0) - 1632));
+      const number = settings.numberingMode === 'manual' ? (rawNumber || String(minimum)) : String(minimum);
+      if (!/^\d+$/.test(number) || !Number.isSafeInteger(Number(number)) || Number(number) < minimum) {
+        throw new Error(`شماره فاکتور باید عددی و حداقل ${minimum} باشد؛ شماره‌های قبلی مجاز نیستند`);
+      }
+      await this._assertUniqueNumber(number);
       saved = {
         id: StorageService.uid('inv_'),
         clientUuid: this._uuid(),
         number,
         ...baseData
       };
-      await StorageService.put('invoices', saved);
+      await StorageService.put('invoices', await DataScope.stamp('invoices', saved));
+      if (!baseData.isPreInvoice) await LicenseService.recordIssuedInvoice();
+      if (!baseData.isPreInvoice) {
+        await SettingsController.saveInvoiceSettings({ ...settings, nextNumber: Math.max(Number(settings.nextNumber), Number(number) + 1) });
+      }
     }
 
     // بازنویسی حرکات انبار
@@ -121,7 +177,7 @@ class InvoiceControllerImpl {
   // ثبت حرکات انبار بر اساس نوع سند
   async _rebuildStockMovements(invoice) {
     const user = Auth.current();
-    const all = await StorageService.getByOwner('stock_movements', user.id);
+    const all = await DataScope.list('stock_movements');
 
     // حذف حرکات قبلی این فاکتور
     for (const m of all.filter(x => x.refId === invoice.id)) {
@@ -153,13 +209,13 @@ class InvoiceControllerImpl {
         note: `فاکتور #${invoice.number}`,
         date: new Date().toISOString()
       };
-      await StorageService.put('stock_movements', mv);
+      await StorageService.put('stock_movements', await DataScope.stamp('stock_movements', mv));
     }
   }
 
   async getAll(filter = {}) {
     const user = Auth.current();
-    let list = await StorageService.getByOwner('invoices', user.id);
+    let list = await DataScope.list('invoices');
 
     if (filter.kind) list = list.filter(i => i.kind === filter.kind);
     if (filter.preInvoice !== undefined && filter.preInvoice !== '') {
@@ -188,8 +244,11 @@ class InvoiceControllerImpl {
   }
 
   async delete(id) {
+    const record = await this.get(id);
+    if (!record || record.companyId !== await DataScope.companyId()) throw new Error('فاکتور در شرکت فعال یافت نشد');
+    if (record.financePosted) throw new Error('فاکتور قطعی دارای سند مالی است و قابل حذف نیست؛ از سند مرجوعی استفاده کنید');
     const user = Auth.current();
-    const movements = await StorageService.getByOwner('stock_movements', user.id);
+    const movements = await DataScope.list('stock_movements');
     for (const m of movements.filter(x => x.refId === id)) {
       await StorageService.delete('stock_movements', m.id);
     }
@@ -198,32 +257,43 @@ class InvoiceControllerImpl {
 
   // تبدیل پیش‌فاکتور به فاکتور
   async convertPreInvoice(id) {
+    LicenseService.assertWritable();
     const inv = await StorageService.get('invoices', id);
-    if (!inv) throw new Error('پیش‌فاکتور یافت نشد');
+    if (!inv || inv.companyId !== await DataScope.companyId() || !inv.isPreInvoice) throw new Error('پیش‌فاکتور در این شرکت یافت نشد');
+    if (await RetailPostingService.isEnabled()) {
+      const number = await this.getNextNumber(inv.kind);
+      const issued = await RetailPostingService.issueInvoice({ ...inv, isPreInvoice: false, number });
+      await LicenseService.recordIssuedInvoice();
+      const settings = await SettingsController.getInvoiceSettings();
+      await SettingsController.saveInvoiceSettings({ ...settings, nextNumber: Math.max(Number(settings.nextNumber)||1, Number(number)+1) });
+      return issued;
+    }
     const number = await this.getNextNumber(inv.kind);
+    await this._assertUniqueNumber(number, inv.id);
     inv.isPreInvoice = false;
     inv.number = number;
-    await StorageService.put('invoices', inv);
+    await StorageService.put('invoices', await DataScope.stamp('invoices', inv));
     await this._rebuildStockMovements(inv);
+    await LicenseService.recordIssuedInvoice();
     return inv;
   }
 
   // علامت‌گذاری به‌عنوان پرداخت‌شده
   async markPaid(id, amount = null) {
     const inv = await StorageService.get('invoices', id);
-    if (!inv) throw new Error('فاکتور یافت نشد');
+    if (!inv || inv.companyId !== await DataScope.companyId()) throw new Error('فاکتور در این شرکت یافت نشد');
+    if (inv.financePosted) throw new Error('برای تسویه فاکتور دارای سند مالی، از بخش دریافت و پرداخت استفاده کنید');
     const pay = amount === null ? inv.grandTotal : Number(amount);
     inv.paidAmount = (Number(inv.paidAmount) || 0) + pay;
     inv.paidAmount = Math.min(inv.paidAmount, inv.grandTotal);
     inv.remaining = Math.max(0, inv.grandTotal - inv.paidAmount);
     inv.status = inv.remaining === 0 ? 'paid' : (inv.paidAmount > 0 ? 'partial' : 'unpaid');
-    return await StorageService.put('invoices', inv);
+    return await StorageService.put('invoices', await DataScope.stamp('invoices', inv));
   }
 
   // آمار برای داشبورد
   async getStats() {
-    const user = Auth.current();
-    const all = await StorageService.getByOwner('invoices', user.id);
+    const all = await DataScope.list('invoices');
     const salesInvoices = all.filter(i => i.kind === 'sale' && !i.isPreInvoice);
 
     const totalSales = salesInvoices.reduce((s, i) => s + (Number(i.grandTotal) || 0), 0);

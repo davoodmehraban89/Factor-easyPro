@@ -59,7 +59,7 @@ class RouterImpl {
           <div class="card" style="text-align:center;padding:40px">
             <div style="font-size:40px;margin-bottom:12px">⚠️</div>
             <h3>خطا در بارگذاری صفحه</h3>
-            <p style="color:var(--text-muted);margin-top:8px;font-size:13px">${err.message}</p>
+            <p style="color:var(--text-muted);margin-top:8px;font-size:13px">${String(err?.message || err).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))}</p>
           </div>`;
       }
     }

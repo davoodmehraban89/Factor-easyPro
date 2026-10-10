@@ -4,8 +4,26 @@
 
 import { StorageService, STORES } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
+import { DataScope } from '../core/DataScope.js';
+import { restoreCompanyBackup, COMPANY_BACKUP_STORES } from '../core/CompanyBackupService.js';
 
 class SettingsControllerImpl {
+  async getInvoiceSettings() {
+    const companyId = await DataScope.companyId();
+    const stored = await StorageService.get('settings', `invoice_numbering_${companyId}`);
+    return { numberingMode: stored?.numberingMode === 'manual' ? 'manual' : 'auto', nextNumber: Math.max(1, Number(stored?.nextNumber) || 1) };
+  }
+
+  async saveInvoiceSettings({ numberingMode, nextNumber }) {
+    if (!['auto', 'manual'].includes(numberingMode) || !Number.isSafeInteger(Number(nextNumber)) || Number(nextNumber) < 1) {
+      throw new Error('تنظیمات شماره‌گذاری نامعتبر است');
+    }
+    const companyId = await DataScope.companyId();
+    const saved = { id: `invoice_numbering_${companyId}`, numberingMode, nextNumber: Number(nextNumber), companyId };
+    await StorageService.put('settings', saved);
+    return { numberingMode: saved.numberingMode, nextNumber: saved.nextNumber };
+  }
+
   // ============================================================
   // بکاپ‌گیری
   // ============================================================
@@ -14,8 +32,8 @@ class SettingsControllerImpl {
     if (!user) throw new Error('کاربر یافت نشد');
 
     const backup = {
-      app: 'Finora Pro',
-      version: '0.1.0',
+      app: 'Factor-easyPro',
+      version: '2.0.0',
       exportedAt: new Date().toISOString(),
       exportedAtJalali: this._todayJalali(),
       user: {
@@ -26,31 +44,36 @@ class SettingsControllerImpl {
       data: {}
     };
 
-    // همه‌ی جدول‌ها رو خونده و توی بکاپ می‌ذاریم
+    // Capture one consistent read-only snapshot; exclude sensitive credentials.
+    const companyId = await DataScope.companyId();
+    const snapshot = await StorageService.exportAll();
     for (const store of STORES) {
-      try {
-        if (store === 'settings' || store === 'logs') {
-          backup.data[store] = await StorageService.getAll(store);
-        } else {
-          backup.data[store] = await StorageService.getByOwner(store, user.id);
-        }
-      } catch (e) {
-        console.warn(`Backup: store "${store}" skipped:`, e.message);
-        backup.data[store] = [];
-      }
+      const rows = snapshot.data[store] || [];
+      backup.data[store] = COMPANY_BACKUP_STORES.includes(store)
+        ? rows.filter(record => record.companyId === companyId)
+        : rows;
     }
 
     return backup;
   }
 
   downloadBackup() {
-    return this.exportBackup().then(backup => {
+    return this.exportBackup().then(async backup => {
       const json = JSON.stringify(backup, null, 2);
-      const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+      const password = prompt('رمز محافظت از فایل پشتیبان (حداقل ۱۲ نویسه):');
+      if (!password || password.length < 12) throw new Error('رمز پشتیبان باید حداقل ۱۲ نویسه باشد');
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+      const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 600000, hash: 'SHA-256' }, keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+      const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(json));
+      const b64 = bytes => { let binary = ''; for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192)); return btoa(binary); };
+      const encrypted = JSON.stringify({ format: 'finora-encrypted-backup-v1', salt: b64(salt), iv: b64(iv), ciphertext: b64(new Uint8Array(ciphertext)) });
+      const blob = new Blob([encrypted], { type: 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
 
       const date = backup.exportedAtJalali.replace(/\//g, '-');
-      const filename = `finora-backup-${date}-${Date.now()}.json`;
+      const filename = `finora-backup-${date}-${Date.now()}.fbackup`;
 
       const a = document.createElement('a');
       a.href = url;
@@ -77,6 +100,7 @@ class SettingsControllerImpl {
   // بازیابی
   // ============================================================
   async importBackup(fileContent, options = {}) {
+    if(!Auth.isAdmin())throw Error('بازیابی اطلاعات فقط توسط مدیر مجاز است');
     const user = Auth.current();
     if (!user) throw new Error('کاربر یافت نشد');
 
@@ -87,44 +111,22 @@ class SettingsControllerImpl {
       throw new Error('فایل بکاپ معتبر نیست (JSON نامعتبر)');
     }
 
+    if (backup?.format === 'finora-encrypted-backup-v1') {
+      const password = prompt('رمز فایل پشتیبان را وارد کنید:');
+      if (!password) throw new Error('رمز پشتیبان الزامی است');
+      try {
+        const fromB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+        const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+        const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: fromB64(backup.salt), iterations: 600000, hash: 'SHA-256' }, material, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+        const clear = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(backup.iv) }, key, fromB64(backup.ciphertext));
+        backup = JSON.parse(new TextDecoder().decode(clear));
+      } catch (_) { throw new Error('رمز نادرست است یا فایل پشتیبان آسیب دیده است'); }
+    }
     if (!backup || !backup.data) {
       throw new Error('ساختار فایل بکاپ نامعتبر است');
     }
 
-    const mode = options.mode || 'merge';  // merge | replace
-    const counts = { added: 0, updated: 0, skipped: 0 };
-
-    for (const store of STORES) {
-      const items = backup.data[store];
-      if (!Array.isArray(items) || items.length === 0) continue;
-
-      // برای settings/logs مستقیم؛ بقیه با ownerUserId
-      for (const rawItem of items) {
-        const item = { ...rawItem };
-
-        // اگه مالک اصلی فرق داره، به کاربر فعلی نسبت بده
-        if (item.ownerUserId && item.ownerUserId !== user.id && store !== 'settings' && store !== 'logs') {
-          item.ownerUserId = user.id;
-          item.id = StorageService.uid(item.id?.split('_')[0] + '_' || 'item_');
-        }
-
-        if (mode === 'replace') {
-          await StorageService.put(store, item);
-          counts.added++;
-        } else {
-          // merge: اگه id از قبل هست، skip کن
-          const existing = await StorageService.get(store, item.id);
-          if (existing) {
-            counts.skipped++;
-          } else {
-            await StorageService.put(store, item);
-            counts.added++;
-          }
-        }
-      }
-    }
-
-    return counts;
+    return restoreCompanyBackup(backup.data, { companyId: await DataScope.companyId(), userId: user.id, mode: options.mode || 'merge' });
   }
 
   async readFileAsText(file) {
@@ -154,9 +156,8 @@ class SettingsControllerImpl {
   // اطلاعات شرکت
   // ============================================================
   async getCompanyInfo() {
-    const user = Auth.current();
-    const list = await StorageService.getByOwner('companies', user.id);
-    if (list.length > 0) return list[0];
+    const active = globalThis.FINORA?.Company ? await globalThis.FINORA.Company.current() : null;
+    if (active) return active;
     return {
       id: null,
       name: '',

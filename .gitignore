@@ -141,3 +141,16 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Factor-easyPro build, test and user-data isolation
+src-tauri/target/
+release-delivery/
+*.fbackup
+*.bak
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+*.user-data/
+*.log

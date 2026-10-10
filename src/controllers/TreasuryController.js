@@ -4,6 +4,8 @@
 
 import { StorageService } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
+import { DataScope } from '../core/DataScope.js';
+import { RetailPostingService } from '../core/RetailPostingService.js';
 
 class TreasuryControllerImpl {
   // ============================================================
@@ -12,7 +14,7 @@ class TreasuryControllerImpl {
   async getAccounts(filter = {}) {
     const user = Auth.current();
     if (!user) return [];
-    let list = await StorageService.getByOwner('treasury', user.id);
+    let list = await DataScope.list('treasury');
 
     // فقط حساب‌ها (نه تراکنش‌ها) — با تفکیک recordType
     list = list.filter(a => (a.recordType || 'account') === 'account');
@@ -62,12 +64,16 @@ class TreasuryControllerImpl {
     const existing = await this.getAccounts();
     if (existing.length === 0) account.isDefault = true;
 
-    return await StorageService.put('treasury', account);
+    const stamped=await DataScope.stamp('treasury',account);
+    if (await RetailPostingService.isEnabled()) return RetailPostingService.createTreasuryAccount(stamped);
+    return await StorageService.put('treasury', stamped);
   }
 
   async updateAccount(id, data) {
     const existing = await StorageService.get('treasury', id);
-    if (!existing) throw new Error('حساب یافت نشد');
+    if (!existing || existing.companyId !== await DataScope.companyId()) throw new Error('حساب در شرکت فعال یافت نشد');
+    if (await RetailPostingService.isEnabled() && Number(data.initialBalance||0)!==Number(existing.initialBalance||0))
+      throw new Error('مانده افتتاحیه بانک در حالت حسابداری یکپارچه قابل تغییر مستقیم نیست');
     const updated = {
       ...existing,
       type: data.type || existing.type,
@@ -82,13 +88,16 @@ class TreasuryControllerImpl {
       color: data.color || existing.color,
       initialBalance: Number(data.initialBalance) || 0
     };
-    return await StorageService.put('treasury', updated);
+    return await StorageService.put('treasury', await DataScope.stamp('treasury', updated));
   }
 
   async deleteAccount(id) {
+    const account=await StorageService.get('treasury',id);
+    if(!account||account.companyId!==await DataScope.companyId())throw Error('حساب در شرکت فعال یافت نشد');
+    if(account.ledgerAccountId)throw Error('حساب صندوق/بانک دارای کدینگ مالی است؛ برای حفظ سوابق فقط غیرفعال شود');
     // چک کن تراکنشی وابسته نباشه
     const user = Auth.current();
-    const all = await StorageService.getByOwner('treasury', user.id);
+    const all = await DataScope.list('treasury');
     const related = all.filter(t => t.recordType === 'transaction' && (t.fromAccountId === id || t.toAccountId === id));
     if (related.length > 0) {
       throw new Error('این حساب تراکنش دارد. اول تراکنش‌ها را حذف کنید.');
@@ -98,10 +107,10 @@ class TreasuryControllerImpl {
 
   async setDefaultAccount(id) {
     const user = Auth.current();
-    const all = await StorageService.getByOwner('treasury', user.id);
+    const all = await DataScope.list('treasury');
     for (const a of all.filter(x => x.recordType === 'account')) {
       a.isDefault = a.id === id;
-      await StorageService.put('treasury', a);
+      await StorageService.put('treasury', await DataScope.stamp('treasury', a));
     }
   }
 
@@ -110,7 +119,7 @@ class TreasuryControllerImpl {
   // ============================================================
   async getAccountBalance(accountId) {
     const user = Auth.current();
-    const all = await StorageService.getByOwner('treasury', user.id);
+    const all = await DataScope.list('treasury');
     const account = all.find(a => a.id === accountId);
     if (!account) return 0;
 
@@ -138,7 +147,7 @@ class TreasuryControllerImpl {
 
   async getBalanceMap() {
     const user = Auth.current();
-    const all = await StorageService.getByOwner('treasury', user.id);
+    const all = await DataScope.list('treasury');
     const accounts = all.filter(a => a.recordType === 'account');
     const transactions = all.filter(t => t.recordType === 'transaction');
     const map = {};
@@ -171,7 +180,7 @@ class TreasuryControllerImpl {
   async getTransactions(filter = {}) {
     const user = Auth.current();
     if (!user) return [];
-    let list = await StorageService.getByOwner('treasury', user.id);
+    let list = await DataScope.list('treasury');
     list = list.filter(t => t.recordType === 'transaction');
 
     if (filter.type) list = list.filter(t => t.type === filter.type);
@@ -216,10 +225,16 @@ class TreasuryControllerImpl {
       description: (data.description || '').trim(),
       chequeNumber: data.chequeNumber || ''
     };
-    return await StorageService.put('treasury', tx);
+    if (await RetailPostingService.isEnabled()) {
+      return RetailPostingService.postTransaction(await DataScope.stamp('treasury',tx));
+    }
+    return await StorageService.put('treasury', await DataScope.stamp('treasury', tx));
   }
 
   async deleteTransaction(id) {
+    const existing = await StorageService.get('treasury', id);
+    if (!existing || existing.companyId !== await DataScope.companyId()) throw new Error('تراکنش در شرکت فعال یافت نشد');
+    if (existing.financePosted) throw new Error('تراکنش دارای سند حسابداری قابل حذف نیست؛ سند اصلاحی لازم است');
     return await StorageService.delete('treasury', id);
   }
 

@@ -63,15 +63,16 @@ class AuthImpl {
 
   async init() {
     await this._migrateLegacyPasswords();
+    await this._migrateDefaultManagerUsername();
 
     let users = await StorageService.getAll('users');
     if (users.length === 0) {
       // اولین اجرا: کاربر مدیر بدون رمز ساخته می‌شود و صفحه قفل از او رمز می‌گیرد
       const admin = await StorageService.put('users', {
         id: 'user_admin',
-        username: 'admin',
+        username: 'مدیر',
         role: 'admin',
-        displayName: 'مدیر سیستم',
+        displayName: 'مدیر',
         mustSetPassword: true,
         createdAt: new Date().toISOString()
       });
@@ -104,6 +105,14 @@ class AuthImpl {
       }
       await StorageService.put('users', next);
     }
+  }
+
+  // فقط حساب مدیر پیش‌فرض قدیمی را تغییر نام می‌دهد؛ رمز، شناسه و مجوزها حفظ می‌شوند.
+  async _migrateDefaultManagerUsername() {
+    const users = await StorageService.getAll('users');
+    const manager = users.find(u => u.id === 'user_admin' && u.role === 'admin' && u.username === 'admin');
+    if (!manager || users.some(u => u.username === 'مدیر' && u.id !== manager.id)) return;
+    await StorageService.put('users', { ...manager, username: 'مدیر', displayName: 'مدیر' });
   }
 
   _restoreSession(users) {
@@ -178,8 +187,8 @@ class AuthImpl {
         el.pass.value = '';
         el.pass2.value = '';
         if (next === 'setup') {
-          el.title.textContent = 'تعیین رمز عبور';
-          el.hint.textContent = `برای «${user.displayName || user.username}» یک رمز عبور حداقل ${MIN_PASSWORD_LENGTH} کاراکتری انتخاب کنید.`;
+          el.title.textContent = 'تعیین رمز مدیر';
+          el.hint.textContent = `برای حساب «مدیر» رمز عبور حداقل ${MIN_PASSWORD_LENGTH} کاراکتری انتخاب کنید.`;
           el.user.value = user.username;
           el.user.readOnly = true;
           el.pass.placeholder = 'رمز عبور جدید';
@@ -188,8 +197,8 @@ class AuthImpl {
           el.submit.textContent = 'ذخیره و ورود';
           el.pass.focus();
         } else {
-          el.title.textContent = 'ورود به فینورا پرو';
-          el.hint.textContent = 'برای ادامه وارد شوید.';
+          el.title.textContent = 'ورود به Factor-easyPro';
+          el.hint.textContent = 'برای ادامه وارد Factor-easyPro شوید.';
           el.user.readOnly = false;
           el.pass.placeholder = 'رمز عبور';
           el.pass.autocomplete = 'current-password';
@@ -265,7 +274,7 @@ class AuthImpl {
     const role = document.getElementById('userRole');
     if (avatar) avatar.textContent = (u.displayName || u.username || 'م').charAt(0);
     if (name) name.textContent = u.displayName || u.username;
-    if (role) role.textContent = u.role === 'admin' ? 'مدیر سیستم' : 'کاربر';
+    if (role) role.textContent = u.role === 'admin' ? 'مدیر' : 'کاربر';
   }
 
   current() { return this.currentUser; }
@@ -311,6 +320,8 @@ class AuthImpl {
       throw new Error(`رمز عبور باید حداقل ${MIN_PASSWORD_LENGTH} کاراکتر باشد`);
     }
     const users = await StorageService.getAll('users');
+    if (users.length >= 4) throw new Error('حداکثر ۴ کاربر (۱ مدیر و ۳ کاربر اضافی) مجاز است');
+    if (role === 'admin' && users.some(u => u.role === 'admin')) throw new Error('فقط یک مدیر سیستم مجاز است');
     if (users.some(u => u.username === name)) throw new Error('این نام کاربری قبلاً ثبت شده است');
     const created = await StorageService.put('users', {
       username: name,
