@@ -562,7 +562,7 @@ class SettingsViewImpl {
           <div class="settings-card-icon">ℹ️</div>
           <div>
             <h3 class="settings-card-title">درباره فینورا پرو</h3>
-            <p class="settings-card-desc">نسخه ۲.۰.۰</p>
+            <p class="settings-card-desc">نسخه ۲.۰.۲</p>
           </div>
         </div>
         <div style="font-size:13px;line-height:1.9;color:var(--text-muted)">

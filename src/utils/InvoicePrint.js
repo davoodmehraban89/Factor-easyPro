@@ -534,9 +534,6 @@ class InvoicePrintImpl {
         <div style="text-align:center;margin-top:8px;padding-top:6px;border-top:1px dashed #000;font-size:9.5px">
           ${seller.footer ? this._esc(seller.footer) : 'از خرید شما سپاسگزاریم'}
         </div>
-        <div style="text-align:center;font-size:9px;margin-top:4px;color:#64748b">
-          Factor-easyPro
-        </div>
       </div>
     `;
   }
@@ -571,9 +568,12 @@ class InvoicePrintImpl {
         <title>چاپ فاکتور</title>
         <!-- Offline-first printing: use bundled/system fonts, no external network dependency. -->
         <style>
+          /* Zero page margins prevent Chromium/WebView2 from reserving
+             the browser-generated date, document title and page-number
+             header/footer area. The invoice itself already has padding. */
           @page {
             size: ${pageCss};
-            margin: 6mm;
+            margin: 0;
           }
 
           * { box-sizing: border-box; margin: 0; padding: 0; }

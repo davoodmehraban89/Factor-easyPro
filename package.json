@@ -1,6 +1,6 @@
 {
   "name": "factor-easypro",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "فینورا پرو - سامانه جامع حسابداری و صدور فاکتور",
   "main": "index.js",
   "scripts": {
