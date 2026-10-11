@@ -1,0 +1,52 @@
+name: Build and publish Factor-easyPro v2.0.2
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-v2-0-2.yml'
+permissions:
+  contents: write
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v2.0.2
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: npm ci
+      - name: Test printing and regression suite
+        run: npm test
+      - name: Build Windows x64 installer
+        run: npm exec tauri build
+      - name: Generate SHA256 checksum
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem 'src-tauri/target/release/bundle/nsis/*2.0.2*x64-setup.exe' | Select-Object -First 1
+          if (!$installer) { throw 'Windows v2.0.2 installer missing' }
+          $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash
+          $hash + '  ' + $installer.Name | Out-File -FilePath SHA256SUMS.txt -Encoding ascii
+          Write-Output ('SHA256=' + $hash)
+      - name: Publish installer to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |
+          gh release view v2.0.2 --json id *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create v2.0.2 --draft --title 'Factor-easyPro 2.0.2 — Clean invoice printing' --notes-file RELEASE_NOTES_v2.0.2_FA.md
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create draft release' }
+          }
+          gh release upload v2.0.2 'src-tauri/target/release/bundle/nsis/Factor-easyPro_2.0.2_x64-setup.exe' SHA256SUMS.txt --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Could not upload installer' }
+          gh release edit v2.0.2 --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Could not publish release' }
+          gh release view v2.0.2 --json url,isDraft,assets
+          if ($LASTEXITCODE -ne 0) { throw 'Could not verify release' }
