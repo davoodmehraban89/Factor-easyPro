@@ -28,6 +28,17 @@ const leg=(ctx,code)=> {
      ctx.accounts.some(a=>a.parentCode===acct.code))throw Error('حساب عملیاتی '+code+' فعال یا قابل ثبت نیست');
   return acct.id;
 };
+// Account 101 is a structural parent, not a posting account once cash/bank
+// subledgers exist. Never fall back to posting financial events against 101.
+const cashLedger=(ctx,bank)=>{
+  const acct=ctx.accounts.find(a=>a.id===bank?.ledgerAccountId &&
+    a.companyId===ctx.companyId && a.parentCode===LEDGER_CODES.cash &&
+    a.level==='subsidiary');
+  if(!acct||acct.active===false||acct.postable===false||
+     ctx.accounts.some(a=>a.parentCode===acct.code))
+    throw Error('حساب صندوق/بانک فاقد کد معین فعال و قابل ثبت است؛ اتصال کدینگ صندوق را بررسی کنید');
+  return acct.id;
+};
 
 class RetailPostingServiceImpl {
   async isEnabled() {
@@ -60,14 +71,27 @@ class RetailPostingServiceImpl {
         throw Error('مانده افتتاحیه صندوق/بانک باید ابتدا با سند افتتاحیه کنترل شود؛ فعال‌سازی متوقف شد');
       const periods=await tx.getAllByIndex('fiscal_periods','companyId',company);
       if(!periods.some(p=>!p.closed))throw Error('ابتدا یک دوره مالی باز تعریف کنید');
-      const ctx={accounts};
-      for(const code of Object.values(LEDGER_CODES))leg(ctx,code);
-      const cashHeader=accounts.find(a=>a.code==='101');
+      // 101 is the parent for cash/bank subsidiaries, not a posting leaf.
+      const ctx={accounts,companyId:company};
+      const cashHeader=accounts.find(a=>a.code===LEDGER_CODES.cash);
+      if(!cashHeader||cashHeader.level!=='general'||cashHeader.type!=='asset'||cashHeader.active===false)
+        throw Error('حساب کل ۱۰۱ (موجودی نقد و بانک) باید فعال و از نوع دارایی باشد');
+      for(const [purpose,code] of Object.entries(LEDGER_CODES)){
+        if(purpose!=='cash')leg(ctx,code);
+      }
       const oldLines=await tx.getAllByIndex('journal_lines','companyId',company);
       if(moneyAccounts.length && oldLines.some(l=>l.accountId===cashHeader?.id))
         throw Error('حساب ۱۰۱ گردش سند دستی دارد؛ قبل از ایجاد حساب‌های بانک باید انتقال و افتتاحیه آن تطبیق شود');
+      // A group/general cash header is not a valid posting ledger after subsidiaries exist.
+      await tx.put('account_chart',{...cashHeader,postable:false});
+      const headerIndex=accounts.findIndex(a=>a.id===cashHeader.id);
+      accounts[headerIndex]={...cashHeader,postable:false};
       let nextCash=1;
       for(const account of moneyAccounts){
+        if(account.ledgerAccountId){
+          cashLedger(ctx,account);
+          continue;
+        }
         let code;
         do{code='101'+String(nextCash++).padStart(3,'0')}while(accounts.some(a=>a.code===code));
         const sub={id:uid('acc_'),code,name:account.name||'صندوق یا بانک',companyId:company,
@@ -284,9 +308,7 @@ class RetailPostingServiceImpl {
     if(chosen&&!cashAccounts.some(a=>a.id===chosen))throw Error('حساب بانکی/صندوق انتخاب‌شده متعلق به شرکت فعال نیست');
     const to=cashAccounts.find(a=>a.id===chosen)||cashAccounts.find(a=>a.isDefault)||cashAccounts[0];
     if(!to)throw Error('برای تسویه نقدی، حساب صندوق یا بانک فعال تعریف کنید');
-    const cashLedger=to.ledgerAccountId?
-      sameCompany(ctx.accounts.find(a=>a.id===to.ledgerAccountId),ctx.companyId,'حساب معین بانک').id:
-      leg(ctx,LEDGER_CODES.cash);
+    const cashLedgerId=cashLedger(ctx,to);
     const id=info.transactionId||uid('tx_');
     if(await tx.get('treasury',id))throw Error('دریافت یا پرداخت تکراری است');
     if(info.contactId)sameCompany(await tx.get('contacts',info.contactId),ctx.companyId,'طرف حساب دریافت/پرداخت');
@@ -307,8 +329,8 @@ class RetailPostingServiceImpl {
       if(kind==='sale_return')otherCode=LEDGER_CODES.receivable;
     }
     const side=leg(ctx,otherCode);
-    const lines=[postLine(isReceipt?cashLedger:side,sum,0,{contactId:info.contactId||related?.contactId||null}),
-      postLine(isReceipt?side:cashLedger,0,sum,{contactId:info.contactId||related?.contactId||null})];
+    const lines=[postLine(isReceipt?cashLedgerId:side,sum,0,{contactId:info.contactId||related?.contactId||null}),
+      postLine(isReceipt?side:cashLedgerId,0,sum,{contactId:info.contactId||related?.contactId||null})];
     const journal=await this.journal(tx,ctx,'treasury',id,lines,'دریافت/پرداخت '+id);
     const transaction={id,companyId:ctx.companyId,ownerUserId:actor(),
       recordType:'transaction',type:info.type,date:ctx.date,amount:sum,
@@ -332,9 +354,7 @@ class RetailPostingServiceImpl {
     const to=sameCompany(all.find(a=>a.id===info.toAccountId&&a.recordType==='account'),
       ctx.companyId,'حساب مقصد');
     if(from.id===to.id)throw Error('حساب مبدا و مقصد باید متفاوت باشند');
-    const mapping=account=>account.ledgerAccountId?
-      sameCompany(ctx.accounts.find(a=>a.id===account.ledgerAccountId),ctx.companyId,'سرفصل صندوق').id:
-      leg(ctx,LEDGER_CODES.cash);
+    const mapping=account=>cashLedger(ctx,account);
     const id=info.transactionId||uid('tx_');
     if(await tx.get('treasury',id))throw Error('تراکنش انتقال تکراری است');
     const journal=await this.journal(tx,ctx,'treasury',id,[
@@ -367,14 +387,12 @@ class RetailPostingServiceImpl {
       const cash=(await tx.getAll('treasury')).filter(a=>a.companyId===company&&a.recordType==='account');
       const selected=cash.find(a=>a.isDefault)||cash[0];
       if(!selected)throw Error('صندوق یا بانک برای ثبت هزینه/درآمد موجود نیست');
-      const cashLedger=selected.ledgerAccountId?
-        sameCompany(ctx.accounts.find(a=>a.id===selected.ledgerAccountId),company,'حساب مالی').id:
-        leg(ctx,LEDGER_CODES.cash);
+      const cashLedgerId=cashLedger(ctx,selected);
       const income=row.kind==='income';
       const other=leg(ctx,LEDGER_CODES[income?'otherRevenue':'expense']);
       const journal=await this.journal(tx,ctx,'expense',row.id,[
-        postLine(income?cashLedger:other,sum,0),
-        postLine(income?other:cashLedger,0,sum)
+        postLine(income?cashLedgerId:other,sum,0),
+        postLine(income?other:cashLedgerId,0,sum)
       ],row.description||row.category);
       const output={...row,companyId:company,financePosted:true,journalId:journal.id,
         treasuryAccountId:selected.id};
@@ -426,9 +444,7 @@ class RetailPostingServiceImpl {
         throw Error('حساب بانکی انتخاب‌شده در شرکت فعال وجود ندارد');
       const bank=accounts.find(a=>a.id===options.accountId)||accounts.find(a=>a.isDefault)||accounts[0];
       if(status==='cleared'&&!bank)throw Error('حساب بانک یا صندوق برای وصول چک مشخص نیست');
-      const bankLedger=status==='cleared'?(bank?.ledgerAccountId?
-        sameCompany(ctx.accounts.find(a=>a.id===bank.ledgerAccountId),company,'حساب بانک').id:
-        leg(ctx,LEDGER_CODES.cash)):null;
+      const bankLedger=status==='cleared'?cashLedger(ctx,bank):null;
       const chequeAccount=leg(ctx,LEDGER_CODES[inbound?'chequeIn':'chequeOut']);
       let target;
       if(status==='cleared')target=bankLedger;

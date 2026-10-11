@@ -331,3 +331,50 @@ test('fresh-company activation creates default cash account and chart subledger'
  assert.ok((await accounts.listAccounts()).some(a=>a.id===banks[0].ledgerAccountId));
  assert.equal((await db.getAll('journal_entries')).length,0);
 });
+test('regression: pre-existing 101 cash subsidiary permits activation and cash settlement',async()=>{
+  await db.clearAll();
+  await db.put('companies',{id:company,name:'Existing account hierarchy'});
+  Auth.currentUser={id:'phase2-admin',role:'admin',username:'admin'};
+  CompanyService.activeCompanyId=company;
+  await accounts.createPeriod({name:'۱۴۰۵',startDate:'1405/01/01',endDate:'1405/12/29'});
+  await accounts.seedDefaultChart();
+  const existing=await accounts.addAccount({code:'101001',name:'صندوق متصل قبلی',
+    level:'subsidiary',parentCode:'101',type:'asset'});
+  await db.put('treasury',{id:'cash-existing',companyId:company,recordType:'account',
+    name:'صندوق قبلی',isActive:true,isDefault:true,initialBalance:0,ledgerAccountId:existing.id});
+  assert.deepEqual(await retail.activate(),{enabled:true});
+  assert.equal((await retail.activate()).alreadyEnabled,true);
+  const cashParent=(await accounts.listAccounts()).find(x=>x.code==='101');
+  assert.equal(cashParent.postable,false);
+  const cash=(await db.get('treasury','cash-existing'));
+  assert.equal(cash.ledgerAccountId,existing.id);
+  assert.equal((await accounts.listAccounts()).filter(a=>a.parentCode==='101').length,1);
+  await db.put('products',{id:'product-1',companyId:company,trackInventory:true,name:'کالا'});
+  await db.put('contacts',{id:'contact-1',companyId:company,name:'مشتری'});
+  await purchase10();
+  const sale=await sale3({paidAmount:200});
+  assert.equal(sale.paidAmount,200);
+  const lines=await db.getAll('journal_lines');
+  assert.ok(lines.some(l=>l.accountId===existing.id&&l.debit===200));
+  const totals=(await accounts.trialBalance()).totals;
+  assert.equal(totals.debit,totals.credit);
+});
+test('regression: non-postable 101 with other children creates valid mapped cash subledger',async()=>{
+  await db.clearAll();
+  await db.put('companies',{id:company,name:'Previous chart'});
+  Auth.currentUser={id:'phase2-admin',role:'admin',username:'admin'};
+  CompanyService.activeCompanyId=company;
+  await accounts.createPeriod({name:'۱۴۰۵',startDate:'1405/01/01',endDate:'1405/12/29'});
+  await accounts.seedDefaultChart();
+  await accounts.addAccount({code:'101001',name:'صندوق فرعی قدیمی',
+    level:'subsidiary',parentCode:'101',type:'asset'});
+  const cashParent=(await accounts.listAccounts()).find(x=>x.code==='101');
+  await db.put('account_chart',{...cashParent,postable:false});
+  assert.deepEqual(await retail.activate(),{enabled:true});
+  const cashAccounts=(await db.getAll('treasury')).filter(x=>x.companyId===company&&x.recordType==='account');
+  assert.equal(cashAccounts.length,1);
+  const ledger=(await accounts.listAccounts()).find(x=>x.id===cashAccounts[0].ledgerAccountId);
+  assert.equal(ledger.parentCode,'101');
+  assert.notEqual(ledger.code,'101001');
+  assert.equal(ledger.active,true);
+});
