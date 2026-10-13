@@ -101,3 +101,14 @@ test('real integrated purchase-sale-settlement reconciles without errors and rej
   Auth.currentUser={id:'guest',role:'user'};
   await assert.rejects(accounts.reconciliationReport(),/مدیر/);
 });
+
+test('accounting report period filters reject foreign periods and malformed Jalali dates',async()=>{
+  await setup();
+  const p=(await accounts.listPeriods())[0];
+  await db.put('fiscal_periods',{id:'foreign-period',companyId:'foreign-c',
+    name:'other',startDate:'1405/01/01',endDate:'1405/12/29',status:'open'});
+  await assert.rejects(accounts.financialReports({periodId:'foreign-period'}),/شرکت فعال/);
+  await assert.rejects(accounts.financialReports({from:'2026-10-13'}),/تاریخ|شمسی/);
+  const report=await accounts.financialReports({periodId:p.id,from:'1405/01/01',to:'1405/12/29'});
+  assert.equal(report.postedCount,0);
+});
