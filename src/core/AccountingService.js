@@ -36,7 +36,13 @@ const cleanLines = lines => (lines || []).map(line => ({
 class AccountingServiceImpl {
   async financialReports(filter = {}) {
     const companyId = await DataScope.companyId();
-    return StorageService.transaction(['account_chart', 'journal_entries', 'journal_lines'], async tx => {
+    if (filter.from) assertJalaliDate(filter.from);
+    if (filter.to) assertJalaliDate(filter.to);
+    return StorageService.transaction(['account_chart', 'journal_entries', 'journal_lines', 'fiscal_periods'], async tx => {
+      if (filter.periodId) {
+        const period = await tx.get('fiscal_periods', filter.periodId);
+        if (!period || period.companyId !== companyId) throw new Error('دوره مالی انتخاب‌شده متعلق به شرکت فعال نیست');
+      }
       const accounts = await tx.getAllByIndex('account_chart', 'companyId', companyId);
       const journals = await tx.getAllByIndex('journal_entries', 'companyId', companyId);
       const lines = await tx.getAllByIndex('journal_lines', 'companyId', companyId);
