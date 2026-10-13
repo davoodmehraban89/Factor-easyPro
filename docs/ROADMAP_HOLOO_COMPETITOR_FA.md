@@ -146,3 +146,12 @@
 ## ۹. اقدام اجرایی بعدی
 
 شروع Issue `A01 + A03` با **طراحی گردش immutable برای اسناد قطعی و audit trail**. قبل از کدنویسی: قرارداد رویداد، مدل جدید داده، چرخه مرجوعی/اصلاح، سناریوهای replay و rollback، و مهاجرت بدون ازدست‌رفتن اطلاعات باید در PR جداگانه تایید شوند. **این سند به‌تنهایی به معنی شروع یا پایان آن قابلیت‌ها نیست.**
+
+## ۱۰. پیگیری اجرایی در GitHub
+
+- [Epic فاز A — هسته قابل اتکا](https://github.com/davoodmehraban89/Factor-easyPro/issues/2)
+- [Epic فاز B — فروشگاهی و بازرگانی حرفه‌ای](https://github.com/davoodmehraban89/Factor-easyPro/issues/3)
+- [Epic فاز C — تولید، پخش و سازمانی](https://github.com/davoodmehraban89/Factor-easyPro/issues/4)
+- [نخستین Issue اجرایی — طراحی اصلاح اسناد قطعی و Audit Trail](https://github.com/davoodmehraban89/Factor-easyPro/issues/5)
+
+**قانون وضعیت:** تمام موارد آینده در این سند وضعیت `Planned` دارند. ثبت Issue و تهیه نقشه راه، به معنی شروع پیاده‌سازی قابلیت یا موفقیت آزمون نیست. در هر Release باید Issueهای انجام‌شده با PR و شواهد CI بسته شوند.
