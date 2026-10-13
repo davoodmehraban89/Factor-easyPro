@@ -1,0 +1,52 @@
+name: Build and publish Factor-easyPro v2.0.3
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-v2-0-3.yml'
+permissions:
+  contents: write
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fcf9707eb7bfa0fcb9ad2402a67057af062a7a31
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: npm ci
+      - name: Test finance and reconciliation
+        run: npm test
+      - name: Build Windows NSIS installer
+        run: npm exec tauri build
+      - name: Verify version and generate SHA-256
+        shell: pwsh
+        run: |
+          $installer=Get-ChildItem 'src-tauri/target/release/bundle/nsis/*2.0.3*x64-setup.exe' | Select-Object -First 1
+          if (!$installer) { throw 'Windows 2.0.3 installer was not created' }
+          $hash=(Get-FileHash $installer.FullName -Algorithm SHA256).Hash
+          $hash + '  ' + $installer.Name | Out-File -FilePath SHA256SUMS.txt -Encoding ascii
+          Write-Output ('FILE=' + $installer.Name + ' BYTES=' + $installer.Length + ' SHA256=' + $hash)
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |
+          gh release view v2.0.3 --json id *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create v2.0.3 --target fcf9707eb7bfa0fcb9ad2402a67057af062a7a31 --draft --title 'Factor-easyPro 2.0.3 — Accounting reconciliation' --notes-file RELEASE_NOTES_v2.0.3_FA.md
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create draft release' }
+          }
+          gh release upload v2.0.3 'src-tauri/target/release/bundle/nsis/Factor-easyPro_2.0.3_x64-setup.exe' SHA256SUMS.txt --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Could not upload installer' }
+          gh release edit v2.0.3 --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Could not publish release' }
+          gh release view v2.0.3 --json url,isDraft,assets
+          if ($LASTEXITCODE -ne 0) { throw 'Release verification failed' }
