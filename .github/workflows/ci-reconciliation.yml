@@ -15,6 +15,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Isolate reconciliation integration tests
+        run: node tests/reconciliation.test.mjs
       - name: Test accounting, inventory and reconciler
         run: npm test
       - name: Production frontend build
