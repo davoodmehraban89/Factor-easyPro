@@ -4,6 +4,7 @@ import { StorageService } from './StorageService.js';
 import { DataScope } from './DataScope.js';
 import { Auth } from './Auth.js';
 import { buildLedgerReports } from './LedgerReports.mjs';
+import { reconcileFinancialData } from './ReconciliationCore.mjs';
 import {
   DEFAULT_CHART, assertJalaliDate, validateAccount, validateFiscalPeriod,
   validateJournal, validateJournalLines, journalSourceKey, reversingLines
@@ -35,13 +36,41 @@ const cleanLines = lines => (lines || []).map(line => ({
 class AccountingServiceImpl {
   async financialReports(filter = {}) {
     const companyId = await DataScope.companyId();
-    return StorageService.transaction(['account_chart', 'journal_entries', 'journal_lines'], async tx => {
+    if (filter.from) assertJalaliDate(filter.from);
+    if (filter.to) assertJalaliDate(filter.to);
+    return StorageService.transaction(['account_chart', 'journal_entries', 'journal_lines', 'fiscal_periods'], async tx => {
+      if (filter.periodId) {
+        const period = await tx.get('fiscal_periods', filter.periodId);
+        if (!period || period.companyId !== companyId) throw new Error('دوره مالی انتخاب‌شده متعلق به شرکت فعال نیست');
+      }
       const accounts = await tx.getAllByIndex('account_chart', 'companyId', companyId);
       const journals = await tx.getAllByIndex('journal_entries', 'companyId', companyId);
       const lines = await tx.getAllByIndex('journal_lines', 'companyId', companyId);
       return buildLedgerReports(accounts, journals, lines, filter);
     }, 'readonly');
   }
+  // Read-only, company-scoped snapshot. It never rewrites balances or journals.
+  async reconciliationReport() {
+    if (!Auth.isAdmin()) throw new Error('گزارش کنترل مغایرت فقط برای مدیر مجاز است');
+    const companyId = await DataScope.companyId();
+    const stores = ['account_chart','journal_entries','journal_lines','invoices',
+      'settlements','treasury','inventory_balances','stock_movements','settings'];
+    return StorageService.transaction(stores, async tx => {
+      const scoped = async store =>
+        (await tx.getAll(store)).filter(row => row.companyId === companyId);
+      const [accounts,journals,journalLines,invoices,settlements,transactions,
+        inventoryBalances,stockMovements,activation] = await Promise.all([
+        scoped('account_chart'),scoped('journal_entries'),scoped('journal_lines'),
+        scoped('invoices'),scoped('settlements'),scoped('treasury'),
+        scoped('inventory_balances'),scoped('stock_movements'),
+        tx.get('settings','finance_v2_enabled_'+companyId)
+      ]);
+      return reconcileFinancialData({accounts,journals,journalLines,invoices,
+        settlements,transactions,inventoryBalances,stockMovements,
+        integrated:!!activation?.enabled});
+    },'readonly');
+  }
+
   async listAccounts() {
     const companyId = await DataScope.companyId();
     return StorageService.getAllByIndex('account_chart', 'companyId', companyId);

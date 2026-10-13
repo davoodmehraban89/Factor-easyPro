@@ -1,0 +1,23 @@
+name: V2 reconciliation validation
+on:
+  push:
+    branches:
+      - feature/v2-reconciliation-20261013
+  workflow_dispatch:
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Isolate reconciliation integration tests
+        run: node tests/reconciliation.test.mjs
+      - name: Test accounting, inventory and reconciler
+        run: npm test
+      - name: Production frontend build
+        run: npm run build

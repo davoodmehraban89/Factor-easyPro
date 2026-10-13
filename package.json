@@ -1,13 +1,13 @@
 {
   "name": "factor-easypro",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "فینورا پرو - سامانه جامع حسابداری و صدور فاکتور",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test tests/*.test.mjs",
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
     "test:phase1": "node --test tests/accounting-core.test.mjs tests/accounting-migration.test.mjs tests/accounting-phase1.test.mjs"
   },
   "repository": {

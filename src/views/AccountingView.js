@@ -28,6 +28,7 @@ class AccountingViewImpl {
     this.accounts = [];
     this.periods = [];
     this.journals = [];
+    this.reportFilter = {periodId:'',from:'',to:''};
     this.busy = false;
   }
   async reload() {
@@ -43,6 +44,7 @@ class AccountingViewImpl {
       ['periods', 'دوره‌های مالی'],
       ['trial', 'تراز آزمایشی'],
       ['reports', 'گزارش‌های مالی'],
+      ...(Auth.isAdmin() ? [['reconciliation','کنترل مغایرت']] : []),
       ['integration', 'عملیات یکپارچه و انبار']
     ];
     return `<div class="page-title"><h2>حسابداری دوبل</h2>
@@ -72,6 +74,7 @@ class AccountingViewImpl {
       case 'periods': return this.renderPeriods();
       case 'trial': return this.renderTrial();
       case 'reports': return this.renderReports();
+      case 'reconciliation': return this.renderReconciliation();
       case 'integration': return this.renderIntegration();
       default: return this.renderJournals();
     }
@@ -144,10 +147,22 @@ class AccountingViewImpl {
       </table></div></div>`;
   }
   async renderReports() {
-    const r = await Ledger.financialReports();
+    const r = await Ledger.financialReports(this.reportFilter);
+    const filter=this.reportFilter;
+    const periodOptions=this.periods.map(p=>`<option value="${html(p.id)}" ${p.id===filter.periodId?'selected':''}>${html(p.name)}</option>`).join('');
     const rows = r.trial.map(x => `<tr><td>${html(x.code)}</td><td>${html(x.name)}</td><td>${Formatters.number(x.debit)}</td><td>${Formatters.number(x.credit)}</td><td>${Formatters.number(x.balance)}</td></tr>`).join('');
     const detail = r.detail.map(x => `<tr><td>${html(x.date)}</td><td>${html(x.description)}</td><td>${html(x.code+' — '+x.name)}</td><td>${Formatters.number(x.debit)}</td><td>${Formatters.number(x.credit)}</td></tr>`).join('');
-    return `<div class="card"><div class="toolbar"><strong>گزارش‌های مبتنی بر اسناد قطعی دفتر کل</strong><button class="btn btn-secondary" onclick="window.AccountingView.exportReports()">خروجی CSV</button></div>
+    return `<div class="card"><div class="toolbar"><strong>گزارش‌های مبتنی بر اسناد قطعی دفتر کل</strong>
+      <button class="btn btn-secondary" onclick="window.AccountingView.exportReports()">خروجی CSV</button></div>
+      <div class="toolbar" style="margin:8px 0;flex-wrap:wrap;gap:8px">
+        <label>دوره مالی <select class="form-control" style="min-width:140px" onchange="window.AccountingView.setReportFilter('periodId',this.value)">
+          <option value="">تمام دوره‌ها</option>${periodOptions}</select></label>
+        <label>از تاریخ <input class="form-control" style="width:135px" placeholder="۱۴۰۵/۰۱/۰۱" value="${html(filter.from)}"
+          onchange="window.AccountingView.setReportFilter('from',this.value)"></label>
+        <label>تا تاریخ <input class="form-control" style="width:135px" placeholder="۱۴۰۵/۱۲/۲۹" value="${html(filter.to)}"
+          onchange="window.AccountingView.setReportFilter('to',this.value)"></label>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted)">سود و زیان و ریز اسناد براساس فیلتر محاسبه می‌شوند. ترازنامه تا تاریخ انتهای بازه، تجمعی است.</p>
       <p>درآمد: ${Formatters.number(r.profitLoss.revenue)} ریال | هزینه و بهای تمام‌شده: ${Formatters.number(r.profitLoss.expenses)} ریال | سود خالص: ${Formatters.number(r.profitLoss.netProfit)} ریال</p>
       <p>دارایی: ${Formatters.number(r.balanceSheet.assets)} | بدهی: ${Formatters.number(r.balanceSheet.liabilities)} | حقوق مالکانه با سود جاری: ${Formatters.number(r.balanceSheet.equityWithProfit)} | اختلاف ترازنامه: ${Formatters.number(r.balanceSheet.difference)}</p>
       <h3>تراز حساب‌ها</h3><div class="table-wrap"><table><thead><tr><th>کد</th><th>حساب</th><th>بدهکار</th><th>بستانکار</th><th>مانده</th></tr></thead><tbody>${rows||'<tr><td colspan="5">بدون گردش</td></tr>'}</tbody></table></div>
@@ -155,7 +170,7 @@ class AccountingViewImpl {
   }
   async exportReports() {
     try {
-      const r = await Ledger.financialReports();
+      const r = await Ledger.financialReports(this.reportFilter);
       const esc = v => '"'+String(v??'').replace(/"/g,'""')+'"';
       const csv = [['date','description','account_code','account_name','debit_irr','credit_irr'],...r.detail.map(x=>[x.date,x.description,x.code,x.name,x.debit,x.credit])].map(a=>a.map(esc).join(',')).join('\r\n');
       const blob = new Blob(['\ufeff',csv],{type:'text/csv;charset=utf-8'});
@@ -163,6 +178,57 @@ class AccountingViewImpl {
       const a=document.createElement('a');a.href=url;a.download='factor-easypro-ledger.csv';document.body.appendChild(a);a.click();a.remove();
       setTimeout(()=>URL.revokeObjectURL(url),3000);
     } catch(error) { Toast.error(error.message); }
+  }
+  async renderReconciliation() {
+    if (!Auth.isAdmin()) return '<div class="card">دسترسی به کنترل مغایرت فقط برای مدیر مجاز است.</div>';
+    const report = await Ledger.reconciliationReport();
+    const counts = report.counts, totals = report.totals;
+    const rows = report.issues.slice(0,200).map(item => `<tr>
+      <td>${html(item.code)}</td><td>${html(item.reference||'—')}</td>
+      <td>${html(item.message)}</td>
+      <td>${html(item.expected === null ? '—' : Formatters.number(item.expected))}</td>
+      <td>${html(item.actual === null ? '—' : Formatters.number(item.actual))}</td></tr>`).join('');
+    return `<div class="card">
+      <div class="toolbar"><strong>کنترل مغایرت اسناد، تسویه‌ها و موجودی</strong>
+        <button class="btn btn-secondary" onclick="window.AccountingView.exportReconciliation()">خروجی CSV</button>
+        <button class="btn btn-secondary" onclick="window.AccountingView.refresh()">بررسی مجدد</button>
+      </div>
+      <p style="margin:10px 0;line-height:1.9">این بررسی فقط خواندنی است و هیچ مبلغ یا سندی را اصلاح نمی‌کند.
+        ${report.integrated ? 'مغایرت حساب موجودی (۱۰۳) نیز بررسی شده است.' : 'حسابداری یکپارچه غیرفعال است؛ تطبیق انبار و دفتر کل انجام نمی‌شود.'}</p>
+      <p><strong>اسناد قطعی:</strong> ${Formatters.number(counts.journals)} |
+        <strong>فاکتورهای مالی:</strong> ${Formatters.number(counts.invoices)} |
+        <strong>تسویه‌ها:</strong> ${Formatters.number(counts.settlements)} |
+        <strong>مغایرت‌های شناسایی‌شده:</strong> ${Formatters.number(counts.issues)}</p>
+      ${report.integrated ? `<p>ارزش موجودی انبار: ${Formatters.number(totals.inventoryBook)} ریال |
+        مانده دفتر کل موجودی: ${Formatters.number(totals.inventoryLedger)} ریال</p>` : ''}
+      ${!rows ? '<p style="margin:14px 0;color:var(--text-muted)">در کنترل‌های فعلی مغایرتی مشاهده نشد. این نتیجه جایگزین حسابرسی مستقل نیست.</p>' : ''}
+      <div class="table-wrap"><table><thead><tr>
+        <th>نوع کنترل</th><th>مرجع</th><th>شرح مغایرت</th><th>انتظار</th><th>مقدار فعلی</th>
+      </tr></thead><tbody>${rows}</tbody></table></div>
+      ${counts.issues>200 ? '<p>فقط ۲۰۰ ردیف نخست نمایش داده شده‌اند؛ برای همه ردیف‌ها خروجی CSV بگیرید.</p>' : ''}
+    </div>`;
+  }
+
+  async exportReconciliation() {
+    try {
+      if (!Auth.isAdmin()) throw Error('دسترسی مجاز نیست');
+      const result = await Ledger.reconciliationReport();
+      const esc = v => '"'+String(v??'').replace(/"/g,'""')+'"';
+      const rows = [['code','reference','message','expected','actual'],
+        ...result.issues.map(x=>[x.code,x.reference,x.message,x.expected,x.actual])];
+      const csv = rows.map(line=>line.map(esc).join(',')).join('\r\n');
+      const blob = new Blob(['\ufeff',csv],{type:'text/csv;charset=utf-8'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');a.href=url;a.download='factor-easypro-reconciliation.csv';
+      document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),3000);
+    } catch(error){Toast.error('خروجی مغایرت: '+error.message);}
+  }
+
+  setReportFilter(key,value) {
+    if (!['periodId','from','to'].includes(key)) return;
+    this.reportFilter={...this.reportFilter,[key]:key==='periodId'?value:digits(value).trim()};
+    return this.refresh();
   }
   setTrialPeriod(id) { this.selectedTrialPeriod = id; return this.refresh(); }
   openPeriodModal() {
