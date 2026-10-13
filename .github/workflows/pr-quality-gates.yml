@@ -1,0 +1,81 @@
+name: PR Quality Gates — accounting, Windows and packaging
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-quality-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node-quality:
+    name: Tests, frontend build and production dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout immutable PR snapshot
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Clean install
+        run: npm ci
+      - name: Full automated regression suite
+        run: npm test
+      - name: Build frontend bundle
+        run: npm run build
+      - name: Audit production dependencies for high or critical advisories
+        run: npm audit --omit=dev --audit-level=high
+
+  windows-installer:
+    name: Windows native build and preview artifact (not a release)
+    needs: node-quality
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout immutable PR snapshot
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Clean install
+        run: npm ci
+      - name: Windows integration regression
+        run: npm test
+      - name: Build Tauri installer
+        run: npm exec tauri build
+      - name: Inspect produced Windows x64 installer and checksum
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem 'src-tauri/target/release/bundle/nsis/*x64-setup.exe' -ErrorAction SilentlyContinue)
+          if ($files.Count -ne 1) { throw 'Exactly one x64 NSIS installer is required' }
+          $file=$files[0]
+          if ($file.Length -lt 100000) { throw 'Installer suspiciously small' }
+          $hash=(Get-FileHash $file.FullName -Algorithm SHA256).Hash
+          $hash + '  ' + $file.Name | Out-File -FilePath SHA256SUMS.txt -Encoding ascii
+          Write-Output ('PREVIEW_INSTALLER=' + $file.Name + ' SIZE=' + $file.Length + ' SHA256=' + $hash)
+      - name: Upload preview installer for review (no public release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: factor-easypro-windows-pr-preview
+          path: |
+            src-tauri/target/release/bundle/nsis/*x64-setup.exe
+            SHA256SUMS.txt
+          retention-days: 7
+          if-no-files-found: error
