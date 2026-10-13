@@ -28,6 +28,7 @@ class AccountingViewImpl {
     this.accounts = [];
     this.periods = [];
     this.journals = [];
+    this.reportFilter = {periodId:'',from:'',to:''};
     this.busy = false;
   }
   async reload() {
@@ -146,10 +147,22 @@ class AccountingViewImpl {
       </table></div></div>`;
   }
   async renderReports() {
-    const r = await Ledger.financialReports();
+    const r = await Ledger.financialReports(this.reportFilter);
+    const filter=this.reportFilter;
+    const periodOptions=this.periods.map(p=>`<option value="${html(p.id)}" ${p.id===filter.periodId?'selected':''}>${html(p.name)}</option>`).join('');
     const rows = r.trial.map(x => `<tr><td>${html(x.code)}</td><td>${html(x.name)}</td><td>${Formatters.number(x.debit)}</td><td>${Formatters.number(x.credit)}</td><td>${Formatters.number(x.balance)}</td></tr>`).join('');
     const detail = r.detail.map(x => `<tr><td>${html(x.date)}</td><td>${html(x.description)}</td><td>${html(x.code+' — '+x.name)}</td><td>${Formatters.number(x.debit)}</td><td>${Formatters.number(x.credit)}</td></tr>`).join('');
-    return `<div class="card"><div class="toolbar"><strong>گزارش‌های مبتنی بر اسناد قطعی دفتر کل</strong><button class="btn btn-secondary" onclick="window.AccountingView.exportReports()">خروجی CSV</button></div>
+    return `<div class="card"><div class="toolbar"><strong>گزارش‌های مبتنی بر اسناد قطعی دفتر کل</strong>
+      <button class="btn btn-secondary" onclick="window.AccountingView.exportReports()">خروجی CSV</button></div>
+      <div class="toolbar" style="margin:8px 0;flex-wrap:wrap;gap:8px">
+        <label>دوره مالی <select class="form-control" style="min-width:140px" onchange="window.AccountingView.setReportFilter('periodId',this.value)">
+          <option value="">تمام دوره‌ها</option>${periodOptions}</select></label>
+        <label>از تاریخ <input class="form-control" style="width:135px" placeholder="۱۴۰۵/۰۱/۰۱" value="${html(filter.from)}"
+          onchange="window.AccountingView.setReportFilter('from',this.value)"></label>
+        <label>تا تاریخ <input class="form-control" style="width:135px" placeholder="۱۴۰۵/۱۲/۲۹" value="${html(filter.to)}"
+          onchange="window.AccountingView.setReportFilter('to',this.value)"></label>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted)">سود و زیان و ریز اسناد براساس فیلتر محاسبه می‌شوند. ترازنامه تا تاریخ انتهای بازه، تجمعی است.</p>
       <p>درآمد: ${Formatters.number(r.profitLoss.revenue)} ریال | هزینه و بهای تمام‌شده: ${Formatters.number(r.profitLoss.expenses)} ریال | سود خالص: ${Formatters.number(r.profitLoss.netProfit)} ریال</p>
       <p>دارایی: ${Formatters.number(r.balanceSheet.assets)} | بدهی: ${Formatters.number(r.balanceSheet.liabilities)} | حقوق مالکانه با سود جاری: ${Formatters.number(r.balanceSheet.equityWithProfit)} | اختلاف ترازنامه: ${Formatters.number(r.balanceSheet.difference)}</p>
       <h3>تراز حساب‌ها</h3><div class="table-wrap"><table><thead><tr><th>کد</th><th>حساب</th><th>بدهکار</th><th>بستانکار</th><th>مانده</th></tr></thead><tbody>${rows||'<tr><td colspan="5">بدون گردش</td></tr>'}</tbody></table></div>
@@ -157,7 +170,7 @@ class AccountingViewImpl {
   }
   async exportReports() {
     try {
-      const r = await Ledger.financialReports();
+      const r = await Ledger.financialReports(this.reportFilter);
       const esc = v => '"'+String(v??'').replace(/"/g,'""')+'"';
       const csv = [['date','description','account_code','account_name','debit_irr','credit_irr'],...r.detail.map(x=>[x.date,x.description,x.code,x.name,x.debit,x.credit])].map(a=>a.map(esc).join(',')).join('\r\n');
       const blob = new Blob(['\ufeff',csv],{type:'text/csv;charset=utf-8'});
@@ -212,6 +225,11 @@ class AccountingViewImpl {
     } catch(error){Toast.error('خروجی مغایرت: '+error.message);}
   }
 
+  setReportFilter(key,value) {
+    if (!['periodId','from','to'].includes(key)) return;
+    this.reportFilter={...this.reportFilter,[key]:key==='periodId'?value:digits(value).trim()};
+    return this.refresh();
+  }
   setTrialPeriod(id) { this.selectedTrialPeriod = id; return this.refresh(); }
   openPeriodModal() {
     const body = `<div class="form-group"><label class="form-label">نام دوره</label>
