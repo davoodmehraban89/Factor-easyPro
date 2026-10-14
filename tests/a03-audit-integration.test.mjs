@@ -4,6 +4,7 @@ import 'fake-indexeddb/auto';
 import { StorageService } from '../src/core/StorageService.js';
 import { AuditService } from '../src/core/AuditService.js';
 import { AccountingService } from '../src/core/AccountingService.js';
+import { SettingsController } from '../src/controllers/SettingsController.js';
 import { Auth } from '../src/core/Auth.js';
 import { CompanyService } from '../src/core/CompanyService.js';
 
@@ -98,4 +99,14 @@ test('A03: company backup includes audit store, without ever exporting user cred
   assert.equal(backup.data.audit_events.length, 1);
   assert.ok(Array.isArray(backup.data.document_corrections));
   assert.equal(backup.data.audit_events[0].safeSummary.lineCount, 2);
+});
+
+test('A03: company backup rejects tampered historical audit records even in replace mode', async () => {
+  const state = await setup();
+  await AccountingService.postJournal(journal(state));
+  const backup = await SettingsController.exportBackup();
+  assert.equal(backup.data.audit_events.length, 1);
+  backup.data.audit_events[0].eventType = 'period_closed';
+  await assert.rejects(SettingsController.importBackup(backup, { mode: 'replace' }), /بازنویسی سابقه/);
+  assert.equal((await AuditService.list())[0].eventType, 'journal_posted');
 });
