@@ -144,12 +144,36 @@ class AccountingServiceImpl {
   async closePeriod(periodId) {
     if (!Auth.isAdmin()) throw new Error('بستن دوره مالی فقط برای مدیر مجاز است');
     const companyId = await DataScope.companyId();
-    return StorageService.transaction(['fiscal_periods', 'journal_entries', 'audit_events'], async tx => {
+    return StorageService.transaction([
+      'fiscal_periods', 'journal_entries', 'journal_lines',
+      'account_chart', 'stocktakes', 'audit_events'
+    ], async tx => {
       const period = await periodFor(tx, companyId, periodId);
       ensurePeriodOpen(period);
-      const journals = await entriesFor(tx, companyId);
-      if (journals.some(j => j.periodId === periodId && j.status !== 'posted')) {
+      const journals = (await entriesFor(tx, companyId)).filter(j => j.periodId === periodId);
+      if (journals.some(j => j.status !== 'posted')) {
         throw new Error('دوره دارای اسناد پیش‌نویس است؛ ابتدا تعیین تکلیف شوند');
+      }
+      const stocktakes = (await tx.getAllByIndex('stocktakes', 'companyId', companyId))
+        .filter(row => row.status === 'draft');
+      if (stocktakes.length) {
+        throw new Error('انبارگردانی باز وجود دارد؛ ابتدا شمارش را نهایی کنید');
+      }
+      const accounts = await tx.getAllByIndex('account_chart', 'companyId', companyId);
+      const lines = await tx.getAllByIndex('journal_lines', 'companyId', companyId);
+      const byJournal = new Map();
+      for (const line of lines) {
+        if (!byJournal.has(line.journalId)) byJournal.set(line.journalId, []);
+        byJournal.get(line.journalId).push(line);
+      }
+      for (const journal of journals) {
+        if (journal.date < period.startDate || journal.date > period.endDate) {
+          throw new Error('دوره شامل سندی با تاریخ خارج از محدوده است');
+        }
+        const rowLines = byJournal.get(journal.id) || [];
+        if (rowLines.length < 2) throw new Error('دوره شامل سند قطعی بدون سطرهای کامل است');
+        validateJournalLines({ companyId, lines: rowLines }, accounts,
+          { requireBalance: true, allowInactive: true, allowParent: true });
       }
       const closed = { ...period, status: 'closed', closed: true, closedBy: actor(), closedAt: new Date().toISOString() };
       await tx.put('fiscal_periods', closed);
