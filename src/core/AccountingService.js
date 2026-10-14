@@ -134,9 +134,12 @@ class AccountingServiceImpl {
       status: 'open', closed: false, createdBy: actor()
     };
     if (!period.name) throw new Error('نام دوره مالی الزامی است');
-    return StorageService.transaction('fiscal_periods', async tx => {
+    return StorageService.transaction(['fiscal_periods', 'audit_events'], async tx => {
       validateFiscalPeriod(period, await tx.getAllByIndex('fiscal_periods', 'companyId', companyId));
       await tx.put('fiscal_periods', period);
+      await AuditService.append(tx, { companyId, eventType: 'period_opened',
+        sourceType: 'fiscal_period', sourceId: period.id,
+        commandKey: 'open-period:' + period.id, businessDate: period.startDate });
       return period;
     });
   }
@@ -187,7 +190,7 @@ class AccountingServiceImpl {
     const lines = cleanLines(data.lines);
     const sourceKey = data.sourceType && data.sourceId
       ? journalSourceKey(companyId, data.sourceType, data.sourceId, data.revision || 1) : undefined;
-    return StorageService.transaction(['account_chart', 'fiscal_periods', 'journal_entries', 'journal_lines'], async tx => {
+    return StorageService.transaction(['account_chart', 'fiscal_periods', 'journal_entries', 'journal_lines', 'audit_events'], async tx => {
       const period = await periodFor(tx, companyId, data.periodId);
       ensurePeriodOpen(period);
       assertJalaliDate(data.date);
@@ -206,6 +209,9 @@ class AccountingServiceImpl {
       for (const [position, line] of lines.entries()) {
         await tx.put('journal_lines', { ...line, id: uid('jl_'), companyId, journalId: id, position });
       }
+      await AuditService.append(tx, { companyId, eventType: 'draft_created', sourceType: 'journal',
+        sourceId: journal.id, commandKey: 'draft-create:' + journal.id,
+        businessDate: journal.date, lineCount: lines.length });
       return journal;
     });
   }
@@ -214,7 +220,7 @@ class AccountingServiceImpl {
     requireAccountingAdmin();
     const companyId = await DataScope.companyId();
     const lines = cleanLines(data.lines);
-    return StorageService.transaction(['account_chart', 'fiscal_periods', 'journal_entries', 'journal_lines'], async tx => {
+    return StorageService.transaction(['account_chart', 'fiscal_periods', 'journal_entries', 'journal_lines', 'audit_events'], async tx => {
       const old = await tx.get('journal_entries', id);
       if (!old || old.companyId !== companyId || old.status !== 'draft') throw new Error('فقط پیش‌نویس این شرکت قابل ویرایش است');
       const period = await periodFor(tx, companyId, data.periodId);
@@ -238,6 +244,10 @@ class AccountingServiceImpl {
       for (const [position, line] of lines.entries()) {
         await tx.put('journal_lines', { ...line, id: uid('jl_'), companyId, journalId: id, position });
       }
+      await AuditService.append(tx, { companyId, eventType: post ? 'draft_posted' : 'draft_updated',
+        sourceType: 'journal', sourceId: journal.id,
+        commandKey: 'draft-change:' + uid('edit_'),
+        businessDate: journal.date, lineCount: lines.length });
       return journal;
     });
   }
@@ -277,12 +287,15 @@ class AccountingServiceImpl {
   async discardDraftJournal(id) {
     requireAccountingAdmin();
     const companyId = await DataScope.companyId();
-    return StorageService.transaction(['journal_entries', 'journal_lines'], async tx => {
+    return StorageService.transaction(['journal_entries', 'journal_lines', 'audit_events'], async tx => {
       const old = await tx.get('journal_entries', id);
       if (!old || old.companyId !== companyId || old.status !== 'draft') throw new Error('فقط پیش‌نویس این شرکت قابل حذف است');
       const lines = await tx.getAllByIndex('journal_lines', 'journalId', id);
       for (const line of lines) await tx.delete('journal_lines', line.id);
       await tx.delete('journal_entries', id);
+      await AuditService.append(tx, { companyId, eventType: 'draft_discarded',
+        sourceType: 'journal', sourceId: id, commandKey: 'draft-discard:' + id,
+        businessDate: old.date, lineCount: lines.length });
       return true;
     });
   }
@@ -290,7 +303,7 @@ class AccountingServiceImpl {
   async postDraftJournal(id) {
     requireAccountingAdmin();
     const companyId = await DataScope.companyId();
-    return StorageService.transaction(['account_chart', 'fiscal_periods', 'journal_entries', 'journal_lines'], async tx => {
+    return StorageService.transaction(['account_chart', 'fiscal_periods', 'journal_entries', 'journal_lines', 'audit_events'], async tx => {
       const old = await tx.get('journal_entries', id);
       if (!old || old.companyId !== companyId || old.status !== 'draft') throw new Error('پیش‌نویس قابل ثبت پیدا نشد');
       const period = await periodFor(tx, companyId, old.periodId);
@@ -299,6 +312,9 @@ class AccountingServiceImpl {
       const totals = validateJournal({ companyId, date: old.date, lines }, accounts, period);
       const journal = { ...old, ...totals, status: 'posted', postedBy: actor(), postedAt: new Date().toISOString() };
       await tx.put('journal_entries', journal);
+      await AuditService.append(tx, { companyId, eventType: 'draft_posted',
+        sourceType: 'journal', sourceId: id, commandKey: 'draft-finalize:' + id,
+        businessDate: journal.date, lineCount: lines.length });
       return journal;
     });
   }
