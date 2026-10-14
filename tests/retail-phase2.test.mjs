@@ -378,3 +378,54 @@ test('regression: non-postable 101 with other children creates valid mapped cash
   assert.notEqual(ledger.code,'101001');
   assert.equal(ledger.active,true);
 });
+
+test('A01/A03: a referenced customer return creates one atomic correction and correlated audit record', async () => {
+  await setup();
+  await purchase10();
+  const sold = await sale3({ paidAmount: 200 });
+  const returned = await retail.issueInvoice(invoice('sale_return', 1, 200, {
+    originalInvoiceId: sold.id
+  }));
+  const corrections = await db.getAll('document_corrections');
+  assert.equal(corrections.length, 1);
+  const correction = corrections[0];
+  assert.equal(correction.companyId, company);
+  assert.equal(correction.sourceId, sold.id);
+  assert.equal(correction.resultId, returned.id);
+  assert.equal(correction.correctionType, 'return');
+  assert.equal(correction.reasonCode, 'customer_return');
+  assert.equal(correction.actorId, 'phase2-admin');
+  assert.ok(correction.idempotencyKey.includes(returned.id));
+  const audits = await db.getAll('audit_events');
+  assert.ok(audits.some(a => a.sourceId === returned.journalId &&
+    a.correlationId === correction.correlationId &&
+    a.eventType === 'commercial_journal_posted'));
+  assert.equal((await db.get('invoices', sold.id)).grandTotal, 600);
+  assert.equal((await db.get('invoices', sold.id)).paidAmount, 200);
+  assert.equal((await db.getAll('settlements')).length, 1);
+  assert.equal((await db.getAll('stock_movements')).filter(x => x.refId === returned.id).length, 1);
+  await assert.rejects(retail.issueInvoice(invoice('sale_return', 3, 200, {
+    originalInvoiceId: sold.id
+  })), /بیشتر/);
+  assert.equal((await db.getAll('document_corrections')).length, 1);
+});
+
+test('A01: customer returns reject non-posted legacy origin without partial writes', async () => {
+  await setup();
+  await purchase10();
+  await db.put('invoices', {
+    id: 'old-unposted', companyId: company, kind: 'sale',
+    financePosted: false, isPreInvoice: false,
+    contactId: 'contact-1', items: [{
+      productId: 'product-1', qty: 2, price: 200,
+      lineTotal: 400, lineSubtotal: 400
+    }],
+    grandTotal: 400, subtotal: 400, totalDiscount: 0, vatAmount: 0, number: 'legacy'
+  });
+  const countBefore = (await db.getAll('journal_entries')).length;
+  const target = invoice('sale_return', 1, 200, { originalInvoiceId: 'old-unposted' });
+  await assert.rejects(retail.issueInvoice(target), /سازگار نیست/);
+  assert.equal(await db.get('invoices', target.id), undefined);
+  assert.equal((await db.getAll('journal_entries')).length, countBefore);
+  assert.equal((await db.getAll('document_corrections')).length, 0);
+});
