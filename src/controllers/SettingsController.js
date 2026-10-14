@@ -2,6 +2,7 @@
 // SettingsController — تنظیمات، بکاپ و بازیابی
 // ============================================================
 
+import appPackage from '../../package.json' with { type: 'json' };
 import { StorageService, STORES } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
 import { DataScope } from '../core/DataScope.js';
@@ -34,7 +35,9 @@ class SettingsControllerImpl {
 
     const backup = {
       app: 'Factor-easyPro',
-      version: '2.0.0',
+      // Human-readable app version and IndexedDB schema are distinct.
+      version: appPackage.version,
+      appVersion: appPackage.version,
       exportedAt: new Date().toISOString(),
       exportedAtJalali: this._todayJalali(),
       user: {

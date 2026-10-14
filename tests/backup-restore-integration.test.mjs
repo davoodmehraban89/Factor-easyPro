@@ -1,3 +1,5 @@
+import appPackage from '../package.json' with { type: 'json' };
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
@@ -123,4 +125,14 @@ test('A04: a unique-index conflict rolls back the entire full-snapshot transacti
   assert.equal(await StorageService.get('products', 'new-product'), undefined);
   assert.equal((await StorageService.get('products', 'baseline')).name, 'Existing');
   assert.equal((await StorageService.getAll('journal_entries')).length, 0);
+});
+
+test('A04: exported appVersion, package and desktop installer versions agree', async () => {
+  await setup();
+  const backup = await SettingsController.exportBackup();
+  const desktop = JSON.parse(readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'));
+  assert.equal(backup.version, appPackage.version);
+  assert.equal(backup.appVersion, appPackage.version);
+  assert.equal(desktop.version, appPackage.version);
+  assert.equal(backup.schemaVersion, (await StorageService.exportAll()).version);
 });
