@@ -565,15 +565,21 @@ class InvoicePrintImpl {
       <html lang="fa" dir="rtl">
       <head>
         <meta charset="UTF-8" />
-        <title>چاپ فاکتور</title>
+        <!-- Keep the print document title empty: some print engines otherwise
+             repeat it as a browser-generated page header. -->
+        <title></title>
         <!-- Offline-first printing: use bundled/system fonts, no external network dependency. -->
         <style>
           /* Zero page margins prevent Chromium/WebView2 from reserving
              the browser-generated date, document title and page-number
              header/footer area. The invoice itself already has padding. */
+          /* Browser header/footer suppression: Chromium only omits its
+             generated title/date/URL/page number when the print margin
+             area is zero. Physical printer margins may still apply. */
           @page {
             size: ${pageCss};
-            margin: 0;
+            margin: 0 !important;
+            padding: 0;
           }
 
           * { box-sizing: border-box; margin: 0; padding: 0; }
