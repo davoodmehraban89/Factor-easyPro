@@ -1,4 +1,10 @@
-# Factor-easyPro 2.0.0
+# Factor-easyPro
+
+> **نقطه شروع همیشگی پروژه:** [PROJECT_STATUS.md](PROJECT_STATUS.md) — نسخه منتشرشده، فاز فعال، کارهای انجام‌شده و اقدام بعدی.
+>
+> **نقشه راه رقابت گسترده‌تر با هلو:** [docs/ROADMAP_HOLOO_COMPETITOR_FA.md](docs/ROADMAP_HOLOO_COMPETITOR_FA.md).
+>
+> آخرین انتشار تأییدشده در زمان بازبینی این مستند: [v2.0.3](https://github.com/davoodmehraban89/Factor-easyPro/releases/tag/v2.0.3). آخرین وضعیت را در [GitHub Releases](https://github.com/davoodmehraban89/Factor-easyPro/releases/latest) بررسی کنید.
 
 نرم‌افزار فاکتور، خزانه، انبار و حسابداری دوبل فارسی برای ویندوز ۶۴بیتی؛ مبتنی بر Tauri 2، Vite و IndexedDB، با امکان کار آفلاین.
 
@@ -6,7 +12,7 @@
 نصب‌کننده ویندوز در **GitHub Releases** قرار دارد:
 https://github.com/davoodmehraban89/Factor-easyPro/releases
 
-فایل `Factor-easyPro_2.0.0_x64-setup.exe` را دریافت و اجرا کنید. نسخه منتشرشده با پایگاه داده خالی توزیع می‌شود؛ هیچ داده واقعی یا نمونه مشتری داخل فایل نصب نیست. فایل نصب در این انتشار امضای کد تجاری ندارد، بنابراین هش SHA-256 آن را با بخش Release مقایسه کنید.
+نصب‌کننده `Factor-easyPro_<version>_x64-setup.exe` را از **آخرین Release معتبر** دریافت و اجرا کنید. نسخه منتشرشده با پایگاه داده خالی توزیع می‌شود؛ هیچ داده واقعی یا نمونه مشتری داخل فایل نصب نیست. فایل نصب در این انتشار امضای کد تجاری ندارد، بنابراین هش SHA-256 آن را با بخش Release مقایسه کنید.
 
 ## شروع به کار
 1. برنامه را باز و رمز مدیر را تعیین کنید. رمز اولیه عمومی وجود ندارد.
