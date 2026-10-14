@@ -25,3 +25,14 @@ test('backup import rejects array-valued records', async () => {
     /رکورد نامعتبر/
   );
 });
+
+test('backup import rejects duplicate IDs without opening the database', async () => {
+  await assert.rejects(
+    StorageService.importAll({
+      app: 'Factor-easyPro',
+      version: 6,
+      data: { products: [{ id: 'same' }, { id: 'same' }] }
+    }),
+    /شناسه تکراری/
+  );
+});
