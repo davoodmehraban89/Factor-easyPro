@@ -1,0 +1,89 @@
+name: Publish verified Phase A Windows release
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Exact tag matching package and Tauri versions (e.g. v2.2.0)'
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: phase-a-public-release
+  cancel-in-progress: false
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      release_tag: ${{ steps.ready.outputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Verify ALL production acceptance evidence and consistent version
+        run: node scripts/verify-phase-a-release.mjs "${{ inputs.release_tag }}"
+      - name: Run the full accounting, backup and security tests
+        run: npm test
+      - name: Verify frontend and production dependencies
+        run: |
+          npm run build
+          npm audit --omit=dev --audit-level=high
+      - id: ready
+        shell: bash
+        run: echo "release_tag=${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+
+  windows-public-release:
+    needs: release-gate
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - name: Repeat acceptance gate on immutable Windows build source
+        shell: pwsh
+        run: node scripts/verify-phase-a-release.mjs "${{ inputs.release_tag }}"
+      - name: Run Windows integration tests
+        run: npm test
+      - name: Build production x64 NSIS installer
+        run: npm exec tauri build
+      - name: Verify produced installer and SHA-256 checksum
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.release_tag }}".TrimStart('v')
+          $files = @(Get-ChildItem 'src-tauri/target/release/bundle/nsis/*x64-setup.exe' -ErrorAction SilentlyContinue)
+          if ($files.Count -ne 1) { throw 'Exactly one x64 NSIS installer must exist' }
+          $installer = $files[0]
+          if (!$installer.Name.Contains($version)) { throw 'Installer version does not match release tag' }
+          if ($installer.Length -lt 100000) { throw 'Suspiciously small Windows installer' }
+          $checksum = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash
+          ($checksum + '  ' + $installer.Name) | Out-File -FilePath SHA256SUMS.txt -Encoding ascii
+          Write-Output ('INSTALLER=' + $installer.Name + ' SHA256=' + $checksum)
+      - name: Publish verified version to public GitHub Releases
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ inputs.release_tag }}"
+          gh release view $tag --json id *> $null
+          if ($LASTEXITCODE -eq 0) { throw 'Release already exists; refusing to overwrite it' }
+          $installer = @(Get-ChildItem 'src-tauri/target/release/bundle/nsis/*x64-setup.exe')[0]
+          gh release create $tag $installer.FullName SHA256SUMS.txt --target $env:GITHUB_SHA --draft --title "Factor-easyPro $tag — Reliable Accounting Core" --notes-file docs/PHASE_A_RELEASE_NOTES_FA.md
+          if ($LASTEXITCODE -ne 0) { throw 'Draft release creation failed' }
+          gh release view $tag --json assets | Out-String | Select-String 'SHA256SUMS.txt' | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Checksum asset not found' }
+          gh release edit $tag --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Public release publication failed; verify GitHub state' }
+          gh release view $tag --json url,isDraft,assets
