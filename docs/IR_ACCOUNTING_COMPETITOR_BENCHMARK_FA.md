@@ -25,6 +25,7 @@
 - سپیدار، «آموزش عملیات پایان سال»: https://www.sepidarsystem.com/blog/closing-document-in-sepidar/
 - سپیدار، «آموزش دریافت و پرداخت»: https://www.sepidarsystem.com/courses/receive-payment-system-tutorial/
 - سپیدار، «فاکتور برگشت از فروش»: https://www.sepidarsystem.com/blog/sales-return-factor/
+- همکاران سیستم، صفحه رسمی ERP راهکاران (ماژولار، مالی، فروش، دریافت‌وپرداخت، انبار و BI): https://www.systemgroup.net/products/rahkaran
 - همکاران سیستم، معرفی عمومی راهکاران و اجزای آن (کانال رسمی): https://t.me/s/systemgroupofficial?before=23
 - همکاران سیستم، نمونه یکپارچگی عملیات و سند حسابداری (کانال رسمی): https://telegram.me/s/systemgroupofficial?before=410
 - همکاران سیستم، راهکاران ابری (معرفی شرکت): https://ir.linkedin.com/showcase/sgcloud/
