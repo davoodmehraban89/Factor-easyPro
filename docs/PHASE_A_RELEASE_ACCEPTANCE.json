@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "phase": "A",
+  "description": "Release acceptance gates. No item may be marked accepted without independently verifiable evidence.",
+  "requirements": [
+    { "id": "A01", "accepted": false, "evidence": [], "name": "Commercial corrections and reversals including refunds" },
+    { "id": "A02", "accepted": false, "evidence": [], "name": "Historical opening balances and migration rehearsal" },
+    { "id": "A03", "accepted": false, "evidence": [], "name": "Complete atomic audit with permissions and retention" },
+    { "id": "A04", "accepted": false, "evidence": [], "name": "Versioned restore, v6 migration and real backup recovery" },
+    { "id": "A05", "accepted": false, "evidence": [], "name": "Fiscal closure and treasury settlement invariants" },
+    { "id": "A06", "accepted": false, "evidence": [], "name": "Production entitlement verification and authorization" },
+    { "id": "A07", "accepted": false, "evidence": [], "name": "Windows install-upgrade, RTL printing and offline operation" },
+    { "id": "A08", "accepted": false, "evidence": [], "name": "Measured synthetic/Windows performance and crash recovery" },
+    { "id": "INDEPENDENT_QA", "accepted": false, "evidence": [], "name": "Independent financial acceptance of representative data" },
+    { "id": "DATA_BACKUP", "accepted": false, "evidence": [], "name": "Pre-upgrade encrypted backup and v6 restore walkthrough" }
+  ]
+}
