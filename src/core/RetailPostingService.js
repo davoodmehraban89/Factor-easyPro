@@ -3,6 +3,7 @@ import { StorageService } from './StorageService.js';
 import { DataScope } from './DataScope.js';
 import { Auth } from './Auth.js';
 import { validateJournal, journalSourceKey, assertJalaliDate } from './AccountingCore.mjs';
+import { previewSaleReturnSettlement } from './ReturnSettlementCore.mjs';
 import { LEDGER_CODES, INVOICE_DIRECTIONS, amount, positiveAmount,
   qtyUnits, fromQtyUnits, receiveStock, issueStock, allocateDiscount,
   postLine, differenceLines, assertInvoiceTotals } from './RetailFinanceCore.mjs';
@@ -41,6 +42,41 @@ const cashLedger=(ctx,bank)=>{
 };
 
 class RetailPostingServiceImpl {
+  /**
+   * A01 read-only preview: reconcile a reference-linked sales return with
+   * cash already allocated to the original invoice. No journal or refund is
+   * created; the actual command must be a separate authorized transaction.
+   */
+  async previewSaleReturn(originalInvoiceId, returnAmount) {
+    const company = await DataScope.companyId();
+    if (typeof originalInvoiceId !== 'string' || !originalInvoiceId.trim()) {
+      throw Error('شناسه فاکتور مرجع الزامی است');
+    }
+    return StorageService.transaction(['invoices'], async tx => {
+      const origin = sameCompany(await tx.get('invoices', originalInvoiceId), company, 'فاکتور مرجع');
+      if (!['sale', 'non_formal'].includes(origin.kind) || origin.isPreInvoice || !origin.financePosted) {
+        throw Error('فقط فاکتور فروش قطعی قابل پیش‌نمایش مرجوعی است');
+      }
+      const all = await tx.getAll('invoices');
+      let priorReturns = 0;
+      for (const row of all) {
+        if (row.companyId !== company || row.kind !== 'sale_return' ||
+            row.originalInvoiceId !== origin.id || !row.financePosted) continue;
+        if (!Number.isSafeInteger(row.grandTotal) || row.grandTotal < 0 ||
+            !Number.isSafeInteger(priorReturns + row.grandTotal)) {
+          throw Error('مجموع مرجوعی‌های ثبت‌شده نامعتبر است');
+        }
+        priorReturns += row.grandTotal;
+      }
+      const breakdown = previewSaleReturnSettlement({
+        invoiceTotal: origin.grandTotal,
+        paidAmount: origin.paidAmount ?? 0,
+        priorReturns,
+        returnAmount
+      });
+      return Object.freeze({ originalInvoiceId: origin.id, companyId: company, ...breakdown });
+    }, 'readonly');
+  }
   async isEnabled() {
     const company=await DataScope.companyId();
     return !!(await StorageService.get('settings',activeKey(company)))?.enabled;
