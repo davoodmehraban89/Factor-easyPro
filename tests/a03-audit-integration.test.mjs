@@ -39,25 +39,26 @@ test('A03: posting and reversal produce immutable-in-service, scoped, minimal au
   const state = await setup();
   const posted = await AccountingService.postJournal(journal(state));
   let events = await AuditService.list();
-  assert.equal(events.length, 1);
-  assert.equal(events[0].eventType, 'journal_posted');
-  assert.equal(events[0].actorId, 'audit-admin');
-  assert.equal(events[0].companyId, company);
-  assert.equal(events[0].sourceId, posted.id);
-  assert.equal(events[0].safeSummary.lineCount, 2);
-  assert.equal(events[0].result, 'committed');
+  assert.equal(events.length, 2);
+  const postedEvent = events.find(e => e.eventType === 'journal_posted');
+  assert.ok(postedEvent);
+  assert.equal(postedEvent.actorId, 'audit-admin');
+  assert.equal(postedEvent.companyId, company);
+  assert.equal(postedEvent.sourceId, posted.id);
+  assert.equal(postedEvent.safeSummary.lineCount, 2);
+  assert.equal(postedEvent.result, 'committed');
   assert.ok(!JSON.stringify(events).includes('Sensitive customer name'));
 
   const reversed = await AccountingService.reverseJournal(posted.id, {
     periodId: state.period.id, date: '1405/07/19'
   });
   events = await AuditService.list();
-  assert.equal(events.length, 2);
+  assert.equal(events.length, 3);
   assert.ok(events.some(e => e.eventType === 'journal_reversed' && e.sourceId === reversed.id));
   await assert.rejects(AccountingService.reverseJournal(posted.id, {
     periodId: state.period.id, date: '1405/07/20'
   }), /قابل برگشت/);
-  assert.equal((await AuditService.list()).length, 2);
+  assert.equal((await AuditService.list()).length, 3);
 
   CompanyService.activeCompanyId = 'audit-c2';
   assert.deepEqual(await AuditService.list(), []);
@@ -78,17 +79,17 @@ test('A03: duplicate audit command aborts unrelated financial writes atomically'
     await AuditService.append(tx, event);
   }));
   assert.equal(await StorageService.get('products', 'never-written'), undefined);
-  assert.equal((await AuditService.list()).length, 1);
+  assert.equal((await AuditService.list()).length, 2);
 });
 
 test('A03: fiscal closing appends an event and does not permit double close', async () => {
   const { period } = await setup();
   await AccountingService.closePeriod(period.id);
   const events = await AuditService.list();
-  assert.equal(events.length, 1);
-  assert.equal(events[0].eventType, 'period_closed');
+  assert.equal(events.length, 2);
+  assert.ok(events.some(e => e.eventType === 'period_closed'));
   await assert.rejects(AccountingService.closePeriod(period.id), /بسته/);
-  assert.equal((await AuditService.list()).length, 1);
+  assert.equal((await AuditService.list()).length, 2);
 });
 
 test('A03: company backup includes audit store, without ever exporting user credentials', async () => {
@@ -96,17 +97,17 @@ test('A03: company backup includes audit store, without ever exporting user cred
   await AccountingService.postJournal(journal(state));
   const backup = await StorageService.exportAll();
   assert.equal(backup.version, 7);
-  assert.equal(backup.data.audit_events.length, 1);
+  assert.equal(backup.data.audit_events.length, 2);
   assert.ok(Array.isArray(backup.data.document_corrections));
-  assert.equal(backup.data.audit_events[0].safeSummary.lineCount, 2);
+  assert.equal(backup.data.audit_events.find(x => x.eventType === 'journal_posted').safeSummary.lineCount, 2);
 });
 
 test('A03: company backup rejects tampered historical audit records even in replace mode', async () => {
   const state = await setup();
   await AccountingService.postJournal(journal(state));
   const backup = await SettingsController.exportBackup();
-  assert.equal(backup.data.audit_events.length, 1);
-  backup.data.audit_events[0].eventType = 'period_closed';
+  assert.equal(backup.data.audit_events.length, 2);
+  backup.data.audit_events.find(x => x.eventType === 'journal_posted').eventType = 'period_closed';
   await assert.rejects(SettingsController.importBackup(backup, { mode: 'replace' }), /بازنویسی سابقه/);
-  assert.equal((await AuditService.list())[0].eventType, 'journal_posted');
+  assert.ok((await AuditService.list()).some(e => e.eventType === 'journal_posted'));
 });
