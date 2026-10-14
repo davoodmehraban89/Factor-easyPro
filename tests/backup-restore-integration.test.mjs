@@ -136,3 +136,36 @@ test('A04: exported appVersion, package and desktop installer versions agree', a
   assert.equal(desktop.version, appPackage.version);
   assert.equal(backup.schemaVersion, (await StorageService.exportAll()).version);
 });
+
+test('A04: checked backup restores successfully and rejects a corrupted payload before writes', async () => {
+  await setup();
+  const backup = await SettingsController.exportBackup();
+  backup.data.contacts = [{ id: 'checksum-customer', companyId: 'c1', name: 'Original' }];
+  const hashed = async data => {
+    const bytes = await crypto.subtle.digest('SHA-256',
+      new TextEncoder().encode(JSON.stringify(data)));
+    return Array.from(new Uint8Array(bytes), x => x.toString(16).padStart(2, '0')).join('');
+  };
+  backup.integrity = { algorithm: 'SHA-256', digest: await hashed(backup.data) };
+  await SettingsController.importBackup(backup);
+  assert.equal((await StorageService.get('contacts', 'checksum-customer')).name, 'Original');
+
+  await StorageService.delete('contacts', 'checksum-customer');
+  const corrupted = structuredClone(backup);
+  corrupted.data.contacts[0].name = 'Tampered';
+  await assert.rejects(SettingsController.importBackup(corrupted), /تغییر کرده|آسیب/);
+  assert.equal(await StorageService.get('contacts', 'checksum-customer'), undefined);
+  await assert.rejects(SettingsController.importBackup({
+    ...backup, integrity: { algorithm: 'MD5', digest: 'bad' }
+  }), /نامعتبر/);
+  assert.equal(await StorageService.get('contacts', 'checksum-customer'), undefined);
+});
+
+test('A04: older backup envelopes without optional checksum retain supported compatibility', async () => {
+  await setup();
+  const backup = await SettingsController.exportBackup();
+  assert.equal(backup.integrity, undefined);
+  backup.data.contacts = [{ id: 'legacy-contact', companyId: 'c1', name: 'Legacy' }];
+  await SettingsController.importBackup(backup);
+  assert.equal((await StorageService.get('contacts', 'legacy-contact')).name, 'Legacy');
+});

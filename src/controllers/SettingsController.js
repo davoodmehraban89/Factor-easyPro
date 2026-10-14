@@ -82,6 +82,13 @@ class SettingsControllerImpl {
 
   downloadBackup() {
     return this.exportBackup().then(async backup => {
+      // SHA-256 detects accidental corruption in the restored data payload.
+      // The AES-GCM encryption wrapper provides authenticated integrity of the
+      // whole downloaded .fbackup file; checksum alone is NOT a digital signature.
+      const digest = await crypto.subtle.digest('SHA-256',
+        new TextEncoder().encode(JSON.stringify(backup.data)));
+      backup.integrity = { algorithm: 'SHA-256',
+        digest: Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('') };
       const json = JSON.stringify(backup, null, 2);
       const password = prompt('رمز محافظت از فایل پشتیبان (حداقل ۱۲ نویسه):');
       if (!password || password.length < 12) throw new Error('رمز پشتیبان باید حداقل ۱۲ نویسه باشد');
@@ -156,6 +163,21 @@ class SettingsControllerImpl {
         typeof backup.companyId !== 'string' || !backup.companyId.trim() ||
         !backup.data || typeof backup.data !== 'object' || Array.isArray(backup.data)) {
       throw new Error('ساختار یا نسخه فایل پشتیبان شرکت نامعتبر است');
+    }
+
+    if (backup.integrity !== undefined) {
+      const integrity = backup.integrity;
+      if (!integrity || integrity.algorithm !== 'SHA-256' ||
+          typeof integrity.digest !== 'string' || !/^[0-9a-f]{64}$/.test(integrity.digest)) {
+        throw new Error('اطلاعات کنترل سلامت فایل پشتیبان نامعتبر است');
+      }
+      const digest = await crypto.subtle.digest('SHA-256',
+        new TextEncoder().encode(JSON.stringify(backup.data)));
+      const actual = Array.from(new Uint8Array(digest),
+        byte => byte.toString(16).padStart(2, '0')).join('');
+      if (actual !== integrity.digest) {
+        throw new Error('داده‌های پشتیبان تغییر کرده یا آسیب دیده‌اند؛ بازیابی متوقف شد');
+      }
     }
 
     const companyId = await DataScope.companyId();
