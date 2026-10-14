@@ -378,3 +378,28 @@ test('regression: non-postable 101 with other children creates valid mapped cash
   assert.notEqual(ledger.code,'101001');
   assert.equal(ledger.active,true);
 });
+
+test('A01: sales and purchase returns cannot silently refund or collect cash', async () => {
+  await setup();
+  const purchased = await purchase10();
+  const sold = await sale3({ paidAmount: 200 });
+  const original = {
+    invoices: (await db.getAll('invoices')).length,
+    treasury: (await db.getAll('treasury')).length,
+    journals: (await db.getAll('journal_entries')).length,
+    stock: (await db.getAll('stock_movements')).length,
+    settlements: (await db.getAll('settlements')).length
+  };
+  for (const draft of [
+    invoice('sale_return', 1, 200, { originalInvoiceId: sold.id, paidAmount: 100 }),
+    invoice('purchase_return', 1, 100, { originalInvoiceId: purchased.id, paidAmount: 100 })
+  ]) {
+    await assert.rejects(retail.issueInvoice(draft), /سند مستقل خزانه/);
+    assert.equal(await db.get('invoices', draft.id), undefined);
+    assert.equal((await db.getAll('invoices')).length, original.invoices);
+    assert.equal((await db.getAll('treasury')).length, original.treasury);
+    assert.equal((await db.getAll('journal_entries')).length, original.journals);
+    assert.equal((await db.getAll('stock_movements')).length, original.stock);
+    assert.equal((await db.getAll('settlements')).length, original.settlements);
+  }
+});
