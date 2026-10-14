@@ -294,7 +294,7 @@ class StorageServiceImpl {
       !json.data || typeof json.data !== 'object' || Array.isArray(json.data)) {
       throw new Error('فرمت فایل نامعتبر است');
     }
-    if (json.app && !['Finora Pro', 'Factor-easyPro'].includes(json.app)) {
+    if (!['Finora Pro', 'Factor-easyPro'].includes(json.app)) {
       throw new Error('این فایل پشتیبان فینورا پرو نیست');
     }
     if (!Number.isSafeInteger(json.version) || json.version < 1) {
