@@ -17,3 +17,7 @@ test('backup import rejects an unrelated application before database access', as
     /فینورا پرو/
   );
 });
+
+test('backup import rejects array-shaped payloads', async () => {
+  await assert.rejects(StorageService.importAll({ app: 'Factor-easyPro', version: 6, data: [] }), /فرمت فایل نامعتبر/);
+});
