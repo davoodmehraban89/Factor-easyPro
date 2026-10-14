@@ -12,6 +12,7 @@ import { Formatters } from '../utils/Formatters.js';
 import { Auth } from '../core/Auth.js';
 import { ExcelController } from '../controllers/ExcelController.js';
 import { inspectSettlementConsistency } from '../core/FinancialDiagnosticsService.js';
+import { AuditService } from '../core/AuditService.js';
 
 let cache = { company: {}, stats: {}, invoiceSettings: { numberingMode: 'auto', nextNumber: 1 } };
 
@@ -32,6 +33,7 @@ class SettingsViewImpl {
         ${this._renderBackupCard()}
         ${this._renderStatsCard()}
         ${Auth.isAdmin() ? this._renderHealthCard() : ''}
+        ${Auth.isAdmin() ? this._renderAuditCard() : ''}
         ${this._renderThemeCard()}
         ${this._renderAboutCard()}
       </div>
@@ -555,6 +557,62 @@ class SettingsViewImpl {
   }
 
   // ============================================================
+  // ردپای حسابرسی فقط خواندنی برای مدیر
+  // ============================================================
+  _renderAuditCard() {
+    return `
+      <div class="card settings-card">
+        <div class="settings-card-header">
+          <div class="settings-card-icon">📋</div>
+          <div>
+            <h3 class="settings-card-title">ردپای حسابرسی</h3>
+            <p class="settings-card-desc">نمایش رویدادهای مالی ثبت‌شده از زمان فعال‌شدن ممیزی؛ سوابق قدیمی به‌طور خودکار ممیزی نمی‌شوند</p>
+          </div>
+        </div>
+        <button class="btn btn-secondary" onclick="window.SettingsView.openAuditTrail()">
+          مشاهده رویدادهای شرکت فعال
+        </button>
+      </div>
+    `;
+  }
+
+  async openAuditTrail() {
+    if (!Auth.isAdmin()) { Toast.error('دسترسی فقط برای مدیر مجاز است'); return; }
+    try {
+      const events = await AuditService.list({ limit: 100 });
+      const labels = {
+        journal_posted: 'ثبت سند مالی',
+        journal_reversed: 'برگشت سند مالی',
+        commercial_journal_posted: 'ثبت رویداد تجاری',
+        period_opened: 'ایجاد دوره مالی',
+        period_closed: 'بستن دوره مالی',
+        draft_created: 'ساخت پیش‌نویس',
+        draft_updated: 'ویرایش پیش‌نویس',
+        draft_posted: 'ثبت قطعی پیش‌نویس',
+        draft_discarded: 'حذف پیش‌نویس',
+        backup_restored: 'بازیابی فایل پشتیبان'
+      };
+      const list = events.map(event => `
+        <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+          <strong>${this._esc(labels[event.eventType] || event.eventType)}</strong>
+          <div style="color:var(--text-muted);font-size:12px">
+            سند: ${this._esc(event.sourceId)} | کاربر: ${this._esc(event.actorId)}
+          </div>
+          <div style="color:var(--text-muted);font-size:11px">
+            ${this._esc(event.businessDate || '')} — ${this._esc(event.occurredAtUtc)}
+          </div>
+        </div>
+      `).join('');
+      Modal.open({ title: 'ردپای حسابرسی شرکت فعال',
+        body: `<p style="font-size:12px;color:var(--text-muted)">تا ۱۰۰ رویداد اخیر؛ فقط از زمان فعال‌سازی ممیزی. اطلاعاتی که پیش از آن ثبت شده‌اند، سابقه ممیزی ساختگی ندارند.</p>${list || '<p>رویدادی یافت نشد.</p>'}`,
+        footer: '<button class="btn" onclick="FINORA.Modal.close()">بستن</button>',
+        size: 'lg' });
+    } catch (err) {
+      Toast.error('نمایش ردپای حسابرسی ناموفق بود: ' + err.message);
+    }
+  }
+
+  // ============================================================
   // کارت آمار
   // ============================================================
   _renderStatsCard() {
@@ -643,6 +701,7 @@ class SettingsViewImpl {
       + this._renderBackupCard()
       + this._renderStatsCard()
       + (Auth.isAdmin() ? this._renderHealthCard() : '')
+      + (Auth.isAdmin() ? this._renderAuditCard() : '')
       + this._renderThemeCard()
       + this._renderAboutCard();
   }

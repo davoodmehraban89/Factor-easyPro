@@ -2,6 +2,7 @@
 // Data must never be silently cross-linked to an account or journal in another company.
 import { StorageService } from './StorageService.js';
 import { Auth } from './Auth.js';
+import { AuditService } from './AuditService.js';
 import { assertJalaliDate, validateAccount, validateFiscalPeriod, validateJournalLines, journalSourceKey } from './AccountingCore.mjs';
 
 export const COMPANY_BACKUP_STORES = Object.freeze([
@@ -153,6 +154,13 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
           restoredAt:new Date().toISOString(),restoredBy:userId});
       }
     }
+    // The restore and its audit receipt are a single all-or-nothing commit.
+    // Failed/corrupt restores never generate a misleading success event.
+    const restoreId = StorageService.uid('restore_');
+    await AuditService.append(tx, { companyId, eventType: 'backup_restored',
+      sourceType: 'company_backup', sourceId: restoreId,
+      commandKey: 'company-restore:' + restoreId,
+      lineCount: counts.added + counts.updated });
     return counts;
   });
 }
