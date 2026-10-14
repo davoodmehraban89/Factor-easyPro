@@ -147,3 +147,17 @@ test('A03: draft journal creation, editing, posting and discarding are audited a
     assert.ok(eventTypes.includes(type), type);
   }
 });
+
+test('A03/A04: successful backup restore receives an audit event; rejected restore does not', async () => {
+  await setup();
+  const backup = await SettingsController.exportBackup();
+  const originalCount = (await AuditService.list()).length;
+  await SettingsController.importBackup(backup, { mode: 'merge' });
+  const afterRestore = await AuditService.list();
+  assert.equal(afterRestore.length, originalCount + 1);
+  assert.ok(afterRestore.some(e => e.eventType === 'backup_restored'));
+  const tampered = structuredClone(backup);
+  tampered.data.audit_events[0].safeSummary.lineCount = 99;
+  await assert.rejects(SettingsController.importBackup(tampered, { mode: 'replace' }), /بازنویسی سابقه/);
+  assert.equal((await AuditService.list()).length, afterRestore.length);
+});
