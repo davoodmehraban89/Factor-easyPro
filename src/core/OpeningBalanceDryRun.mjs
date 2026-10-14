@@ -1,3 +1,5 @@
+import { assertJalaliDate } from './AccountingCore.mjs';
+
 /**
  * Deterministic preflight for a historical-company opening balance import.
  * IMPORTANT: No database access or writes, journal posting or activation here.
@@ -41,6 +43,9 @@ export function previewOpeningBalances({
       openingDate < period.startDate || openingDate > period.endDate) {
     throw Error('شرکت، دوره یا تاریخ افتتاحیه نامعتبر است');
   }
+  assertJalaliDate(openingDate);
+  assertJalaliDate(period.startDate);
+  assertJalaliDate(period.endDate);
   for (const group of [lines, contacts, stock, cash]) rows(group, 'افتتاحیه');
   unique(lines, r => r.accountId, 'حساب افتتاحیه');
   unique(contacts, r => r.contactId, 'شخص');
