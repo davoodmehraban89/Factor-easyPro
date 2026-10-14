@@ -14,7 +14,7 @@ export const FINANCE_STORES = Object.freeze([
   'invoices','invoice_items','stock_movements','products','contacts','treasury',
   'warehouses','inventory_balances','stocktakes','stocktake_lines',
   'settlements','expenses','cheques','settings','account_mappings',
-  'audit_events'
+  'audit_events','document_corrections'
 ]);
 const uid=p=>StorageService.uid(p);
 const actor=()=>Auth.current()?.id||null;
@@ -196,7 +196,7 @@ class RetailPostingServiceImpl {
     await AuditService.append(tx, { companyId: ctx.companyId,
       eventType: 'commercial_journal_posted', sourceType: kind, sourceId: journal.id,
       commandKey: 'retail-journal:' + key, businessDate: ctx.date,
-      lineCount: filtered.length });
+      lineCount: filtered.length, correlationId: journal.id });
     return journal;
   }
   async stock(tx,ctx,warehouseId,item,direction,costValue,refId,refType='invoice') {
@@ -242,7 +242,7 @@ class RetailPostingServiceImpl {
         if(!invoice.originalInvoiceId)throw Error('فاکتور مرجوعی باید به فاکتور اولیه متصل باشد');
         const origin=sameCompany(await tx.get('invoices',invoice.originalInvoiceId),company,'فاکتور اولیه');
         const validKinds=invoice.kind==='sale_return'?['sale','non_formal']:['purchase'];
-        if(!validKinds.includes(origin.kind)||origin.isPreInvoice)
+        if(!validKinds.includes(origin.kind)||origin.isPreInvoice||!origin.financePosted)
           throw Error('نوع فاکتور اولیه با مرجوعی سازگار نیست');
         if(origin.contactId!==invoice.contactId)
           throw Error('طرف حساب مرجوعی با فاکتور اولیه مطابقت ندارد');
@@ -342,6 +342,17 @@ class RetailPostingServiceImpl {
         await this.recordCash(tx,ctx,{amount:invoice.paidAmount,
           contactId:invoice.contactId,invoiceId:invoice.id,method:invoice.paymentMethod,
           type:isIncoming?'receipt':'payment',referenceKind:invoice.kind});
+      }
+      if(['sale_return','purchase_return'].includes(invoice.kind)) {
+        await tx.add('document_corrections', {
+          id: uid('cor_'), companyId: company, sourceType: 'invoice',
+          sourceId: invoice.originalInvoiceId, correctionType: 'return',
+          resultType: 'invoice', resultId: invoice.id,
+          correlationId: journal.id, idempotencyKey: JSON.stringify([company,'return',invoice.id]),
+          actorId: actor(), occurredAtUtc: today(), businessDate: ctx.date,
+          documentVersion: 1, schemaVersion: 1,
+          reasonCode: invoice.kind === 'sale_return' ? 'customer_return' : 'supplier_return'
+        });
       }
       return (await tx.get('invoices',invoice.id));
     });
