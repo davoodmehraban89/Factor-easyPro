@@ -22,7 +22,7 @@ test('A04: an actual IndexedDB company backup round-trip restores records', asyn
   await StorageService.put('contacts', { id: 'customer-2', companyId: 'c2', name: 'Other company' });
   const backup = await SettingsController.exportBackup();
   assert.equal(backup.scope, 'company');
-  assert.equal(backup.schemaVersion, 6);
+  assert.equal(backup.schemaVersion, 7);
   await StorageService.delete('contacts', 'customer-1');
   assert.equal(await StorageService.get('contacts', 'customer-1'), undefined);
   const result = await SettingsController.importBackup(JSON.stringify(backup));
@@ -38,7 +38,7 @@ test('A04: malformed or future company backup envelopes never modify IndexedDB',
     { ...example, app: 'unknown' },
     { ...example, app: undefined },
     { ...example, scope: 'global' },
-    { ...example, schemaVersion: 7 },
+    { ...example, schemaVersion: 8 },
     { ...example, schemaVersion: '6' },
     { ...example, schemaVersion: undefined },
     { ...example, companyId: '' },
