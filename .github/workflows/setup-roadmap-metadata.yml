@@ -1,0 +1,34 @@
+name: One-time roadmap metadata setup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/setup-roadmap-metadata.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: factor-easypro-roadmap-metadata
+  cancel-in-progress: false
+
+jobs:
+  phase-metadata:
+    name: Configure phase milestones and issue labels
+    if: github.repository == 'davoodmehraban89/Factor-easyPro'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout trusted main source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run idempotent roadmap setup
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: ./.github/scripts/sync-roadmap.ps1
