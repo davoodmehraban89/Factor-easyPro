@@ -9,7 +9,8 @@ export const COMPANY_BACKUP_STORES = Object.freeze([
   'invoices', 'invoice_items', 'stock_movements', 'transactions',
   'cheques', 'expenses', 'account_chart', 'fiscal_periods',
   'journal_entries', 'journal_lines', 'warehouses', 'inventory_balances',
-  'stocktakes', 'stocktake_lines', 'settlements', 'account_mappings'
+  'stocktakes', 'stocktake_lines', 'settlements', 'account_mappings',
+  'audit_events', 'document_corrections'
 ]);
 const V2_STORES = new Set(['account_chart', 'fiscal_periods', 'journal_entries', 'journal_lines']);
 const isId = id => typeof id === 'string' && id.trim().length > 0;
@@ -38,14 +39,26 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
   return StorageService.transaction([...COMPANY_BACKUP_STORES, 'settings'], async tx => {
     for (const store of COMPANY_BACKUP_STORES) {
       for (const incoming of data[store] || []) {
+        const immutable = store === 'audit_events' || store === 'document_corrections';
+        // Historical audit/correction events cannot be reassigned to a new company.
+        if (immutable && incoming.companyId !== companyId) {
+          throw new Error('رویداد ممیزی یا اصلاح سند متعلق به شرکت دیگری است');
+        }
         const row = { ...incoming, companyId };
-        if (row.ownerUserId) row.ownerUserId = userId;
+        if (row.ownerUserId && !immutable) row.ownerUserId = userId;
         if (store === 'journal_entries' && row.sourceType && row.sourceId) {
           row.sourceKey = journalSourceKey(companyId, row.sourceType, row.sourceId, row.revision || 1);
         }
         const existing = await tx.get(store, row.id);
         if (existing && existing.companyId !== companyId) {
           throw new Error(`شناسه رکورد ${store}/${row.id} متعلق به شرکت دیگر است؛ بازیابی متوقف شد`);
+        }
+        if (existing && immutable) {
+          if (JSON.stringify(existing) !== JSON.stringify(row)) {
+            throw new Error('بازنویسی سابقه ممیزی یا اصلاح سند مجاز نیست');
+          }
+          counts.skipped++;
+          continue;
         }
         if (existing && mode === 'merge') {
           counts.skipped++;

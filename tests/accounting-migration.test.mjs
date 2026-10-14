@@ -17,7 +17,7 @@ test('migration: upgrading legacy IndexedDB v4 preserves invoices and creates V2
   });
   db.close();
   const upgraded = await StorageService.init();
-  assert.equal(upgraded.version, 6);
+  assert.equal(upgraded.version, 7);
   assert.deepEqual((await StorageService.get('invoices', 'legacy-inv-1')).number, 120);
   assert.equal((await StorageService.get('products', 'legacy-product')).name, 'کالای قبلی');
   for (const name of ['account_chart', 'fiscal_periods', 'journal_entries', 'journal_lines']) {

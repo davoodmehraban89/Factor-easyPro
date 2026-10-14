@@ -3,6 +3,7 @@
 import { StorageService } from './StorageService.js';
 import { DataScope } from './DataScope.js';
 import { Auth } from './Auth.js';
+import { AuditService } from './AuditService.js';
 import { buildLedgerReports } from './LedgerReports.mjs';
 import { reconcileFinancialData } from './ReconciliationCore.mjs';
 import {
@@ -143,7 +144,7 @@ class AccountingServiceImpl {
   async closePeriod(periodId) {
     if (!Auth.isAdmin()) throw new Error('بستن دوره مالی فقط برای مدیر مجاز است');
     const companyId = await DataScope.companyId();
-    return StorageService.transaction(['fiscal_periods', 'journal_entries'], async tx => {
+    return StorageService.transaction(['fiscal_periods', 'journal_entries', 'audit_events'], async tx => {
       const period = await periodFor(tx, companyId, periodId);
       ensurePeriodOpen(period);
       const journals = await entriesFor(tx, companyId);
@@ -152,6 +153,8 @@ class AccountingServiceImpl {
       }
       const closed = { ...period, status: 'closed', closed: true, closedBy: actor(), closedAt: new Date().toISOString() };
       await tx.put('fiscal_periods', closed);
+      await AuditService.append(tx, { companyId, eventType: 'period_closed', sourceType: 'fiscal_period',
+        sourceId: periodId, commandKey: 'close-period:' + periodId, businessDate: period.endDate });
       return closed;
     });
   }
@@ -247,7 +250,7 @@ class AccountingServiceImpl {
     const lines = cleanLines(data.lines);
     const sourceKey = data.sourceType && data.sourceId
       ? journalSourceKey(companyId, data.sourceType, data.sourceId, data.revision || 1) : undefined;
-    return StorageService.transaction(['account_chart', 'fiscal_periods', 'journal_entries', 'journal_lines'], async tx => {
+    return StorageService.transaction(['account_chart', 'fiscal_periods', 'journal_entries', 'journal_lines', 'audit_events'], async tx => {
       const period = await periodFor(tx, companyId, data.periodId);
       const accounts = await tx.getAllByIndex('account_chart', 'companyId', companyId);
       const totals = validateJournal({ companyId, date: data.date, lines }, accounts, period);
@@ -264,6 +267,9 @@ class AccountingServiceImpl {
       for (const [position, line] of lines.entries()) {
         await tx.put('journal_lines', { ...line, id: uid('jl_'), companyId, journalId: id, position });
       }
+      await AuditService.append(tx, { companyId, eventType: 'journal_posted', sourceType: 'journal',
+        sourceId: journal.id, commandKey: 'manual-journal:' + (sourceKey || journal.id),
+        businessDate: journal.date, lineCount: lines.length });
       return journal;
     });
   }
@@ -300,7 +306,7 @@ class AccountingServiceImpl {
   async reverseJournal(originalId, { periodId, date, description = '' }) {
     requireAccountingAdmin();
     const companyId = await DataScope.companyId();
-    return StorageService.transaction(['account_chart', 'fiscal_periods', 'journal_entries', 'journal_lines'], async tx => {
+    return StorageService.transaction(['account_chart', 'fiscal_periods', 'journal_entries', 'journal_lines', 'audit_events'], async tx => {
       const original = await tx.get('journal_entries', originalId);
       if (!original || original.companyId !== companyId || original.status !== 'posted' ||
           original.reversedById || original.reversalOfId) throw new Error('این سند قابل برگشت نیست');
@@ -327,6 +333,9 @@ class AccountingServiceImpl {
         await tx.put('journal_lines', { ...line, id: uid('jl_'), companyId, journalId: id, position });
       }
       await tx.put('journal_entries', { ...original, reversedById: id, reversedAt: journal.postedAt });
+      await AuditService.append(tx, { companyId, eventType: 'journal_reversed', sourceType: 'journal',
+        sourceId: id, commandKey: 'manual-reversal:' + originalId, businessDate: date,
+        lineCount: lines.length });
       return journal;
     });
   }

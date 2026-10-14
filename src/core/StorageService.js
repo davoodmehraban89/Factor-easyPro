@@ -4,7 +4,7 @@
 // ============================================================
 
 const DB_NAME = 'finora_pro_db';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 const STORES = [
   'users', 'companies', 'contacts', 'products',
@@ -15,7 +15,8 @@ const STORES = [
   'settings', 'logs',
   'account_chart', 'fiscal_periods', 'journal_entries', 'journal_lines',
   'warehouses', 'inventory_balances', 'stocktakes', 'stocktake_lines',
-  'settlements', 'account_mappings'
+  'settlements', 'account_mappings',
+  'audit_events', 'document_corrections'
 ];
 
 // جدول‌هایی که ایندکس ownerUserId ندارند
@@ -35,7 +36,9 @@ const INDEXES = {
   stocktakes: [['companyId', 'companyId'], ['warehouseId', 'warehouseId']],
   stocktake_lines: [['companyId', 'companyId'], ['stocktakeId', 'stocktakeId']],
   settlements: [['companyId', 'companyId'], ['invoiceId', 'invoiceId'], ['transactionId', 'transactionId']],
-  account_mappings: [['companyId', 'companyId']]
+  account_mappings: [['companyId', 'companyId']],
+  audit_events: [['companyId', 'companyId'], ['sourceId', 'sourceId'], ['correlationId', 'correlationId'], ['commandKey', 'commandKey', { unique: true }]],
+  document_corrections: [['companyId', 'companyId'], ['sourceId', 'sourceId'], ['idempotencyKey', 'idempotencyKey', { unique: true }]]
 };
 
 // فیلدهای مربوط به رمز عبور کاربران؛ هرگز در فایل پشتیبان نمی‌روند
@@ -181,6 +184,7 @@ class StorageServiceImpl {
         count: (s) => wrap(os(s).count()),
         put: (s, obj) => { this._touch(obj); return wrap(os(s).put(obj)).then(() => obj); },
         putRaw: (s, obj) => { if (!obj.id) obj.id = this.uid(); return wrap(os(s).put(obj)).then(() => obj); },
+        add: (s, obj) => { if (!obj.id) obj.id = this.uid(); return wrap(os(s).add(obj)).then(() => obj); },
         delete: (s, id) => wrap(os(s).delete(id)).then(() => undefined),
         clear: (s) => wrap(os(s).clear()).then(() => undefined)
       };

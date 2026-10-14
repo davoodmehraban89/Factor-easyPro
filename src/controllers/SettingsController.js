@@ -152,7 +152,7 @@ class SettingsControllerImpl {
         !['Factor-easyPro', 'Finora Pro'].includes(backup.app) ||
         backup.scope !== 'company' ||
         !Number.isSafeInteger(backup.schemaVersion) ||
-        backup.schemaVersion < 1 || backup.schemaVersion > 6 ||
+        backup.schemaVersion < 1 || backup.schemaVersion > 7 ||
         typeof backup.companyId !== 'string' || !backup.companyId.trim() ||
         !backup.data || typeof backup.data !== 'object' || Array.isArray(backup.data)) {
       throw new Error('ساختار یا نسخه فایل پشتیبان شرکت نامعتبر است');

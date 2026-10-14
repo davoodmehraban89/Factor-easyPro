@@ -22,7 +22,7 @@ test('V2 schema upgrade from phase-one v5 preserves ledgers, stock and people',a
  });
  raw.close();
  const db=await StorageService.init();
- assert.equal(db.version,6);
+ assert.equal(db.version,7);
  assert.equal((await StorageService.get('invoices','old-finance-inv')).number,'119');
  assert.equal((await StorageService.get('journal_entries','old-journal')).debit,100);
  for(const store of ['warehouses','inventory_balances','stocktakes','stocktake_lines',

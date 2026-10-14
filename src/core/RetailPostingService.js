@@ -2,6 +2,7 @@
 import { StorageService } from './StorageService.js';
 import { DataScope } from './DataScope.js';
 import { Auth } from './Auth.js';
+import { AuditService } from './AuditService.js';
 import { validateJournal, journalSourceKey, assertJalaliDate } from './AccountingCore.mjs';
 import { previewSaleReturnSettlement } from './ReturnSettlementCore.mjs';
 import { LEDGER_CODES, INVOICE_DIRECTIONS, amount, positiveAmount,
@@ -12,7 +13,8 @@ export const FINANCE_STORES = Object.freeze([
   'account_chart','fiscal_periods','journal_entries','journal_lines',
   'invoices','invoice_items','stock_movements','products','contacts','treasury',
   'warehouses','inventory_balances','stocktakes','stocktake_lines',
-  'settlements','expenses','cheques','settings','account_mappings'
+  'settlements','expenses','cheques','settings','account_mappings',
+  'audit_events'
 ]);
 const uid=p=>StorageService.uid(p);
 const actor=()=>Auth.current()?.id||null;
@@ -191,6 +193,10 @@ class RetailPostingServiceImpl {
       await tx.put('journal_lines',{...line,id:uid('jl_'),journalId:journal.id,
         companyId:ctx.companyId,position});
     }
+    await AuditService.append(tx, { companyId: ctx.companyId,
+      eventType: 'commercial_journal_posted', sourceType: kind, sourceId: journal.id,
+      commandKey: 'retail-journal:' + key, businessDate: ctx.date,
+      lineCount: filtered.length });
     return journal;
   }
   async stock(tx,ctx,warehouseId,item,direction,costValue,refId,refType='invoice') {
