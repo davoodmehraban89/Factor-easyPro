@@ -85,3 +85,12 @@
 - از [Issue #5](https://github.com/davoodmehraban89/Factor-easyPro/issues/5): ADR چرخه اسناد قطعی و رویدادهای ممیزی، بدون تغییر داده واقعی.
 - سپس A04 بازیابی قابل اعتماد به عنوان پیش‌نیاز A02 مهاجرت؛ بعد اجرای A01/A03 با commitهای کوچک و تست اتمیک.
 - B و C در حالت Planned بمانند تا معیار خروج A و B واقعاً برقرار شود.
+
+
+## ۱۰. همگام‌سازی مدیریت فازها در GitHub (2026-10-14)
+
+- فایل مرجع وضعیت جاری: [`PROJECT_STATUS.md`](../PROJECT_STATUS.md)؛ هر چت جدید باید ابتدا آن را مطالعه کند.
+- اسکریپت قابل اجرای مجدد [`.github/scripts/sync-roadmap.ps1`](../.github/scripts/sync-roadmap.ps1) صرفاً Milestoneهای A/B/C، Labelهای اولویت/حوزه/وضعیت و انتساب Issueهای موجود را تنظیم می‌کند.
+- workflow [`.github/workflows/setup-roadmap-metadata.yml`](../.github/workflows/setup-roadmap-metadata.yml) فقط پس از ادغام در `main` یا با اجرای دستی، با مجوز محدود `issues:write` فعالیت می‌کند. برای کنترل نتیجه باید لاگ موفق `ROADMAP_METADATA_SYNC=SUCCESS` و فیلد Milestone/Labels روی Issueها مشاهده شود.
+- این workflow **هیچ تنظیم محافظتی، collaborator، secret یا Release** را تغییر نمی‌دهد؛ `main` Ruleset و الزام بازبینی/CI در [#19](../../issues/19) نیازمند اقدام آگاهانه مدیر مخزن است.
+- اگر اجرای workflow شکست خورد، وضعیت Milestoneها «تکمیل‌شده» فرض نشود؛ فقط وضعیت واقعی در Issue #19 و `PROJECT_STATUS.md` ثبت شود.
