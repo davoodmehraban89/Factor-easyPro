@@ -11,6 +11,7 @@ import { Toast } from '../core/Toast.js';
 import { Formatters } from '../utils/Formatters.js';
 import { Auth } from '../core/Auth.js';
 import { ExcelController } from '../controllers/ExcelController.js';
+import { inspectSettlementConsistency } from '../core/FinancialDiagnosticsService.js';
 
 let cache = { company: {}, stats: {}, invoiceSettings: { numberingMode: 'auto', nextNumber: 1 } };
 
@@ -30,6 +31,7 @@ class SettingsViewImpl {
         ${this._renderShortcutsCard()}
         ${this._renderBackupCard()}
         ${this._renderStatsCard()}
+        ${Auth.isAdmin() ? this._renderHealthCard() : ''}
         ${this._renderThemeCard()}
         ${this._renderAboutCard()}
       </div>
@@ -496,6 +498,63 @@ class SettingsViewImpl {
   }
 
   // ============================================================
+  // ابزار تشخیص مغایرت‌ها (فقط خواندنی و درخواستی)
+  // ============================================================
+  _renderHealthCard() {
+    return `
+      <div class="card settings-card">
+        <div class="settings-card-header">
+          <div class="settings-card-icon">🔎</div>
+          <div>
+            <h3 class="settings-card-title">کنترل سلامت تسویه‌های مالی</h3>
+            <p class="settings-card-desc">بررسی مغایرت فاکتورها، رسیدها و تخصیص‌ها در شرکت فعال؛ بدون تغییر اطلاعات</p>
+          </div>
+        </div>
+        <button class="btn btn-secondary" onclick="window.SettingsView.runFinancialDiagnostics()">
+          بررسی مغایرت‌ها
+        </button>
+        <small style="display:block;margin-top:8px;color:var(--text-muted)">بررسی فقط هنگام درخواست اجرا می‌شود و هیچ سندی را خودکار اصلاح نمی‌کند.</small>
+      </div>
+    `;
+  }
+
+  async runFinancialDiagnostics() {
+    if (!Auth.isAdmin()) { Toast.error('این بررسی فقط برای مدیر مجاز است'); return; }
+    try {
+      Toast.info('در حال بررسی تسویه‌ها...');
+      const report = await inspectSettlementConsistency({ maxIssues: 50 });
+      const names = {
+        ORPHAN_SETTLEMENT: 'تسویه بدون فاکتور معتبر',
+        INVALID_SETTLEMENT_AMOUNT: 'مبلغ نامعتبر تسویه',
+        MISSING_TREASURY_TRANSACTION: 'رسید یا تراکنش خزانه ناموجود',
+        SETTLEMENT_AMOUNT_OVERFLOW: 'سرریز مبلغ تسویه',
+        SETTLEMENT_TOTAL_MISMATCH: 'عدم تطابق مبلغ تسویه با فاکتور',
+        INVALID_INVOICE_AMOUNT: 'مبلغ نامعتبر فاکتور',
+        INVOICE_OVERPAID: 'تسویه بیش از مبلغ فاکتور',
+        INVOICE_REMAINING_MISMATCH: 'مانده فاکتور نادرست',
+        INVOICE_STATUS_MISMATCH: 'وضعیت تسویه ناهماهنگ'
+      };
+      const rows = report.issues.map(issue => `
+        <div style="padding:9px 0;border-bottom:1px solid var(--border)">
+          <strong>${this._esc(names[issue.code] || issue.code)}</strong>
+          <div style="font-size:12px;color:var(--text-muted)">شناسه سند: ${this._esc(issue.documentId)}</div>
+        </div>`).join('');
+      const body = `
+        <p>فاکتورهای کنترل‌شده: <strong>${Formatters.number(report.checkedInvoices)}</strong>
+        | تخصیص‌ها: <strong>${Formatters.number(report.checkedSettlements)}</strong>
+        | مغایرت‌ها: <strong>${Formatters.number(report.issueCount)}</strong></p>
+        <p style="color:var(--text-muted);font-size:12px">این گزارش تشخیصی است؛ پیش از هر اصلاح، سندهای مبنا را بررسی کنید.</p>
+        ${rows || '<p>در کنترل‌های فعلی مغایرتی یافت نشد.</p>'}
+        ${report.truncated ? '<p>فقط ۵۰ مغایرت نخست نمایش داده می‌شود.</p>' : ''}
+      `;
+      Modal.open({ title: 'گزارش کنترل سلامت تسویه‌ها', body,
+        footer: '<button class="btn" onclick="FINORA.Modal.close()">بستن</button>', size: 'lg' });
+    } catch (err) {
+      Toast.error('بررسی سلامت تسویه‌ها ناموفق بود: ' + err.message);
+    }
+  }
+
+  // ============================================================
   // کارت آمار
   // ============================================================
   _renderStatsCard() {
@@ -583,6 +642,7 @@ class SettingsViewImpl {
       + this._renderShortcutsCard()
       + this._renderBackupCard()
       + this._renderStatsCard()
+      + (Auth.isAdmin() ? this._renderHealthCard() : '')
       + this._renderThemeCard()
       + this._renderAboutCard();
   }
