@@ -218,7 +218,7 @@ test('integration: Settings backup contains V2 ledger and restores it atomically
   await StorageService.put('users', { id: 'some-user', username: 'demo', pwHash: 'test-hash', pwSalt: 'test-salt' });
   await StorageService.put('account_chart', { id: 'foreign-account', companyId: 'c2', code: '1', name: 'Foreign assets', type: 'asset', level: 'group' });
   const backup = await SettingsController.exportBackup();
-  assert.equal(backup.data.users[0].pwHash, undefined);
+  assert.deepEqual(backup.data.users, [], 'company exports never include global user accounts');
   assert.equal((await StorageService.get('users', 'some-user')).pwHash, 'test-hash');
   assert.equal(backup.data.account_chart.length, 19);
   assert.equal(backup.data.fiscal_periods.length, 1);
