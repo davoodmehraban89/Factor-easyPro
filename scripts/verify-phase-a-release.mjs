@@ -40,6 +40,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     const json = path => JSON.parse(readFileSync(new URL('../' + path, import.meta.url), 'utf8'));
     const acceptance = json('docs/PHASE_A_RELEASE_ACCEPTANCE.json');
+    const notes = readFileSync(new URL('../docs/PHASE_A_RELEASE_NOTES_FA.md', import.meta.url), 'utf8');
+    if (!notes.trim() || notes.includes('پیش‌نویس، منتشر نشود')) {
+      throw new Error('Production release notes are still an unpublished draft');
+    }
     const packageVersion = json('package.json').version;
     const desktopVersion = json('src-tauri/tauri.conf.json').version;
     const result = verifyPhaseARelease({
