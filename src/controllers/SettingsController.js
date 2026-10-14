@@ -44,14 +44,33 @@ class SettingsControllerImpl {
       data: {}
     };
 
-    // Capture one consistent read-only snapshot; exclude sensitive credentials.
+    // Capture one consistent read-only snapshot. A company backup must not
+    // include records belonging to other companies or global user/log stores.
+    // User identities are summarized in backup.user; credentials never export.
     const companyId = await DataScope.companyId();
     const snapshot = await StorageService.exportAll();
+    backup.scope = 'company';
+    backup.companyId = companyId;
+    backup.schemaVersion = snapshot.version;
+
     for (const store of STORES) {
       const rows = snapshot.data[store] || [];
-      backup.data[store] = COMPANY_BACKUP_STORES.includes(store)
-        ? rows.filter(record => record.companyId === companyId)
-        : rows;
+      if (COMPANY_BACKUP_STORES.includes(store)) {
+        backup.data[store] = rows.filter(record => record.companyId === companyId);
+      } else if (store === 'companies') {
+        backup.data[store] = rows.filter(record => record.id === companyId);
+      } else if (store === 'settings') {
+        // restoreCompanyBackup currently restores only this one company-owned
+        // finance marker. Do not expose global settings or other companies'
+        // invoice settings, preferences and activation metadata.
+        backup.data[store] = rows.filter(record =>
+          record.companyId === companyId &&
+          record.id === `finance_v2_enabled_${companyId}`);
+      } else {
+        // In particular: users and logs are not restored by the
+        // company-scoped restore service and must not leak into exports.
+        backup.data[store] = [];
+      }
     }
 
     return backup;
