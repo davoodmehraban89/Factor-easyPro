@@ -28,6 +28,7 @@ class SettingsControllerImpl {
   // بکاپ‌گیری
   // ============================================================
   async exportBackup() {
+    if (!Auth.isAdmin()) throw new Error('تهیه فایل پشتیبان فقط توسط مدیر مجاز است');
     const user = Auth.current();
     if (!user) throw new Error('کاربر یافت نشد');
 
@@ -161,6 +162,7 @@ class SettingsControllerImpl {
   // پاک کردن همه‌ی داده‌ها
   // ============================================================
   async wipeAll() {
+    if (!Auth.isAdmin()) throw new Error('حذف اطلاعات فقط توسط مدیر مجاز است');
     await StorageService.clearAll();
     // sessionStorage و localStorage تمیز
     sessionStorage.clear();
