@@ -309,12 +309,17 @@ class StorageServiceImpl {
       const items = json.data[store];
       if (items === undefined) continue;
       if (!Array.isArray(items)) throw new Error(`بخش «${store}» در فایل پشتیبان نامعتبر است`);
+      const seenIds = new Set();
       for (const item of items) {
         const isObject = item && typeof item === 'object' && !Array.isArray(item);
         const idOk = isObject && (item.id === undefined ||
           (typeof item.id === 'string' && item.id.trim().length > 0) ||
           (typeof item.id === 'number' && Number.isSafeInteger(item.id) && item.id > 0));
         if (!idOk) throw new Error(`رکورد نامعتبر در بخش «${store}»`);
+        if (item.id !== undefined) {
+          if (seenIds.has(item.id)) throw new Error(`شناسه تکراری در بخش «${store}»`);
+          seenIds.add(item.id);
+        }
       }
     }
 
