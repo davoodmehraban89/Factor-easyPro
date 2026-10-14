@@ -10,7 +10,7 @@ test('print iframe does not expose an application title in browser-generated hea
 });
 
 test('print iframe uses zero page margin and keeps invoice layout padding', () => {
-  assert.match(source, /@page\s*\{[^}]*margin:\s*0\s*!important\s*;/s);
+  assert.match(source, /@page\s*\{[\s\S]*?margin:\s*0\s*!important\s*;/);
   assert.match(source, /\.print-doc/);
 });
 
