@@ -21,3 +21,12 @@ test('backup import rejects an unrelated application before database access', as
 test('backup import rejects array-shaped payloads', async () => {
   await assert.rejects(StorageService.importAll({ app: 'Factor-easyPro', version: 6, data: [] }), /فرمت فایل نامعتبر/);
 });
+
+test('backup import requires a recognized application identity', async () => {
+  for (const app of [undefined, null, '', 'other']) {
+    await assert.rejects(
+      StorageService.importAll({ app, version: 6, data: {} }),
+      /فینورا پرو/
+    );
+  }
+});
