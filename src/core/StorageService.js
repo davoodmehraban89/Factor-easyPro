@@ -290,7 +290,8 @@ class StorageServiceImpl {
    * می‌دارند و کاربران جدید باید در اولین ورود رمز تعیین کنند.
    */
   async importAll(json) {
-    if (!json || typeof json !== 'object' || !json.data || typeof json.data !== 'object') {
+    if (!json || typeof json !== 'object' || Array.isArray(json) ||
+      !json.data || typeof json.data !== 'object' || Array.isArray(json.data)) {
       throw new Error('فرمت فایل نامعتبر است');
     }
     if (json.app && !['Finora Pro', 'Factor-easyPro'].includes(json.app)) {
