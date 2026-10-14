@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/setup-roadmap-metadata.yml'
+      - '.github/scripts/sync-roadmap.ps1'
   workflow_dispatch:
 
 permissions:
