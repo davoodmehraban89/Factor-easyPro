@@ -111,3 +111,39 @@ test('A03: company backup rejects tampered historical audit records even in repl
   await assert.rejects(SettingsController.importBackup(backup, { mode: 'replace' }), /بازنویسی سابقه/);
   assert.ok((await AuditService.list()).some(e => e.eventType === 'journal_posted'));
 });
+
+test('A03: draft journal creation, editing, posting and discarding are audited atomically', async () => {
+  const state = await setup();
+  const draft = await AccountingService.saveDraftJournal({
+    periodId: state.period.id, date: businessDate,
+    lines: [{ accountId: state.cash.id, debit: 1000, credit: 0 }]
+  });
+  await AccountingService.updateDraftJournal(draft.id, {
+    periodId: state.period.id, date: businessDate,
+    lines: [
+      { accountId: state.cash.id, debit: 1000, credit: 0 },
+      { accountId: state.sales.id, debit: 0, credit: 1000 }
+    ]
+  });
+  const beforeFailure = (await AuditService.list()).length;
+  await assert.rejects(AccountingService.updateDraftJournal(draft.id, {
+    periodId: state.period.id, date: businessDate,
+    lines: [
+      { accountId: state.cash.id, debit: 1000, credit: 0 },
+      { accountId: state.sales.id, debit: 0, credit: 999 }
+    ]
+  }, { post: true }), /تراز نیست/);
+  assert.equal((await AuditService.list()).length, beforeFailure,
+    'A failed transaction must not persist a success audit event');
+  await AccountingService.postDraftJournal(draft.id);
+  const unused = await AccountingService.saveDraftJournal({
+    periodId: state.period.id, date: businessDate,
+    lines: [{ accountId: state.cash.id, debit: 4, credit: 0 }]
+  });
+  await AccountingService.discardDraftJournal(unused.id);
+  const eventTypes = (await AuditService.list()).map(e => e.eventType);
+  for (const type of ['period_opened', 'draft_created', 'draft_updated',
+    'draft_posted', 'draft_discarded']) {
+    assert.ok(eventTypes.includes(type), type);
+  }
+});
