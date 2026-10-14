@@ -1,0 +1,34 @@
+name: A08 synthetic performance baseline
+on:
+  pull_request:
+    paths:
+      - 'scripts/a08-benchmark.mjs'
+      - 'tests/a08-benchmark-fixtures.test.mjs'
+      - '.github/workflows/a08-benchmark.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthetic-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Verify deterministic fixture
+        run: node --test tests/a08-benchmark-fixtures.test.mjs
+      - name: Measure 10k products and 50k invoices
+        run: node --expose-gc scripts/a08-benchmark.mjs
+      - name: Upload measured report
+        uses: actions/upload-artifact@v4
+        with:
+          name: a08-synthetic-baseline
+          path: a08-benchmark-results.json
+          retention-days: 30
+          if-no-files-found: error
