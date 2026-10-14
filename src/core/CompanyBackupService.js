@@ -17,16 +17,19 @@ const isId = id => typeof id === 'string' && id.trim().length > 0;
 export async function restoreCompanyBackup(data, { companyId, userId, mode = 'merge' }) {
   if (!Auth.isAdmin())throw Error('بازنشانی یا بازیابی اطلاعات حسابداری فقط با مدیر مجاز است');
   if (!companyId || !userId || !['merge', 'replace'].includes(mode)) throw new Error('گزینه‌های بازیابی نامعتبر است');
-  if (!data || typeof data !== 'object') throw new Error('داده فایل پشتیبان نامعتبر است');
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('داده فایل پشتیبان نامعتبر است');
 
   for (const store of COMPANY_BACKUP_STORES) {
     const items = data[store];
     if (items === undefined) continue;
     if (!Array.isArray(items)) throw new Error(`جدول ${store} در فایل پشتیبان نامعتبر است`);
+    const seenIds = new Set();
     for (const item of items) {
       if (!item || typeof item !== 'object' || Array.isArray(item) || !isId(item.id)) {
         throw new Error(`رکورد بدون شناسه معتبر در بخش ${store}`);
       }
+      if (seenIds.has(item.id)) throw new Error(`شناسه تکراری در بخش ${store}`);
+      seenIds.add(item.id);
     }
   }
 
