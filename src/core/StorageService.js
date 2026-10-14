@@ -290,13 +290,17 @@ class StorageServiceImpl {
    * می‌دارند و کاربران جدید باید در اولین ورود رمز تعیین کنند.
    */
   async importAll(json) {
-    if (!json || typeof json !== 'object' || !json.data || typeof json.data !== 'object') {
+    if (!json || typeof json !== 'object' || Array.isArray(json) ||
+      !json.data || typeof json.data !== 'object' || Array.isArray(json.data)) {
       throw new Error('فرمت فایل نامعتبر است');
     }
     if (json.app && !['Finora Pro', 'Factor-easyPro'].includes(json.app)) {
       throw new Error('این فایل پشتیبان فینورا پرو نیست');
     }
-    if (typeof json.version === 'number' && json.version > DB_VERSION) {
+    if (!Number.isSafeInteger(json.version) || json.version < 1) {
+      throw new Error('نسخه فایل پشتیبان نامعتبر است');
+    }
+    if (json.version > DB_VERSION) {
       throw new Error('این پشتیبان مربوط به نسخه جدیدتری از برنامه است');
     }
 
@@ -305,10 +309,17 @@ class StorageServiceImpl {
       const items = json.data[store];
       if (items === undefined) continue;
       if (!Array.isArray(items)) throw new Error(`بخش «${store}» در فایل پشتیبان نامعتبر است`);
+      const seenIds = new Set();
       for (const item of items) {
         const isObject = item && typeof item === 'object' && !Array.isArray(item);
-        const idOk = isObject && (item.id === undefined || typeof item.id === 'string' || typeof item.id === 'number');
+        const idOk = isObject && (item.id === undefined ||
+          (typeof item.id === 'string' && item.id.trim().length > 0) ||
+          (typeof item.id === 'number' && Number.isSafeInteger(item.id) && item.id > 0));
         if (!idOk) throw new Error(`رکورد نامعتبر در بخش «${store}»`);
+        if (item.id !== undefined) {
+          if (seenIds.has(item.id)) throw new Error(`شناسه تکراری در بخش «${store}»`);
+          seenIds.add(item.id);
+        }
       }
     }
 
