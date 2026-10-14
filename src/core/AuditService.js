@@ -1,0 +1,56 @@
+import { Auth } from './Auth.js';
+import { DataScope } from './DataScope.js';
+import { StorageService } from './StorageService.js';
+
+const VALID_TYPES = new Set([
+  'journal_posted', 'journal_reversed', 'period_closed',
+  'commercial_journal_posted', 'draft_posted', 'draft_updated',
+  'draft_discarded', 'period_opened'
+]);
+const validId = value => typeof value === 'string' && value.trim().length > 0;
+
+class AuditServiceImpl {
+  /**
+   * Must execute INSIDE the same readwrite IndexedDB transaction as the
+   * audited business operation. Never call StorageService.put separately.
+   */
+  async append(tx, { companyId, eventType, sourceType, sourceId,
+    commandKey, businessDate = null, correlationId, lineCount = 0 }) {
+    const actorId = Auth.current()?.id;
+    if (!validId(companyId) || !validId(actorId) ||
+        !VALID_TYPES.has(eventType) || !validId(sourceType) ||
+        !validId(sourceId) || !validId(commandKey) ||
+        !Number.isSafeInteger(lineCount) || lineCount < 0) {
+      throw new Error('داده رویداد ممیزی نامعتبر است');
+    }
+    const event = {
+      id: StorageService.uid('audit_'), companyId, actorId,
+      eventType, sourceType, sourceId,
+      occurredAtUtc: new Date().toISOString(), businessDate,
+      correlationId: validId(correlationId) ? correlationId : StorageService.uid('corr_'),
+      commandKey: companyId + ':' + commandKey,
+      schemaVersion: 1, documentVersion: 1,
+      result: 'committed', createdByService: true,
+      // No customer name, phone, free-text description, secrets or bank details.
+      safeSummary: { lineCount }
+    };
+    // add() cannot overwrite an earlier event and a unique commandKey makes
+    // replay fail atomically. No externally mutable audit status is stored.
+    await tx.add('audit_events', event);
+    return event;
+  }
+
+  async list({ limit = 100 } = {}) {
+    if (!Auth.isAdmin()) throw new Error('مشاهده ردپای حسابرسی فقط برای مدیر مجاز است');
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) {
+      throw new RangeError('محدودیت نمایش رویداد ممیزی نامعتبر است');
+    }
+    const companyId = await DataScope.companyId();
+    const events = await StorageService.getAllByIndex('audit_events', 'companyId', companyId);
+    // Read-only company scope; no user secrets or private payloads in these events.
+    return events.sort((a, b) =>
+      String(b.occurredAtUtc).localeCompare(String(a.occurredAtUtc)) ||
+      String(b.id).localeCompare(String(a.id))).slice(0, limit);
+  }
+}
+export const AuditService = new AuditServiceImpl();
