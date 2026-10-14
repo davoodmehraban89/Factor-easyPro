@@ -215,6 +215,12 @@ class RetailPostingServiceImpl {
     const company=await DataScope.companyId();
     if(!await this.isEnabled())throw Error('حسابداری یکپارچه برای این شرکت فعال نیست');
     assertInvoiceTotals(invoice);
+    // A return is a new commercial/ledger document, not authorization for
+    // an automatic bank withdrawal or supplier receipt. The payment requires
+    // a separate explicitly approved treasury operation.
+    if(['sale_return','purchase_return'].includes(invoice.kind) && invoice.paidAmount > 0) {
+      throw Error('استرداد یا دریافت وجه مرجوعی باید با سند مستقل خزانه ثبت و تأیید شود');
+    }
     if(invoice.isPreInvoice)throw Error('پیش‌فاکتور نباید سند مالی تولید کند');
     if(!invoice.id)throw Error('شناسه یکتای فاکتور الزامی است');
     return StorageService.transaction(FINANCE_STORES,async tx=>{
