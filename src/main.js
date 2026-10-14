@@ -2,6 +2,7 @@
 // Finora Pro — Main Entry Point
 // ============================================================
 
+import appPackage from '../package.json' with { type: 'json' };
 import { SettingsView } from './views/SettingsView.js';
 import { ChequesView } from './views/ChequesView.js';
 import { TreasuryView } from './views/TreasuryView.js';
@@ -28,7 +29,7 @@ import { LicenseService } from './core/LicenseService.js';
 import { CompanyService } from './core/CompanyService.js';
 
 const FINORA = {
-  version: '1.1.1',
+  version: appPackage.version,
   Storage: StorageService,
   Theme, Toast, Router, Auth, EventBus, Modal, KeyboardShortcuts, License: LicenseService, Company: CompanyService,
   Utils: { Formatters, Jalali, numberToWords, NumberInput }
@@ -141,6 +142,8 @@ function showBootstrapError(err) {
 
 async function bootstrap() {
   try {
+    const visibleVersion = document.getElementById('appVersionLabel');
+    if (visibleVersion) visibleVersion.textContent = 'نسخه ' + FINORA.version;
     console.log('🚀 Finora Pro v' + FINORA.version);
 
     Theme.init();
