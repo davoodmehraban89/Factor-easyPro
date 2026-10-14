@@ -79,12 +79,43 @@ $assignments = @(
   @{ N=19; Phase='A'; P='P0'; Area='operations'; Type='operations' }
   @{ N=20; Phase='A'; P='P1'; Area='operations'; Type='operations' }
 )
+# Resolve milestone IDs after create, so this also works on the first run.
+$milestonesNow = @(gh api ("repos/{0}/milestones?state=all&per_page=100" -f $repo) | ConvertFrom-Json)
+if ($LASTEXITCODE -ne 0) { throw 'Could not query milestones after setup' }
 foreach ($item in $assignments) {
   $phase = @($phaseDefs | Where-Object { $_.Code -eq $item.Phase })[0]
-  $nameList = @('phase:'+$item.Phase,'priority:'+$item.P,'area:'+$item.Area,
-    'type:'+$item.Type,'status:planned')
-  gh issue edit $item.N --repo $repo --milestone $phase.Title --add-label ($nameList -join ',') 1>$null
-  if ($LASTEXITCODE -ne 0) { throw ('Failed to assign issue #' + $item.N) }
+  $matches = @($milestonesNow | Where-Object { $_.title -eq $phase.Title })
+  if ($matches.Count -ne 1) { throw ('Missing or duplicate milestone for ' + $item.Phase) }
+  $issue = gh api ("repos/{0}/issues/{1}" -f $repo,$item.N) | ConvertFrom-Json
+  if ($LASTEXITCODE -ne 0 -or -not $issue.number) {
+    throw ('Failed to inspect issue #' + $item.N)
+  }
+  # Issue labels may already exist. Preserve unrelated labels and merge only
+  # roadmap metadata rather than replacing the issue's current label set.
+  $nameList = @(
+    "phase:$($item.Phase)",
+    "priority:$($item.P)",
+    "area:$($item.Area)",
+    "type:$($item.Type)",
+    'status:planned'
+  )
+  $existingNames = @($issue.labels | ForEach-Object { $_.name })
+  $allNames = @($existingNames + $nameList | Sort-Object -Unique)
+  $body = @{ milestone = [int]$matches[0].number; labels = $allNames } |
+    ConvertTo-Json -Compress -Depth 5
+  # PowerShell's native argument parsing may collapse comma-separated
+  # --add-label arguments. Use the GitHub JSON API explicitly instead.
+  $patched = $body | gh api -X PATCH ("repos/{0}/issues/{1}" -f $repo,$item.N) --input - |
+    ConvertFrom-Json
+  if ($LASTEXITCODE -ne 0 -or $patched.milestone.number -ne $matches[0].number) {
+    throw ('Failed to assign issue #' + $item.N)
+  }
+  $patchedNames = @($patched.labels | ForEach-Object { $_.name })
+  foreach ($needed in $nameList) {
+    if ($patchedNames -notcontains $needed) {
+      throw ('Missing assigned label ' + $needed + ' on issue #' + $item.N)
+    }
+  }
   Write-Output ('ASSIGNED_ISSUE=' + $item.N + ' PHASE=' + $item.Phase)
 }
 
