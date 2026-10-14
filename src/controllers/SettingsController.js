@@ -141,11 +141,27 @@ class SettingsControllerImpl {
         backup = JSON.parse(new TextDecoder().decode(clear));
       } catch (_) { throw new Error('رمز نادرست است یا فایل پشتیبان آسیب دیده است'); }
     }
-    if (!backup || !backup.data) {
-      throw new Error('ساختار فایل بکاپ نامعتبر است');
+    // Never send an unauthenticated, foreign-app or future-schema envelope to
+    // the financial restore transaction. The encrypted file is authenticated
+    // by AES-GCM; legacy plaintext JSON still requires structural validation.
+    if (!backup || typeof backup !== 'object' || Array.isArray(backup) ||
+        !['Factor-easyPro', 'Finora Pro'].includes(backup.app) ||
+        backup.scope !== 'company' ||
+        !Number.isSafeInteger(backup.schemaVersion) ||
+        backup.schemaVersion < 1 || backup.schemaVersion > 6 ||
+        typeof backup.companyId !== 'string' || !backup.companyId.trim() ||
+        !backup.data || typeof backup.data !== 'object' || Array.isArray(backup.data)) {
+      throw new Error('ساختار یا نسخه فایل پشتیبان شرکت نامعتبر است');
     }
 
-    return restoreCompanyBackup(backup.data, { companyId: await DataScope.companyId(), userId: user.id, mode: options.mode || 'merge' });
+    const companyId = await DataScope.companyId();
+    // Prevent an accidental merge of one company's books into another.
+    // Explicit cross-company migration is a separate, intentional operation.
+    if (backup.companyId !== companyId && options.allowCrossCompany !== true) {
+      throw new Error('پشتیبان متعلق به شرکت دیگری است؛ بازیابی در شرکت فعلی متوقف شد');
+    }
+
+    return restoreCompanyBackup(backup.data, { companyId, userId: user.id, mode: options.mode || 'merge' });
   }
 
   async readFileAsText(file) {
