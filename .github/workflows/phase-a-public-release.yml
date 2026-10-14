@@ -82,8 +82,12 @@ jobs:
           $installer = @(Get-ChildItem 'src-tauri/target/release/bundle/nsis/*x64-setup.exe')[0]
           gh release create $tag $installer.FullName SHA256SUMS.txt --target $env:GITHUB_SHA --draft --title "Factor-easyPro $tag — Reliable Accounting Core" --notes-file docs/PHASE_A_RELEASE_NOTES_FA.md
           if ($LASTEXITCODE -ne 0) { throw 'Draft release creation failed' }
-          gh release view $tag --json assets | Out-String | Select-String 'SHA256SUMS.txt' | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw 'Checksum asset not found' }
+          $assetJson = gh release view $tag --json assets
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read draft release assets' }
+          $names = @(($assetJson | ConvertFrom-Json).assets | ForEach-Object { $_.name })
+          if ($names.Count -ne 2 -or -not ($names -contains 'SHA256SUMS.txt') -or -not ($names -contains $installer.Name)) {
+            throw 'Release must contain exactly one verified installer and checksum'
+          }
           gh release edit $tag --draft=false --latest
           if ($LASTEXITCODE -ne 0) { throw 'Public release publication failed; verify GitHub state' }
           gh release view $tag --json url,isDraft,assets
