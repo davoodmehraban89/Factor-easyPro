@@ -296,7 +296,10 @@ class StorageServiceImpl {
     if (json.app && !['Finora Pro', 'Factor-easyPro'].includes(json.app)) {
       throw new Error('این فایل پشتیبان فینورا پرو نیست');
     }
-    if (typeof json.version === 'number' && json.version > DB_VERSION) {
+    if (!Number.isSafeInteger(json.version) || json.version < 1) {
+      throw new Error('نسخه فایل پشتیبان نامعتبر است');
+    }
+    if (json.version > DB_VERSION) {
       throw new Error('این پشتیبان مربوط به نسخه جدیدتری از برنامه است');
     }
 
