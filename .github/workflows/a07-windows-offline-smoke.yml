@@ -1,0 +1,26 @@
+name: A07 Windows offline browser startup smoke
+on:
+  pull_request:
+    paths:
+      - 'tests/a07-windows-offline-browser-smoke.cjs'
+      - '.github/workflows/a07-windows-offline-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Build local frontend assets without any external runtime scripts
+        run: npm run build
+      - name: Validate startup and auth overlay after 3 offline Edge reloads
+        run: node tests/a07-windows-offline-browser-smoke.cjs
