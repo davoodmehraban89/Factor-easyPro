@@ -28,6 +28,16 @@ jobs:
       - run: npm ci
       - name: Verify ALL production acceptance evidence and consistent version
         run: node scripts/verify-phase-a-release.mjs "${{ inputs.release_tag }}"
+      - name: Verify production license issuer key is provisioned
+        env:
+          VITE_LICENSE_PUBLIC_JWK: ${{ secrets.VITE_LICENSE_PUBLIC_JWK }}
+        shell: bash
+        run: |
+          node --input-type=module -e '
+            import { loadProductionLicensePublicKey } from "./src/core/LicenseActivationCore.mjs";
+            if (!loadProductionLicensePublicKey(process.env.VITE_LICENSE_PUBLIC_JWK)) {
+              throw Error("Missing or malformed VITE_LICENSE_PUBLIC_JWK: A06 cannot ship");
+            }'
       - name: Run the full accounting, backup and security tests
         run: npm test
       - name: Verify frontend and production dependencies
@@ -57,8 +67,13 @@ jobs:
         run: node scripts/verify-phase-a-release.mjs "${{ inputs.release_tag }}"
       - name: Run Windows integration tests
         run: npm test
-      - name: Build production x64 NSIS installer
-        run: npm exec tauri build
+      - name: Build production x64 NSIS installer with trusted issuer
+        env:
+          VITE_LICENSE_PUBLIC_JWK: ${{ secrets.VITE_LICENSE_PUBLIC_JWK }}
+        shell: pwsh
+        run: |
+          if (-not $env:VITE_LICENSE_PUBLIC_JWK) { throw 'Production license issuer key is missing' }
+          npm exec tauri build
       - name: Verify produced installer and SHA-256 checksum
         shell: pwsh
         run: |
