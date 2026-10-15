@@ -454,3 +454,33 @@ test('A01: customer returns reject non-posted legacy origin without partial writ
   assert.equal((await db.getAll('journal_entries')).length, countBefore);
   assert.equal((await db.getAll('document_corrections')).length, 0);
 });
+
+test('A01: inflated return price cannot credit more than the original sale total', async () => {
+  await setup();
+  await purchase10();
+  const original = await sale3({ paidAmount: 200 });
+  const before = {
+    stock: await db.getAll('stock_movements'),
+    journals: await db.getAll('journal_entries'),
+    settlements: await db.getAll('settlements'),
+    invoices: await db.getAll('invoices')
+  };
+  const inflated = invoice('sale_return', 1, 650, { originalInvoiceId: original.id });
+  await assert.rejects(retail.issueInvoice(inflated), /مجموع مبلغ مرجوعی/);
+  assert.deepEqual(await db.getAll('stock_movements'), before.stock);
+  assert.deepEqual(await db.getAll('journal_entries'), before.journals);
+  assert.deepEqual(await db.getAll('settlements'), before.settlements);
+  assert.deepEqual(await db.getAll('invoices'), before.invoices);
+});
+
+test('A01: successive returns cannot exceed original gross even if total quantities fit', async () => {
+  await setup();
+  await purchase10();
+  const original = await sale3();
+  await retail.issueInvoice(invoice('sale_return', 1, 400, {
+    originalInvoiceId: original.id
+  }));
+  const excessive = invoice('sale_return', 1, 300, { originalInvoiceId: original.id });
+  await assert.rejects(retail.issueInvoice(excessive), /مجموع مبلغ مرجوعی/);
+  assert.equal((await db.getAll('document_corrections')).length, 1);
+});
