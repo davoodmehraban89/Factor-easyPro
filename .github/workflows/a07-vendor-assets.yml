@@ -48,6 +48,7 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package.json package-lock.json vendor/xlsx-0.20.3.tgz vendor/SHA256SUMS.txt
+          git add package.json package-lock.json vendor/SHA256SUMS.txt
+          git add -f vendor/xlsx-0.20.3.tgz
           git commit -m 'build(A07): vendor offline SheetJS and Vazirmatn dependencies'
           git push origin HEAD:fix/a07-offline-bundled-assets
