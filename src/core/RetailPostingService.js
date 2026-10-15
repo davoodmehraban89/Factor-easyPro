@@ -247,6 +247,16 @@ class RetailPostingServiceImpl {
         if(origin.contactId!==invoice.contactId)
           throw Error('طرف حساب مرجوعی با فاکتور اولیه مطابقت ندارد');
         const otherReturns=existing.filter(x=>x.kind===invoice.kind&&x.originalInvoiceId===origin.id);
+        // Quantity alone is not a sufficient return cap: a changed unit price,
+        // discount or VAT could credit more money than the original invoice.
+        // Check the entire history with bigint arithmetic to avoid overflow.
+        let returnedGross = 0n;
+        for(const prior of otherReturns) {
+          returnedGross += BigInt(amount(prior.grandTotal));
+        }
+        if(returnedGross + BigInt(amount(invoice.grandTotal)) > BigInt(amount(origin.grandTotal))) {
+          throw Error('مجموع مبلغ مرجوعی از مبلغ فاکتور اولیه بیشتر است');
+        }
         const returnedRows=otherReturns.flatMap(x=>x.items||[]);
         const ids=new Set(invoice.items.map(x=>x.productId||x.productName));
         for(const id of ids){
