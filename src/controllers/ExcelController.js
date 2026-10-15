@@ -2,6 +2,7 @@
 // ExcelController — خروجی و ورودی Excel
 // ============================================================
 
+import * as XLSX from 'xlsx';
 import { StorageService } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
 import { DataScope } from '../core/DataScope.js';

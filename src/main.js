@@ -3,6 +3,8 @@
 // ============================================================
 
 import appPackage from '../package.json' with { type: 'json' };
+import '@fontsource/vazirmatn/400.css';
+import '@fontsource/vazirmatn/700.css';
 import { SettingsView } from './views/SettingsView.js';
 import { ChequesView } from './views/ChequesView.js';
 import { TreasuryView } from './views/TreasuryView.js';
