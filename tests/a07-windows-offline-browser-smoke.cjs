@@ -103,7 +103,9 @@ async function loadChromeCDP(wsURL) {
         await cdp.command('Page.reload', { ignoreCache: true });
         await sleep(900);
       }
-      const state = await cdp.evaluate(`(async () => {
+      // A reload can destroy the JS context while CDP evaluates it. Retry
+      // until the new document's real authentication screen is ready.
+      const state = await eventually(() => cdp.evaluate(`(async () => {
         for (let j = 0; j < 180; j++) {
           const hasAuth = !!document.getElementById('finoraAuthOverlay');
           const loaded = !!window.FINORA;
@@ -119,7 +121,7 @@ async function loadChromeCDP(wsURL) {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
         throw Error('Authentication overlay never appeared; startup may be stalled');
-      })()`);
+      })()`), 30000, 300);
       assert.equal(state.hasAuth, true);
       assert.equal(state.loaded, true);
       assert.equal(state.errors, '');
