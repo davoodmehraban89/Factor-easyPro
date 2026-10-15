@@ -58,6 +58,7 @@ class StorageServiceImpl {
   constructor() {
     this.db = null;
     this._opening = null;
+    this.blockedTimeoutMs = 12000;
   }
 
   // ---------- باز کردن پایگاه داده ----------
@@ -68,6 +69,15 @@ class StorageServiceImpl {
 
     this._opening = new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
+      let resolved = false;
+      let blockedTimer = null;
+      const fail = error => {
+        if (resolved) return;
+        resolved = true;
+        if (blockedTimer !== null) clearTimeout(blockedTimer);
+        this._opening = null;
+        reject(error);
+      };
 
       req.onupgradeneeded = (e) => {
         const db = e.target.result;
@@ -83,10 +93,19 @@ class StorageServiceImpl {
       };
 
       req.onblocked = () => {
-        console.warn('IndexedDB: ارتقای پایگاه داده منتظر بسته شدن پنجره‌های دیگر است');
+        console.warn('IndexedDB: نسخه دیگری از پایگاه داده هنوز باز است');
+        if (blockedTimer !== null) return;
+        blockedTimer = setTimeout(() => {
+          fail(new Error('ارتقای پایگاه داده متوقف شده است؛ پنجره‌های دیگر برنامه را ببندید و دوباره تلاش کنید'));
+        }, this.blockedTimeoutMs);
       };
 
       req.onsuccess = () => {
+        if (blockedTimer !== null) clearTimeout(blockedTimer);
+        // An older blocked request may complete after its timeout. Close it:
+        // only a fresh explicit retry may take ownership of that DB handle.
+        if (resolved) { req.result.close(); return; }
+        resolved = true;
         this.db = req.result;
         this.db.onversionchange = () => {
           this.db.close();
@@ -97,10 +116,7 @@ class StorageServiceImpl {
         resolve(this.db);
       };
 
-      req.onerror = () => {
-        this._opening = null;
-        reject(req.error);
-      };
+      req.onerror = () => fail(req.error || new Error('باز کردن پایگاه داده ناموفق بود'));
     });
 
     return this._opening;
