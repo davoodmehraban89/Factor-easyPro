@@ -367,14 +367,20 @@ class SettingsViewImpl {
     }
   }
 
-  downloadProductsTemplate() {
-    ExcelController.downloadProductsTemplate();
-    Toast.success('قالب کالاها دانلود شد');
+  async downloadProductsTemplate() {
+    try {
+      await ExcelController.downloadProductsTemplate();
+    } catch (error) {
+      Toast.error('ساخت قالب کالاها ناموفق بود: ' + error.message);
+    }
   }
 
-  downloadContactsTemplate() {
-    ExcelController.downloadContactsTemplate();
-    Toast.success('قالب اشخاص دانلود شد');
+  async downloadContactsTemplate() {
+    try {
+      await ExcelController.downloadContactsTemplate();
+    } catch (error) {
+      Toast.error('ساخت قالب اشخاص ناموفق بود: ' + error.message);
+    }
   }
 
   // ============================================================
