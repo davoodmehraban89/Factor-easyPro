@@ -13,6 +13,7 @@ import { Auth } from '../core/Auth.js';
 import { ExcelController } from '../controllers/ExcelController.js';
 import { inspectSettlementConsistency } from '../core/FinancialDiagnosticsService.js';
 import { AuditService } from '../core/AuditService.js';
+import { LicenseService } from '../core/LicenseService.js';
 
 let cache = { company: {}, stats: {}, invoiceSettings: { numberingMode: 'auto', nextNumber: 1 } };
 
@@ -31,6 +32,7 @@ class SettingsViewImpl {
         ${this._renderExcelCard()}
         ${this._renderShortcutsCard()}
         ${this._renderBackupCard()}
+        ${Auth.isAdmin() ? this._renderLicenseCard() : ''}
         ${this._renderStatsCard()}
         ${Auth.isAdmin() ? this._renderHealthCard() : ''}
         ${Auth.isAdmin() ? this._renderAuditCard() : ''}
@@ -693,12 +695,73 @@ class SettingsViewImpl {
     `;
   }
 
+  _renderLicenseCard() {
+    const state = LicenseService.status();
+    const mode = state.mode === 'licensed' ? 'مجوز امضاشده معتبر' :
+      state.mode === 'license-invalid' ? 'مجوز نامعتبر یا منقضی' : 'نسخه آزمایشی';
+    const machine = this._esc(LicenseService.installationId() || 'نامشخص');
+    const readiness = LicenseService.hasTrustedIssuer()
+      ? 'کلید عمومی صادرکننده فعال است'
+      : 'فعلاً کلید عمومی صدور مجوز در نسخه نصب‌شده تنظیم نشده است';
+    return `
+      <div class="card settings-card">
+        <div class="settings-card-header">
+          <div class="settings-card-icon">🔐</div>
+          <div>
+            <h3 class="settings-card-title">مجوز آفلاین نرم‌افزار</h3>
+            <p class="settings-card-desc">وضعیت: ${this._esc(mode)} — ${state.readOnly ? 'فقط مشاهده' : 'قابل ثبت'}</p>
+          </div>
+        </div>
+        <div style="font-size:12px;line-height:2">
+          <div>شناسه نصب: <code dir="ltr" style="overflow-wrap:anywhere">${machine}</code></div>
+          <div>${this._esc(readiness)}</div>
+        </div>
+        <button class="btn btn-secondary" onclick="window.SettingsView.openSignedLicenseModal()" ${LicenseService.hasTrustedIssuer() ? '' : 'disabled'}>
+          فعال‌سازی با مجوز امضاشده
+        </button>
+        <small style="display:block;margin-top:8px">برای فعال‌سازی، مجوز صادرشده مخصوص همین شناسه نصب لازم است؛ اطلاعات حسابداری در صورت انقضا حذف نمی‌شود.</small>
+      </div>
+    `;
+  }
+
+  openSignedLicenseModal() {
+    if (!Auth.isAdmin()) { Toast.error('فقط مدیر مجاز است'); return; }
+    if (!LicenseService.hasTrustedIssuer()) {
+      Toast.error('کلید معتبر صادرکننده در این نسخه نصب نشده است'); return;
+    }
+    Modal.open({
+      title: 'فعال‌سازی مجوز آفلاین',
+      body: '<label for="signedLicenseToken">متن JSON مجوز امضاشده</label>' +
+        '<textarea id="signedLicenseToken" class="form-control" rows="8" spellcheck="false" dir="ltr"></textarea>' +
+        '<p style="font-size:12px">امضای دیجیتال و شناسه دستگاه پیش از هر تغییر اعتبارسنجی می‌شوند.</p>',
+      footer: '<button class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button>' +
+        '<button class="btn" onclick="window.SettingsView.applySignedLicense()">اعتبارسنجی و فعال‌سازی</button>',
+      size: 'md'
+    });
+  }
+
+  async applySignedLicense() {
+    if (!Auth.isAdmin()) { Toast.error('فقط مدیر مجاز است'); return; }
+    const token = document.getElementById('signedLicenseToken')?.value;
+    if (!token?.trim()) { Toast.error('متن مجوز خالی است'); return; }
+    try {
+      await LicenseService.activateSignedLicense(token.trim());
+      Modal.close();
+      const grid = document.querySelector('.settings-grid');
+      if (grid) grid.innerHTML = this._renderAllCards();
+      Toast.success('مجوز آفلاین معتبر با موفقیت فعال شد');
+    } catch (error) {
+      Toast.error(error.message);
+    }
+  }
+
   _renderAllCards() {
     return this._renderCompanyCard()
       + this._renderInvoiceSettingsCard()
       + this._renderExcelCard()
       + this._renderShortcutsCard()
       + this._renderBackupCard()
+      + (Auth.isAdmin() ? this._renderLicenseCard() : '')
       + this._renderStatsCard()
       + (Auth.isAdmin() ? this._renderHealthCard() : '')
       + (Auth.isAdmin() ? this._renderAuditCard() : '')
