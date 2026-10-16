@@ -27,14 +27,17 @@
       "evidence": [
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38922551919",
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38939141475",
-        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38942948274"
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38942948274",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38945374347"
       ],
       "name": "Versioned restore, v6 migration and real backup recovery"
     },
     {
       "id": "A05",
       "accepted": false,
-      "evidence": [],
+      "evidence": [
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38946201604"
+      ],
       "name": "Fiscal closure and treasury settlement invariants"
     },
     {
@@ -50,7 +53,8 @@
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38920001588",
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38921787116",
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38924043704",
-        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38925949798"
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38925949798",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38947068034"
       ],
       "name": "Windows install-upgrade, RTL printing and offline operation"
     },
@@ -58,7 +62,8 @@
       "id": "A08",
       "accepted": false,
       "evidence": [
-        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38627028939"
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38627028939",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38945788170"
       ],
       "name": "Measured synthetic/Windows performance and crash recovery"
     },
