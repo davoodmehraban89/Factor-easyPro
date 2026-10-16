@@ -161,3 +161,24 @@ test('A03/A04: successful backup restore receives an audit event; rejected resto
   await assert.rejects(SettingsController.importBackup(tampered, { mode: 'replace' }), /بازنویسی سابقه/);
   assert.equal((await AuditService.list()).length, afterRestore.length);
 });
+
+test('A04: immutable company audit replay ignores JSON property ordering but rejects value changes', async () => {
+  await setup();
+  const backup = await SettingsController.exportBackup();
+  const original = backup.data.audit_events[0];
+  assert.ok(original, 'a period-opened audit record must exist');
+  const reordered = structuredClone(backup);
+  reordered.data.audit_events[0] = Object.fromEntries(
+    Object.entries(reordered.data.audit_events[0]).reverse()
+  );
+  // Key order changes do not alter a signed accounting fact.
+  const result = await SettingsController.importBackup(reordered);
+  assert.ok(result.skipped >= 1);
+  assert.deepEqual(await StorageService.get('audit_events', original.id), original);
+
+  const changed = structuredClone(reordered);
+  changed.data.audit_events[0].sourceId = 'FORGED_PERIOD';
+  await assert.rejects(SettingsController.importBackup(changed, { mode: 'replace' }),
+    /بازنویسی سابقه/);
+  assert.equal((await StorageService.get('audit_events', original.id)).sourceId, original.sourceId);
+});
