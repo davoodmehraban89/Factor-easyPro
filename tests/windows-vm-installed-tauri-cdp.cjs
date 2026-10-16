@@ -11,10 +11,10 @@ const { verifyNativeOrigin } = require('./windows-vm-native-origin.cjs');
 
 const [exe, profile, mode, expectedVersion, reportPath] = process.argv.slice(2);
 assert.equal(process.platform, 'win32');
-assert.ok(['seed','upgrade','reopen','fresh','benchmark'].includes(mode), 'unknown lab mode');
+assert.ok(['seed','upgrade','reopen','fresh','benchmark','crash-arm','crash-verify'].includes(mode), 'unknown lab mode');
 assert.ok(fs.existsSync(exe), 'installed Windows executable missing');
 fs.mkdirSync(profile, { recursive: true });
-const port = mode === 'seed' ? 9371 : mode === 'upgrade' ? 9372 : mode === 'reopen' ? 9374 : mode === 'benchmark' ? 9375 : 9373;
+const port = mode === 'seed' ? 9371 : mode === 'upgrade' ? 9372 : mode === 'reopen' ? 9374 : mode === 'benchmark' ? 9375 : mode === 'crash-arm' ? 9376 : mode === 'crash-verify' ? 9377 : 9373;
 const PASSWORD = 'VmOnly-Factor-83471!'; // Synthetic password, never printed.
 
 const REG_POLICY = [
@@ -143,7 +143,7 @@ async function connect(url) {
       assert.equal(ready.version, expectedVersion, 'candidate build runtime version mismatch');
     }
     const setup = ready.initialMode.includes('تعیین رمز');
-    if (mode === 'seed' || mode === 'fresh' || mode === 'benchmark') {
+    if (mode === 'seed' || mode === 'fresh' || mode === 'benchmark' || mode === 'crash-arm') {
       assert.equal(setup, true, 'a new native profile must prompt to set the administrator password');
     } else {
       assert.equal(setup, false, 'upgrade/reopen should preserve existing administrator credentials');
@@ -157,6 +157,40 @@ async function connect(url) {
       'document.getElementById("finoraAuthOverlay") ? null : (window.FINORA && document.getElementById("pageContent") ? true : null)'
     ), 65000);
     report.login = setup ? 'first-run-admin-setup-passed' : 'existing-admin-password-passed';
+
+    if (mode === 'crash-arm') {
+      const source = fs.readFileSync(
+        path.join(__dirname, 'windows-vm-native-crash-import-browser.js'), 'utf8');
+      const armed = await cdp.evaluate(source, 90000);
+      assert.equal(armed.scenario, 'real-StorageService.importAll-mid-write');
+      assert.equal(armed.armed, true);
+      assert.equal(armed.committed, false);
+      assert.ok(armed.staged >= 20 && armed.staged < armed.total,
+        'A04 restore must be actively staging before process termination');
+      // Kill the *real Windows native process tree*, including WebView2, not
+      // just abort an IndexedDB request or throw a JS exception.
+      assert.ok(proc?.pid, 'Real native process PID missing for crash test');
+      execFileSync('taskkill.exe', ['/PID', String(proc.pid), '/T', '/F'],
+        { stdio: 'ignore', timeout: 30000 });
+      report.crashInjected = { realWindowsProcessKilled: true,
+        restoreInProgress: true, stagedBeforeCrash: armed.staged };
+      report.status = 'PASSED';
+      return;
+    }
+    if (mode === 'crash-verify') {
+      const result = await cdp.evaluate(`(async () => {
+        const rows=(await FINORA.Storage.getAll('contacts'))
+          .filter(x=>typeof x.id==='string' && x.id.startsWith('vm-a04-crash-contact-'));
+        return { partialRows: rows.length,
+          dbVersion: (await FINORA.Storage.init()).version,
+          signedIn: !document.getElementById('finoraAuthOverlay') };
+      })()`, 60000);
+      assert.deepEqual(result, { partialRows: 0, dbVersion: 7, signedIn: true },
+        'Forced termination left partial restored contacts or lost login');
+      report.crashRollback = 'killed-real-installed-Windows-WebView2-during-importAll-no-partial-rows-on-restart';
+      report.status = 'PASSED';
+      return;
+    }
 
     if (mode === 'seed') {
       const seeded = await cdp.evaluate('(async()=>{' +
