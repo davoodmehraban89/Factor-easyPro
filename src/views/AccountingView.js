@@ -100,7 +100,8 @@ class AccountingViewImpl {
         <div class="form-group">
           <label class="form-label" for="openingFileInput">فایل افتتاحیه برای بررسی</label>
           <input id="openingFileInput" class="form-control" type="file"
-            accept=".json,application/json" />
+            accept=".json,application/json"
+            onchange="window.AccountingView.resetOpeningPreview()" />
         </div>
         <button class="btn btn-secondary" onclick="window.AccountingView.previewOpeningFile()">
           کنترل مانده‌ها و دوره (بدون ثبت)
@@ -110,6 +111,13 @@ class AccountingViewImpl {
         </div>
       </section>
     `;
+  }
+
+  resetOpeningPreview() {
+    this._openingCandidate = null;
+    this._openingReview = null;
+    const host = document.getElementById('openingPreviewReport');
+    if (host) host.textContent = 'فایل تغییر کرد؛ لازم است دوباره بررسی شود.';
   }
 
   async previewOpeningFile() {
