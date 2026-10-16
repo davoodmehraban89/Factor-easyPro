@@ -129,7 +129,17 @@ async function connect(url) {
     ), 65000);
     report.installedNativeTauri = true;
     report.browserOrigin = ready.href.replace(/[/#?].*$/, '');
-    assert.equal(ready.version, expectedVersion, 'built runtime version mismatch');
+    report.displayedVersion = ready.version;
+    report.versionMatchesPackage = ready.version === expectedVersion;
+    // Verified against git tag v2.0.3: that shipped src/main.js hardcodes
+    // FINORA.version = '1.1.1' despite package/installer version 2.0.3.
+    // Record the existing release defect but continue data-preservation checks.
+    if (mode === 'seed' && expectedVersion === '2.0.3' &&
+        ready.version === '1.1.1') {
+      report.knownLegacyVersionLabelDefect = 'public-2.0.3-displays-1.1.1';
+    } else {
+      assert.equal(ready.version, expectedVersion, 'candidate build runtime version mismatch');
+    }
     const setup = ready.initialMode.includes('تعیین رمز');
     if (mode === 'seed' || mode === 'fresh') {
       assert.equal(setup, true, 'a new native profile must prompt to set the administrator password');
