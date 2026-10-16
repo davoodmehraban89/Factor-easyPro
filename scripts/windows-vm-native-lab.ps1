@@ -174,6 +174,7 @@ try {
     'treasury-cheque-reconciliation-readonly',
     'sale-return-immutable-stock-and-ledger',
     'purchase-return-and-stock-guardrails',
+    'return-cash-settlement-net-credit',
     'append-only-history-bulk-clear-protection',
     'backup-and-atomic-rejection',
     'rtl-invoice-print-settings',
