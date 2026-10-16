@@ -240,10 +240,17 @@ class StorageServiceImpl {
         getAll: (s) => wrap(os(s).getAll()).then(r => r || []),
         getAllByIndex: (s, index, key) => wrap(os(s).index(index).getAll(key)).then(r => r || []),
         count: (s) => wrap(os(s).count()),
-        put: (s, obj) => { this._touch(obj); return wrap(os(s).put(obj)).then(() => obj); },
-        putRaw: (s, obj) => { if (!obj.id) obj.id = this.uid(); return wrap(os(s).put(obj)).then(() => obj); },
+        // Audit/correction history may be appended, never overwritten.
+        put: (s, obj) => { this._touch(obj); return wrap(
+          APPEND_ONLY_STORES.has(s) ? os(s).add(obj) : os(s).put(obj)
+        ).then(() => obj); },
+        putRaw: (s, obj) => { if (!obj.id) obj.id = this.uid(); return wrap(
+          APPEND_ONLY_STORES.has(s) ? os(s).add(obj) : os(s).put(obj)
+        ).then(() => obj); },
         add: (s, obj) => { if (!obj.id) obj.id = this.uid(); return wrap(os(s).add(obj)).then(() => obj); },
-        delete: (s, id) => wrap(os(s).delete(id)).then(() => undefined),
+        delete: (s, id) => APPEND_ONLY_STORES.has(s)
+          ? Promise.reject(new Error('حذف مستقیم سابقه ممیزی یا اصلاح سند مجاز نیست'))
+          : wrap(os(s).delete(id)).then(() => undefined),
         clear: (s) => wrap(os(s).clear()).then(() => undefined)
       };
 
@@ -294,7 +301,8 @@ class StorageServiceImpl {
   async put(store, obj) {
     if (globalThis.FINORA?.License && !['users', 'settings', 'logs'].includes(store)) globalThis.FINORA.License.assertWritable();
     this._touch(obj);
-    await this._exec(store, 'readwrite', s => s.put(obj));
+    await this._exec(store, 'readwrite',
+      s => APPEND_ONLY_STORES.has(store) ? s.add(obj) : s.put(obj));
     return obj;
   }
 
@@ -307,6 +315,9 @@ class StorageServiceImpl {
   }
 
   async delete(store, id) {
+    if (APPEND_ONLY_STORES.has(store)) {
+      throw new Error('حذف مستقیم سابقه ممیزی یا اصلاح سند مجاز نیست');
+    }
     if (globalThis.FINORA?.License && !['users', 'settings', 'logs'].includes(store)) globalThis.FINORA.License.assertWritable();
     await this._exec(store, 'readwrite', s => s.delete(id));
   }
