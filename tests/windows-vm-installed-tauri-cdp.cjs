@@ -337,6 +337,49 @@ async function connect(url) {
         report.screenshot = 'UNVERIFIED: ' + screenshotError.message;
       }
     }
+    if (mode === 'fresh') {
+      // A07: emulate a disconnected WebView2 network on the REAL installed app.
+      // This is stronger than jsdom/offline browser preview but not an OS
+      // Wi-Fi disable, physical power loss, or a disconnected customer device.
+      await cdp.command('Network.enable');
+      await cdp.command('Network.emulateNetworkConditions', {
+        offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0
+      });
+      try {
+        const offline = await cdp.evaluate(`(async () => {
+          if (navigator.onLine !== false) throw Error('WebView2 offline emulation did not set navigator offline');
+          const routes = [
+            'dashboard','invoices','products','contacts','treasury',
+            'cheques','expenses','reports','accounting','settings'
+          ];
+          const timings = [];
+          for (const route of routes) {
+            const t = performance.now();
+            await FINORA.Router.go(route);
+            const body = (document.getElementById('pageContent')?.textContent || '').trim();
+            if (FINORA.Router.current() !== route || body.length <= 10 ||
+                body.includes('خطا در بارگذاری صفحه') ||
+                document.querySelector('.toast-error') ||
+                document.getElementById('finoraAuthOverlay')) {
+              throw Error('Installed app route failed while offline: ' + route);
+            }
+            timings.push({ route, milliseconds: Math.round(performance.now() - t) });
+          }
+          await FINORA.Router.go('dashboard');
+          return { simulatedOffline: !navigator.onLine, routesChecked: timings.length,
+            routeDurationsMs: timings };
+        })()`, 45000);
+        assert.equal(offline.simulatedOffline, true);
+        assert.equal(offline.routesChecked, 10);
+        assert.equal(offline.routeDurationsMs.length, 10);
+        report.nativeOffline = offline;
+      } finally {
+        // Preserve the runner's network state for post-run evidence upload.
+        await cdp.command('Network.emulateNetworkConditions', {
+          offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1
+        });
+      }
+    }
     report.status = 'PASSED';
     console.log(JSON.stringify(report, null, 2));
   } catch (err) {
