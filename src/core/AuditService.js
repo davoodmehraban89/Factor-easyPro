@@ -5,7 +5,8 @@ import { StorageService } from './StorageService.js';
 const VALID_TYPES = new Set([
   'journal_posted', 'journal_reversed', 'period_closed',
   'commercial_journal_posted', 'draft_posted', 'draft_updated',
-  'draft_discarded', 'draft_created', 'period_opened', 'backup_restored'
+  'draft_discarded', 'draft_created', 'period_opened', 'backup_restored',
+  'opening_posted'
 ]);
 const validId = value => typeof value === 'string' && value.trim().length > 0;
 

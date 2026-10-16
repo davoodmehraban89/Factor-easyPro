@@ -12,7 +12,7 @@ import {
 } from './AccountingCore.mjs';
 
 const requireAccountingAdmin = () => { if(!Auth.isAdmin()) throw new Error('ثبت یا ویرایش ساختار حسابداری فقط برای مدیر مجاز است'); };
-const RESERVED_SOURCES = new Set(['invoice','treasury','expense','cheque','cheque_status','stocktake']);
+const RESERVED_SOURCES = new Set(['invoice','treasury','expense','cheque','cheque_status','stocktake','opening_balance']);
 const ensureManualSource = type => {
   if (RESERVED_SOURCES.has(type)) throw new Error('منشأ عملیاتی رزروشده فقط توسط موتور حسابداری یکپارچه ثبت می‌شود');
 };
