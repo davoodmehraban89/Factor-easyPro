@@ -54,7 +54,7 @@
     // This keeps the evaluation context alive for the required assertions.
     window.setTimeout = (fn, delay, ...args) => {
       if (delay === 1500 && String(fn).includes('location.reload')) return 0;
-      return original.timeout(fn, delay, ...args);
+      return original.timeout.call(window, fn, delay, ...args);
     };
 
     await window.SettingsView.downloadBackup();
