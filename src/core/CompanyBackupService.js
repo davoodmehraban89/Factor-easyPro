@@ -124,6 +124,55 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
       }
     }
 
+    // A restored row labelled as finance-posted must point to the real
+    // posted journal produced by its source command. Otherwise a partial
+    // backup could fabricate a "paid/posted" invoice without any ledger.
+    for (const [store, kind] of [
+      ['invoices', 'invoice'], ['expenses', 'expense'], ['cheques', 'cheque']
+    ]) {
+      for (const row of data[store] || []) {
+        if (!row.financePosted) continue;
+        if (!isId(row.journalId)) {
+          throw Error('سند مالی قطعی بازیابی‌شده فاقد شناسه دفتر کل است');
+        }
+        const journal = await tx.get('journal_entries', row.journalId);
+        if (!journal || journal.companyId !== companyId ||
+            journal.status !== 'posted' ||
+            journal.sourceType !== kind || journal.sourceId !== row.id) {
+          throw Error('ارجاع دفتر کل سند مالی بازیابی‌شده نامعتبر است');
+        }
+        if (store === 'cheques' && row.statusVersion === 2) {
+          if (!isId(row.statusJournalId)) {
+            throw Error('شناسه سند تغییر وضعیت چک بازیابی‌شده نامعتبر است');
+          }
+          const statusJournal = await tx.get('journal_entries', row.statusJournalId);
+          if (!statusJournal || statusJournal.companyId !== companyId ||
+              statusJournal.status !== 'posted' ||
+              statusJournal.sourceType !== 'cheque_status' ||
+              statusJournal.sourceId !== row.id) {
+            throw Error('ارجاع سند تغییر وضعیت چک بازیابی‌شده نامعتبر است');
+          }
+        }
+      }
+    }
+    for (const row of data.treasury || []) {
+      if (row.recordType !== 'transaction' || !row.financePosted) continue;
+      if (!isId(row.journalId)) {
+        throw Error('تراکنش مالی بازیابی‌شده فاقد سند دفتر کل است');
+      }
+      const journal = await tx.get('journal_entries', row.journalId);
+      const journalTypes = new Set(['treasury', 'expense', 'cheque_status']);
+      if (!journal || journal.companyId !== companyId ||
+          journal.status !== 'posted' || !journalTypes.has(journal.sourceType)) {
+        throw Error('تراکنش خزانه به سند دفتر کل معتبر اشاره ندارد');
+      }
+      if (journal.sourceType === 'treasury' && journal.sourceId !== row.id ||
+          journal.sourceType === 'expense' && journal.sourceId !== row.refExpenseId ||
+          journal.sourceType === 'cheque_status' && journal.sourceId !== row.refChequeId) {
+        throw Error('سند دفتر کل تراکنش خزانه به عملیات دیگری تعلق دارد');
+      }
+    }
+
     if (COMPANY_BACKUP_STORES.filter(s => V2_STORES.has(s)).some(s => (data[s] || []).length)) {
       const accounts = await tx.getAllByIndex('account_chart', 'companyId', companyId);
       const periods = await tx.getAllByIndex('fiscal_periods', 'companyId', companyId);
