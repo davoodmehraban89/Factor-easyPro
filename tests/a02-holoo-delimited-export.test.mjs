@@ -95,7 +95,7 @@ test('A02: text containing prototype-like column header cannot poison object pro
 
 test('A02: diagnostics never expose raw bank IDs, contacts or formulas', () => {
   const sample=fixture();
-  sample.tables.cheques.text='id,amount,name\nPRIVATE1234,-25,=HYPERLINK("https://example.invalid")\n';
+  sample.tables.cheques.text='id,amount,name\nPRIVATE1234,-25,"=HYPERLINK(""https://example.invalid"")"\n';
   const outcome=previewHolooDelimitedExport(sample,{maxIssues:1});
   assert.equal(outcome.status,'blocked');
   for(const term of ['PRIVATE1234','HYPERLINK','example.invalid'])
