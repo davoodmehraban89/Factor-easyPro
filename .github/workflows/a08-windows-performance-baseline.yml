@@ -1,0 +1,65 @@
+name: Phase A A08 Windows synthetic performance baseline
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/a08-windows-performance-baseline.yml'
+      - 'scripts/a08-benchmark.mjs'
+      - 'src/core/StorageService.js'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-synthetic-baseline:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout immutable source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Measure 10000 products and 50000 invoices on Windows
+        shell: pwsh
+        run: |
+          node --max-old-space-size=3072 scripts/a08-benchmark.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'A08 synthetic benchmark failed' }
+          if (!(Test-Path 'a08-benchmark-results.json')) { throw 'No measured benchmark report' }
+          $report = Get-Content 'a08-benchmark-results.json' -Raw | ConvertFrom-Json
+          if ($report.counts.products -ne 10000 -or $report.counts.invoices -ne 50000 -or
+              $report.counts.scopedInvoices -ne 10000) {
+            throw 'A08 seeded data count validation failed'
+          }
+          foreach ($metric in @($report.timingsMs.seedProducts,$report.timingsMs.seedInvoices,
+              $report.timingsMs.companyInvoiceRead.p50,$report.timingsMs.companyInvoiceRead.p95,
+              $report.timingsMs.fullBackupExport)) {
+            if ($null -eq $metric -or [double]$metric -lt 0) { throw 'A08 invalid measurement' }
+          }
+          $report | Add-Member -NotePropertyName githubCommit -NotePropertyValue $env:GITHUB_SHA
+          $report | Add-Member -NotePropertyName runnerOS -NotePropertyValue $env:RUNNER_OS
+          $report | ConvertTo-Json -Depth 9 | Set-Content 'a08-benchmark-results.json' -Encoding utf8
+          Write-Host 'A08 Windows synthetic baseline captured (not native UI or physical disk crash evidence).'
+      - name: Upload measured synthetic evidence even if validation fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a08-windows-synthetic-baseline
+          path: a08-benchmark-results.json
+          if-no-files-found: warn
+          retention-days: 30
+      - name: State acceptance boundary
+        if: always()
+        shell: pwsh
+        run: |
+          "Windows Node/fake-indexeddb benchmark only; figures are measurements, not predetermined performance guarantees." >> $env:GITHUB_STEP_SUMMARY
+          "This does not replace an installed NSIS/WebView2 benchmark, disk power-loss testing or customer workload acceptance." >> $env:GITHUB_STEP_SUMMARY
