@@ -207,12 +207,24 @@ try {
       'killed-real-installed-Windows-WebView2-during-importAll-no-partial-rows-on-restart') {
     throw 'A04 actual process-crash restore rollback evidence is missing'
   }
+  # New A08 criterion: this is *renderer JavaScript heap*, never total Windows
+  # RAM/RSS. Require the real installed candidate's CDP memory measurements.
+  $heap = $nativePerformance.nativePerformance.jsHeapBytes
+  if (!$heap -or $nativePerformance.nativePerformance.jsHeapScope -ne
+      'renderer-js-heap-not-total-Windows-process-memory' -or
+      [long]$heap.beforeUsed -le 0 -or
+      [long]$heap.afterUsed -le 0 -or
+      [long]$heap.afterAllocated -lt [long]$heap.afterUsed) {
+    throw 'Installed native WebView2 60k workload has no valid JS heap evidence'
+  }
   $summary.integratedCoverage = [ordered]@{
     installedFinancialScenarios = $mandatory.Count
     offlineRoutes = 10
     printPdfPages = [int]$freshResult.nativePrint.pages
     benchmarkProducts = 10000
     benchmarkInvoices = 50000
+    nativeJsHeapAfterUsedBytes = [long]$heap.afterUsed
+    nativeJsHeapScope = 'renderer-only'
     crashRestoreRowsRemaining = 0
     independentHumanQA = 'not-covered'
     customerBackup = 'not-covered'
