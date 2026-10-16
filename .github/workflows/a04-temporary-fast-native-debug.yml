@@ -1,0 +1,44 @@
+name: A04 fast native company-backup diagnostics (temporary)
+on:
+  push:
+    branches: ['test/a04-native-encrypted-company-backup-main']
+    paths:
+      - 'tests/windows-vm-encrypted-company-backup-browser.js'
+      - 'tests/windows-vm-installed-tauri-cdp.cjs'
+      - 'scripts/windows-vm-fast-native-backup-smoke.ps1'
+      - '.github/workflows/a04-temporary-fast-native-debug.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  reuse-preview:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Reuse previously built identical-source Windows NSIS
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 38924229527
+          github-token: ${{ github.token }}
+          name: factor-easypro-windows-pr-preview
+          path: test-installer
+      - name: Run native encrypted company backup without recompiling Rust
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem test-installer -Recurse -Filter '*x64-setup.exe')
+          if ($files.Count -ne 1) { throw 'Expected exactly one prebuilt x64 NSIS preview' }
+          ./scripts/windows-vm-fast-native-backup-smoke.ps1 -Installer $files[0].FullName -ExpectedVersion '2.0.3'
+      - name: Save failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a04-fast-native-company-backup-evidence
+          path: ${{ runner.temp }}/factor-fast-native-backup-lab/reports/*.json
+          retention-days: 7
+          if-no-files-found: warn
