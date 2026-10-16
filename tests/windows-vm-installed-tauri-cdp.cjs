@@ -194,7 +194,8 @@ async function connect(url) {
       assert.equal(restored.version, 7);
       assert.equal(restored.product, 'Synthetic VM product');
       assert.equal(restored.amount, 987654);
-      assert.equal(restored.audits, 0, 'migration must not manufacture historical audit events');
+      assert.equal(restored.audits, mode === 'upgrade' ? 0 : 1,
+        'migration must not fabricate history; an explicitly created event must persist after restart');
       assert.equal(restored.corrections, true);
       report.indexedDb = mode === 'upgrade' ?
         'real-WebView2-v6-to-v7-passed' : 'persisted-real-WebView2-v7-on-restart';
