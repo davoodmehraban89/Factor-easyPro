@@ -15,6 +15,7 @@ on:
       - 'tests/windows-vm-native-functional-matrix.cjs'
       - 'tests/windows-vm-encrypted-company-backup-browser.js'
       - 'tests/windows-vm-native-print-pdf-browser.js'
+      - 'tests/windows-vm-native-crash-import-browser.js'
       - 'tests/windows-vm-native-performance-browser.js'
       - 'scripts/windows-vm-native-lab.ps1'
       - 'scripts/windows-vm-set-candidate.cjs'
