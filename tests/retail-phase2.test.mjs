@@ -484,3 +484,55 @@ test('A01: successive returns cannot exceed original gross even if total quantit
   await assert.rejects(retail.issueInvoice(excessive), /مجموع مبلغ مرجوعی/);
   assert.equal((await db.getAll('document_corrections')).length, 1);
 });
+
+test('A05: inactive treasury accounts reject transfers, expenses and cheque clearance atomically',async()=>{
+ await setup();await purchase10();await sale3();
+ const active=await db.get('treasury','cash-1');
+ const second=await retail.createTreasuryAccount({
+   id:'disabled-a05',companyId:company,recordType:'account',
+   type:'bank',name:'بانک مسدود',ownerUserId:'phase2-admin',
+   initialBalance:0,isActive:true,isDefault:false
+ });
+ await db.put('treasury',{...second,isActive:false});
+ const count=(name)=>db.getAll(name).then(rows=>rows.length);
+ const before={journals:await count('journal_entries'),money:await count('treasury')};
+ for(const [id,fromAccountId,toAccountId] of [
+   ['disabled-transfer-to',active.id,second.id],
+   ['disabled-transfer-from',second.id,active.id]
+ ]){
+   await assert.rejects(retail.postTransaction({
+     id,type:'transfer',date,amount:45,fromAccountId,toAccountId
+   }),/غیرفعال/);
+   assert.equal(await db.get('treasury',id),undefined);
+ }
+ assert.equal(await count('journal_entries'),before.journals);
+ assert.equal(await count('treasury'),before.money);
+ await db.put('treasury',{...active,isActive:false});
+ await assert.rejects(retail.postExpense({
+   id:'disabled-expense',kind:'expense',date,amount:60,method:'cash',category:'تست'
+ }),/صندوق یا بانک/);
+ assert.equal(await db.get('expenses','disabled-expense'),undefined);
+ await db.put('treasury',active);
+ const cheque=await retail.postCheque({
+   id:'disabled-cheque',direction:'inbound',status:'pending',
+   issueDate:date,dueDate:date,contactId:'contact-1',amount:120,
+   chequeNumber:'A05'
+ });
+ const preClear=await count('journal_entries');
+ await assert.rejects(retail.changeChequeStatus(cheque.id,'cleared',{
+   date,accountId:second.id
+ }),/فعال نیست/);
+ assert.equal((await db.get('cheques',cheque.id)).status,'pending');
+ assert.equal(await count('journal_entries'),preClear);
+ assert.equal((await db.getAll('treasury')).filter(x=>x.refChequeId===cheque.id).length,0);
+ const cleared=await retail.changeChequeStatus(cheque.id,'cleared',{
+   date,accountId:active.id
+ });
+ assert.equal(cleared.status,'cleared');
+ await assert.rejects(retail.changeChequeStatus(cheque.id,'cleared',{
+   date,accountId:active.id
+ }),/در جریان/);
+ assert.equal((await db.getAll('treasury')).filter(x=>x.refChequeId===cheque.id).length,1);
+ const balance=await accounts.trialBalance();
+ assert.equal(balance.totals.debit,balance.totals.credit);
+});
