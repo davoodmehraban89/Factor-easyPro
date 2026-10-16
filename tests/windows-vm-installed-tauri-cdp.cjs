@@ -308,6 +308,7 @@ async function connect(url) {
         filenameSuffix: '.fbackup',
         wrongPasswordRejected: true,
         tamperedCiphertextRejectedWithoutWrites: true,
+        lateFinancialValidationRolledBack: true,
         sameCompanyRestore: true,
         restoredContact: true,
         restoreAudited: true,
