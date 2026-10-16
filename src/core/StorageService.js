@@ -44,6 +44,22 @@ const INDEXES = {
 // فیلدهای مربوط به رمز عبور کاربران؛ هرگز در فایل پشتیبان نمی‌روند
 const CREDENTIAL_FIELDS = ['pass', 'pwHash', 'pwSalt', 'pwIter', 'pwAlgo'];
 
+const APPEND_ONLY_STORES = new Set(['audit_events', 'document_corrections']);
+
+// Compare snapshot metadata without depending on JSON property insertion order.
+function snapshotComparable(value) {
+  if (Array.isArray(value)) return value.map(snapshotComparable);
+  if (value && typeof value === 'object') {
+    const normalized = {};
+    for (const key of Object.keys(value).sort()) normalized[key] = snapshotComparable(value[key]);
+    return normalized;
+  }
+  return value;
+}
+const sameSnapshotRecord = (left, right) =>
+  JSON.stringify(snapshotComparable(left)) === JSON.stringify(snapshotComparable(right));
+
+
 function stripCredentials(user) {
   const copy = { ...user };
   CREDENTIAL_FIELDS.forEach(f => delete copy[f]);
@@ -349,6 +365,23 @@ class StorageServiceImpl {
         if (!items) continue;
         if (store === 'users') {
           await this._importUsers(tx, items);
+        } else if (APPEND_ONLY_STORES.has(store)) {
+          // Backup replay may re-add history but can never rewrite it.
+          // A conflicting record aborts the WHOLE multi-store restore.
+          for (const item of items) {
+            if (!item.id || typeof item.id !== 'string' ||
+                !item.companyId || typeof item.companyId !== 'string') {
+              throw new Error('رکورد تاریخچه ممیزی یا اصلاح سند نامعتبر است');
+            }
+            const old = await tx.get(store, item.id);
+            if (old) {
+              if (!sameSnapshotRecord(old, item)) {
+                throw new Error('بازنویسی سابقه ممیزی یا اصلاح سند از پشتیبان مجاز نیست');
+              }
+            } else {
+              await tx.add(store, { ...item });
+            }
+          }
         } else {
           await Promise.all(items.map(item => tx.putRaw(store, item)));
         }
