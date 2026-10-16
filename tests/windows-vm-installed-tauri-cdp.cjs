@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn, execFileSync } = require('node:child_process');
 const verifyNativeFunctionalMatrix = require('./windows-vm-native-functional-matrix.cjs');
+const { verifyNativeOrigin } = require('./windows-vm-native-origin.cjs');
 
 const [exe, profile, mode, expectedVersion, reportPath] = process.argv.slice(2);
 assert.equal(process.platform, 'win32');
@@ -129,7 +130,7 @@ async function connect(url) {
       '(function(){return window.FINORA && document.getElementById("finoraAuthOverlay") && !!globalThis.__TAURI_INTERNALS__?.invoke ? { title:document.title, version:window.FINORA.version, href:location.href, initialMode:document.getElementById("faTitle").textContent, databaseReady:true } : null})()'
     ), 65000);
     report.installedNativeTauri = true;
-    report.browserOrigin = ready.href.replace(/[/#?].*$/, '');
+    report.browserOrigin = verifyNativeOrigin(ready.href);
     report.displayedVersion = ready.version;
     report.versionMatchesPackage = ready.version === expectedVersion;
     // Verified against git tag v2.0.3: that shipped src/main.js hardcodes
