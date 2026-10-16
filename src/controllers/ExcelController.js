@@ -2,7 +2,18 @@
 // ExcelController — خروجی و ورودی Excel
 // ============================================================
 
-import * as XLSX from 'xlsx';
+// Excel and Persian text editing are not needed on the login screen.
+// Load the locally bundled, pinned library only when an Excel action starts.
+let XLSX = null;
+let xlsxPending = null;
+async function loadSheetJS() {
+  if (XLSX) return XLSX;
+  if (!xlsxPending) {
+    xlsxPending = import('xlsx').then(module => { XLSX = module; return module; })
+      .catch(error => { xlsxPending = null; throw error; });
+  }
+  return xlsxPending;
+}
 import { StorageService } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
 import { DataScope } from '../core/DataScope.js';
@@ -16,6 +27,7 @@ class ExcelControllerImpl {
   // ذخیره فایل + نمایش پیام + باز کردن خودکار (سازگار با Tauri)
   // ============================================================
   async _saveFile(wb, fileName) {
+    await loadSheetJS();
     const isTauri = '__TAURI_INTERNALS__' in window;
 
     // حالت مرورگر: دانلود معمولی
@@ -61,6 +73,7 @@ class ExcelControllerImpl {
   // خروجی کامل (Backup Excel)
   // ============================================================
   async exportAll() {
+    await loadSheetJS();
     const user = Auth.current();
     if (!user) throw new Error('کاربر یافت نشد');
 
@@ -295,6 +308,7 @@ class ExcelControllerImpl {
   // خروجی انتخابی
   // ============================================================
   async exportSection(section) {
+    await loadSheetJS();
     const user = Auth.current();
     if (!user) throw new Error('کاربر یافت نشد');
 
@@ -402,6 +416,7 @@ class ExcelControllerImpl {
   // ورودی از Excel
   // ============================================================
   async readExcelFile(file) {
+    await loadSheetJS();
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -558,6 +573,7 @@ class ExcelControllerImpl {
   // دانلود قالب‌های نمونه
   // ============================================================
   async downloadProductsTemplate() {
+    await loadSheetJS();
     const data = [
       ['کد', 'نام', 'مشخصه', 'واحد', 'قیمت خرید', 'قیمت فروش', 'نقطه سفارش', 'نوع'],
       ['P001', 'هارد سرور 2.5 اینچ', 'SAS 1TB', 'عدد', 30000000, 37000000, 5, 'کالا'],
@@ -571,6 +587,7 @@ class ExcelControllerImpl {
   }
 
   async downloadContactsTemplate() {
+    await loadSheetJS();
     const data = [
       ['نام', 'نوع', 'نقش', 'موبایل', 'تلفن', 'کد ملی/شناسه', 'کد اقتصادی', 'شماره ثبت', 'کد پستی', 'نشانی'],
       ['شرکت آرا بتن', 'حقوقی', 'مشتری', '09124376991', '', '14008507476', '14008507476', '544926', '1445956311', 'تهران'],

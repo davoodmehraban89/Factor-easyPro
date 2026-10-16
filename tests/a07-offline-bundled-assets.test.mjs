@@ -13,7 +13,9 @@ test('A07: the app shell cannot block startup on a remote CDN', () => {
   assert.doesNotMatch(html, /<link[^>]*href=["']https?:\/\//i);
   assert.match(entry, /@fontsource\/vazirmatn\/400\.css/);
   assert.match(entry, /@fontsource\/vazirmatn\/700\.css/);
-  assert.match(excel, /import \* as XLSX from 'xlsx'/);
+  assert.match(excel, /import\('xlsx'\)/);
+  assert.doesNotMatch(excel, /import \* as XLSX from 'xlsx'/);
+  assert.match(excel, /async function loadSheetJS\(\)/);
 });
 
 test('A07: bundled SheetJS can read and write Persian spreadsheets with integer currency', () => {
