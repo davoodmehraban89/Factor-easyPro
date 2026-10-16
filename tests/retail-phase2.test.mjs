@@ -536,3 +536,89 @@ test('A05: inactive treasury accounts reject transfers, expenses and cheque clea
  const balance=await accounts.trialBalance();
  assert.equal(balance.totals.debit,balance.totals.credit);
 });
+
+test('A01: a return offsets receivables before any cash refund and caps later receipts to net amount',async()=>{
+ await setup();await purchase10();
+ const sold=await retail.issueInvoice(invoice('sale',3,200,{paidAmount:200}));
+ const returned=await retail.issueInvoice(invoice('sale_return',1,200,{
+   originalInvoiceId:sold.id
+ }));
+ const before=(await db.getAll('journal_entries')).length;
+ await assert.rejects(retail.postTransaction({
+   id:'a01-invalid-refund',type:'payment',date,amount:1,
+   refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1'
+ }),/بازپرداخت مجاز/);
+ await assert.rejects(retail.postTransaction({
+   id:'a01-overcollect',type:'receipt',date,amount:201,
+   refInvoiceId:sold.id,contactId:'contact-1',toAccountId:'cash-1'
+ }),/مانده خالص/);
+ assert.equal((await db.getAll('journal_entries')).length,before);
+ assert.equal(await db.get('treasury','a01-invalid-refund'),undefined);
+ assert.equal(await db.get('treasury','a01-overcollect'),undefined);
+ const receipt=await retail.postTransaction({
+   id:'a01-valid-remaining',type:'receipt',date,amount:200,
+   refInvoiceId:sold.id,contactId:'contact-1',toAccountId:'cash-1'
+ });
+ assert.equal(receipt.amount,200);
+ assert.equal((await db.get('invoices',sold.id)).paidAmount,400);
+ await assert.rejects(retail.postTransaction({
+   id:'a01-extra-collection',type:'receipt',date,amount:1,
+   refInvoiceId:sold.id,contactId:'contact-1',toAccountId:'cash-1'
+ }),/مانده خالص/);
+ const trial=await accounts.trialBalance();
+ assert.equal(trial.totals.debit,trial.totals.credit);
+});
+
+test('A01: only genuinely paid customer credit may be refunded, once, even with concurrent requests',async()=>{
+ await setup();await purchase10();
+ const sold=await retail.issueInvoice(invoice('sale',3,200,{paidAmount:500}));
+ const returned=await retail.issueInvoice(invoice('sale_return',1,200,{
+   originalInvoiceId:sold.id
+ }));
+ const attempts=await Promise.allSettled([
+   retail.postTransaction({id:'refund-a',type:'payment',date,amount:70,
+     refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1'}),
+   retail.postTransaction({id:'refund-b',type:'payment',date,amount:70,
+     refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1'})
+ ]);
+ assert.equal(attempts.filter(x=>x.status==='fulfilled').length,1);
+ assert.equal(attempts.filter(x=>x.status==='rejected').length,1);
+ assert.equal((await db.get('invoices',returned.id)).paidAmount,70);
+ const finish=await retail.postTransaction({
+   id:'refund-final',type:'payment',date,amount:30,
+   refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1'
+ });
+ assert.equal(finish.amount,30);
+ await assert.rejects(retail.postTransaction({
+   id:'refund-excess',type:'payment',date,amount:1,
+   refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1'
+ }),/بازپرداخت مجاز/);
+ assert.equal((await db.get('invoices',returned.id)).paidAmount,100);
+ assert.equal((await db.getAll('treasury')).filter(t=>
+   t.refInvoiceId===returned.id&&t.recordType==='transaction').length,2);
+ const balance=await accounts.trialBalance();
+ assert.equal(balance.totals.debit,balance.totals.credit);
+});
+
+test('A01: supplier cash recovery cannot exceed previously paid credit after purchase return',async()=>{
+ await setup();
+ const purchased=await retail.issueInvoice(invoice('purchase',10,100,{paidAmount:700}));
+ const returned=await retail.issueInvoice(invoice('purchase_return',4,100,{
+   originalInvoiceId:purchased.id
+ }));
+ await assert.rejects(retail.postTransaction({
+   id:'supplier-refund-over',type:'receipt',date,amount:101,
+   refInvoiceId:returned.id,contactId:'contact-1',toAccountId:'cash-1'
+ }),/بازپرداخت مجاز/);
+ const cash=await retail.postTransaction({
+   id:'supplier-refund-valid',type:'receipt',date,amount:100,
+   refInvoiceId:returned.id,contactId:'contact-1',toAccountId:'cash-1'
+ });
+ assert.equal(cash.amount,100);
+ await assert.rejects(retail.postTransaction({
+   id:'supplier-refund-excess',type:'receipt',date,amount:1,
+   refInvoiceId:returned.id,contactId:'contact-1',toAccountId:'cash-1'
+ }),/بازپرداخت مجاز/);
+ const trial=await accounts.trialBalance();
+ assert.equal(trial.totals.debit,trial.totals.credit);
+});

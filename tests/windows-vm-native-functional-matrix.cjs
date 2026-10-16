@@ -599,6 +599,62 @@ async function nativeTreasuryChequeReconciliation() {
     reportingReadOnly:true,fixtureRemoved:true};
 }
 
+async function nativeReturnCashSettlementGuardrails() {
+  const wait=ms=>new Promise(r=>setTimeout(r,ms));
+  const check=(ok,msg)=>{if(!ok)throw Error(msg);};
+  const db=FINORA.Storage,company=await FINORA.Company.current();
+  const sale=(await db.getAll('invoices')).find(x=>
+    x.companyId===company.id&&x.kind==='sale'&&x.grandTotal===600);
+  const returned=(await db.getAll('invoices')).find(x=>
+    x.companyId===company.id&&x.kind==='sale_return'&&x.originalInvoiceId===sale?.id);
+  check(sale?.paidAmount===200&&returned?.grandTotal===200,
+    'A01 net-refund native sale/return prerequisite absent');
+  await FINORA.Router.go('treasury');await wait(170);
+  const view=window.TreasuryView;
+  const before=()=>Promise.all(['journal_entries','treasury','settlements'].map(async name=>
+    (await db.getAll(name)).length));
+  const testReceipt=async(amount)=>{
+    await view.openReceiptModal();
+    const sel=document.getElementById('txInvoiceRef');
+    check(sel&&[...sel.options].some(x=>x.value===sale.id),
+      'Real treasury UI does not list the unpaid original sale');
+    sel.value=sale.id;view._onInvoiceSelection();
+    document.getElementById('txAmount').value=String(amount);
+    document.getElementById('txDate').value='1405/07/18';
+    await view._saveTransaction('receipt');
+  };
+  const start=await before();
+  await testReceipt(201);
+  let toast=[...document.querySelectorAll('.toast-error')].find(x=>x.textContent.includes('مانده خالص'));
+  check(toast,'Overcollection after posted return not visibly rejected');
+  check(JSON.stringify(await before())===JSON.stringify(start),
+    'Rejected overcollection wrote a ledger, treasury or settlement');
+  toast.querySelector('.toast-close')?.click();
+  FINORA.Modal.close();
+  await testReceipt(200);
+  check((await db.get('invoices',sale.id)).paidAmount===400,
+    'Allowed residual collection did not reach net post-return amount');
+  await view.openPaymentModal();
+  const sel=document.getElementById('txInvoiceRef');
+  check(sel&&[...sel.options].some(x=>x.value===returned.id),
+    'Real treasury UI cannot select the customer return');
+  sel.value=returned.id;view._onInvoiceSelection();
+  document.getElementById('txAmount').value='1';
+  document.getElementById('txDate').value='1405/07/18';
+  const preRefund=await before();
+  await view._saveTransaction('payment');
+  toast=[...document.querySelectorAll('.toast-error')].find(x=>
+    x.textContent.includes('بازپرداخت مجاز'));
+  check(toast,'Cash refund with zero actual paid customer credit was not rejected');
+  check(JSON.stringify(await before())===JSON.stringify(preRefund),
+    'Rejected customer refund wrote a ledger, treasury or settlement');
+  toast.querySelector('.toast-close')?.click();FINORA.Modal.close();
+  check(!document.querySelector('.toast-error')&&!document.querySelector('.modal-backdrop'),
+    'Native A01 cash cap left an error toast/modal');
+  return {overcollectionRejectedWithoutWrites:true,netReceiptAccepted:true,
+    nonexistentRefundCreditRejected:true,realTreasuryInvoiceSelector:true};
+}
+
 async function nativeBackupRestore() {
   const check = (value, message) => { if (!value) throw Error(message); };
   const S = FINORA.Storage;
@@ -864,6 +920,7 @@ module.exports = async function nativeFunctionalMatrix(cdp) {
     ['treasury-cheque-reconciliation-readonly', nativeTreasuryChequeReconciliation],
     ['sale-return-immutable-stock-and-ledger', nativeSaleReturnGuardrails],
     ['purchase-return-and-stock-guardrails', nativePurchaseReturnGuardrails],
+    ['return-cash-settlement-net-credit', nativeReturnCashSettlementGuardrails],
     ['append-only-history-bulk-clear-protection', nativeHistoryClearFailClosed],
     ['backup-and-atomic-rejection', nativeBackupRestore],
     ['rtl-invoice-print-settings', invoicePrintLayout],

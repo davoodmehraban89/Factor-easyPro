@@ -396,6 +396,43 @@ class RetailPostingServiceImpl {
       if(!expected.includes(kind))throw Error('جهت دریافت/پرداخت با فاکتور مطابقت ندارد');
       if(kind==='purchase_return')otherCode=LEDGER_CODES.payable;
       if(kind==='sale_return')otherCode=LEDGER_CODES.receivable;
+      if(['sale','non_formal','purchase','sale_return','purchase_return'].includes(kind)) {
+        // A01: a posted return reduces the *net* payable/receivable of its
+        // original invoice. Its remaining field alone does not establish that
+        // cash is owed: it also includes the amount offset against open AR/AP.
+        // All checks take place in the same atomic posting transaction.
+        const isReturn=kind==='sale_return'||kind==='purchase_return';
+        const original=isReturn
+          ? sameCompany(await tx.get('invoices',related.originalInvoiceId),
+              ctx.companyId,'فاکتور اصلی مرجوعی')
+          : related;
+        const validSource=isReturn
+          ? (kind==='sale_return'?['sale','non_formal']:['purchase'])
+          : [kind];
+        if (!validSource.includes(original.kind) || original.isPreInvoice ||
+            !original.financePosted) {
+          throw Error('فاکتور اصلی برای محاسبه مانده خالص معتبر نیست');
+        }
+        const returnKind=['sale','non_formal'].includes(original.kind)
+          ? 'sale_return' : 'purchase_return';
+        const finalized=(await tx.getAll('invoices')).filter(row =>
+          row.companyId===ctx.companyId && row.kind===returnKind &&
+          row.originalInvoiceId===original.id && !row.isPreInvoice && row.financePosted);
+        const totalReturns=finalized.reduce((n,row)=>n+BigInt(amount(row.grandTotal)),0n);
+        const paidRefunds=finalized.reduce((n,row)=>n+BigInt(amount(row.paidAmount||0)),0n);
+        const net=BigInt(amount(original.grandTotal))-totalReturns;
+        const originalPaid=BigInt(amount(original.paidAmount||0));
+        if(net<0n || originalPaid>BigInt(amount(original.grandTotal)))
+          throw Error('مانده خالص فاکتور با مرجوعی‌ها مغایرت دارد');
+        const available=isReturn
+          ? (originalPaid>net ? originalPaid-net-paidRefunds : -paidRefunds)
+          : net-originalPaid;
+        if(available<0n || BigInt(sum)>available) {
+          throw Error(isReturn
+            ? 'بازپرداخت مجاز از اعتبار نقدی مشتری/تامین‌کننده بیشتر است'
+            : 'دریافت یا پرداخت از مانده خالص پس از مرجوعی بیشتر است');
+        }
+      }
     }
     const side=leg(ctx,otherCode);
     const lines=[postLine(isReceipt?cashLedgerId:side,sum,0,{contactId:info.contactId||related?.contactId||null}),
