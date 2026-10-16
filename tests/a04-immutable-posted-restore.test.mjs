@@ -16,9 +16,14 @@ const opts = { companyId, userId, mode: 'replace' };
 
 test('A04: replace cannot rewrite an already posted invoice or overwrite unrelated records', async () => {
   await reset();
+  await StorageService.put('journal_entries', {
+    id: 'source-sale-1', companyId, status: 'posted',
+    sourceType: 'invoice', sourceId: 'sale-1'
+  });
   const original = {
     id: 'sale-1', companyId, kind: 'sale', number: '1',
-    financePosted: true, grandTotal: 1000, paidAmount: 0, remaining: 1000
+    journalId: 'source-sale-1', financePosted: true,
+    grandTotal: 1000, paidAmount: 0, remaining: 1000
   };
   await StorageService.put('invoices', { ...original });
   const persisted = await StorageService.get('invoices', original.id);
