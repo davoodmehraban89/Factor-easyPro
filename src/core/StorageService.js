@@ -251,7 +251,9 @@ class StorageServiceImpl {
         delete: (s, id) => APPEND_ONLY_STORES.has(s)
           ? Promise.reject(new Error('حذف مستقیم سابقه ممیزی یا اصلاح سند مجاز نیست'))
           : wrap(os(s).delete(id)).then(() => undefined),
-        clear: (s) => wrap(os(s).clear()).then(() => undefined)
+        clear: (s) => APPEND_ONLY_STORES.has(s)
+          ? Promise.reject(new Error('پاک‌سازی مستقیم سابقه ممیزی یا اصلاح سند مجاز نیست'))
+          : wrap(os(s).clear()).then(() => undefined)
       };
 
       let result;
