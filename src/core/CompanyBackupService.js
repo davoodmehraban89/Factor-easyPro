@@ -16,6 +16,19 @@ export const COMPANY_BACKUP_STORES = Object.freeze([
 const V2_STORES = new Set(['account_chart', 'fiscal_periods', 'journal_entries', 'journal_lines']);
 const isId = id => typeof id === 'string' && id.trim().length > 0;
 
+// Backups serialize object fields in arbitrary insertion order. Immutable
+// financial history equality must compare values, never field order.
+const stableRecord = value => {
+  if (Array.isArray(value)) return value.map(stableRecord);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort()
+      .map(key => [key, stableRecord(value[key])]));
+  }
+  return value;
+};
+const sameImmutableRecord = (a, b) =>
+  JSON.stringify(stableRecord(a)) === JSON.stringify(stableRecord(b));
+
 export async function restoreCompanyBackup(data, { companyId, userId, mode = 'merge' }) {
   if (!Auth.isAdmin())throw Error('بازنشانی یا بازیابی اطلاعات حسابداری فقط با مدیر مجاز است');
   if (!companyId || !userId || !['merge', 'replace'].includes(mode)) throw new Error('گزینه‌های بازیابی نامعتبر است');
@@ -55,7 +68,7 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
           throw new Error(`شناسه رکورد ${store}/${row.id} متعلق به شرکت دیگر است؛ بازیابی متوقف شد`);
         }
         if (existing && immutable) {
-          if (JSON.stringify(existing) !== JSON.stringify(row)) {
+          if (!sameImmutableRecord(existing, row)) {
             throw new Error('بازنویسی سابقه ممیزی یا اصلاح سند مجاز نیست');
           }
           counts.skipped++;
