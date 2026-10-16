@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const { spawn, execFileSync } = require('node:child_process');
 
 const [exe, profile, mode, expectedVersion, reportPath] = process.argv.slice(2);
 assert.equal(process.platform, 'win32');
@@ -14,6 +14,36 @@ assert.ok(fs.existsSync(exe), 'installed Windows executable missing');
 fs.mkdirSync(profile, { recursive: true });
 const port = mode === 'seed' ? 9371 : mode === 'upgrade' ? 9372 : 9373;
 const PASSWORD = 'VmOnly-Factor-83471!'; // Synthetic password, never printed.
+
+const REG_POLICY = [
+  'HKCU\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments',
+  'HKLM\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
+];
+const EXE_NAME = path.basename(exe);
+function setDebugPolicies() {
+  const active = [];
+  for (const key of REG_POLICY) {
+    try {
+      // Newer WebView2 runtimes may ignore the environment variable for
+      // CDP debugging. Microsoft documents the per-EXE policy alternative.
+      execFileSync('reg.exe', [
+        'add', key, '/v', EXE_NAME, '/t', 'REG_SZ', '/d',
+        '--remote-debugging-port=' + port + ' --remote-allow-origins=*', '/f'
+      ], { stdio: 'ignore', timeout: 5000 });
+      active.push(key);
+    } catch (_) { /* Fall back to the documented WebView2 environment variable. */ }
+  }
+  return active;
+}
+function cleanDebugPolicies(keys) {
+  for (const key of keys) {
+    try {
+      execFileSync('reg.exe', ['delete', key, '/v', EXE_NAME, '/f'],
+        { stdio: 'ignore', timeout: 5000 });
+    } catch (_) {}
+  }
+}
+
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function eventually(fn, timeoutMs = 65000, delayMs = 300) {
   let last;
@@ -75,7 +105,10 @@ async function connect(url) {
     dpapi: 'not-run', browserOrigin: null, status: 'FAILED'
   };
   let proc, cdp;
+  let debugPolicyKeys = [];
   try {
+    debugPolicyKeys = setDebugPolicies();
+    report.debugPolicyKeysApplied = debugPolicyKeys.length;
     const env = {
       ...process.env,
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:
@@ -172,6 +205,7 @@ async function connect(url) {
     if (reportPath) fs.writeFileSync(reportPath, JSON.stringify(report, null, 2) + '\n');
     try { cdp?.close(); } catch {}
     try { proc?.kill(); } catch {}
+    cleanDebugPolicies(debugPolicyKeys);
     await wait(700);
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });
