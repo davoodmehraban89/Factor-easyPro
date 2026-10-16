@@ -181,3 +181,12 @@ test('A02: an unbalanced opening preview displays its discrepancy without ledger
   }), /UNBALANCED_OPENING_JOURNAL/);
   assert.equal((await StorageService.getAll('journal_entries')).length, 0);
 });
+
+test('A02: empty opening file produces a blocked report instead of a validation exception', async () => {
+  const { input } = await setup();
+  input.lines = [];
+  const review = await OpeningBalanceService.preview(input);
+  assert.equal(review.readiness, 'blocked');
+  assert.ok(review.issues.includes('MISSING_OPENING_JOURNAL_LINES'));
+  assert.equal((await StorageService.getAll('journal_entries')).length, 0);
+});
