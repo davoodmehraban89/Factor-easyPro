@@ -162,6 +162,58 @@ try {
   $crashVerified = Run-Native $freshExe $crashData 'crash-verify' $CandidateVersion
   $summary.crashRestoreRollback = $crashVerified.crashRollback
 
+  # Full Phase A integration contract: a green partial job is not enough.
+  # Validate all essential paths on the SAME installed candidate before
+  # declaring the disposable VM laboratory successful.
+  $mandatory = @(
+    'activate-accounting-and-inventory',
+    'positive-opening-ledger-and-idempotency',
+    'purchase-and-post-ledger',
+    'partial-sale-and-inventory',
+    'sale-return-immutable-stock-and-ledger',
+    'purchase-return-and-stock-guardrails',
+    'backup-and-atomic-rejection',
+    'rtl-invoice-print-settings',
+    'fiscal-close-atomic-guardrails',
+    'opening-dry-run-rejects-existing-postings'
+  )
+  if (!$freshResult.nativeFunctional) {
+    throw 'Native installed financial matrix was not reported'
+  }
+  foreach ($scenario in $mandatory) {
+    if (!$freshResult.nativeFunctional.PSObject.Properties[$scenario]) {
+      throw "Required installed native scenario missing: $scenario"
+    }
+  }
+  if (!$freshResult.nativeOffline.simulatedOffline -or
+      $freshResult.nativeOffline.routesChecked -ne 10) {
+    throw 'All ten native offline routes were not verified'
+  }
+  if ($freshResult.nativePrint.pages -lt 2 -or
+      $freshResult.nativePrint.itemRows -ne 110 -or
+      $freshResult.nativePrint.physicalPrinter -ne 'not-tested') {
+    throw 'WebView2 multi-page RTL PDF evidence is missing or misrepresented'
+  }
+  if ($nativePerformance.nativePerformance.products -ne 10000 -or
+      $nativePerformance.nativePerformance.invoices -ne 50000 -or
+      $nativePerformance.nativePerformance.companyInvoices -ne 50000) {
+    throw 'Native 10k/50k actual IndexedDB performance coverage is incomplete'
+  }
+  if ($crashVerified.crashRollback -ne
+      'killed-real-installed-Windows-WebView2-during-importAll-no-partial-rows-on-restart') {
+    throw 'A04 actual process-crash restore rollback evidence is missing'
+  }
+  $summary.integratedCoverage = [ordered]@{
+    installedFinancialScenarios = $mandatory.Count
+    offlineRoutes = 10
+    printPdfPages = [int]$freshResult.nativePrint.pages
+    benchmarkProducts = 10000
+    benchmarkInvoices = 50000
+    crashRestoreRowsRemaining = 0
+    independentHumanQA = 'not-covered'
+    customerBackup = 'not-covered'
+    physicalPrinter = 'not-covered'
+  }
   $summary.status = 'PASSED'
   Write-Output 'Verified fresh installation, NSIS in-place upgrade, retained v6 records, native login and Windows DPAPI'
   Cleanup-Installed $freshDir
