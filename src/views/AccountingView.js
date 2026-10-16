@@ -1,6 +1,7 @@
 // Factor-easyPro V2 / Phase 1: isolated accounting workbench.
 // Existing invoice, inventory and treasury workflows are deliberately untouched.
 import { AccountingService as Ledger } from '../core/AccountingService.js';
+import { OpeningBalanceService } from '../core/OpeningBalanceService.js';
 import { RetailPostingService as Retail } from '../core/RetailPostingService.js';
 import { DataScope } from '../core/DataScope.js';
 import { Auth } from '../core/Auth.js';
@@ -45,6 +46,7 @@ class AccountingViewImpl {
       ['trial', 'تراز آزمایشی'],
       ['reports', 'گزارش‌های مالی'],
       ...(Auth.isAdmin() ? [['reconciliation','کنترل مغایرت']] : []),
+      ...(Auth.isAdmin() ? [['opening','افتتاحیه کنترل‌شده']] : []),
       ['integration', 'عملیات یکپارچه و انبار']
     ];
     return `<div class="page-title"><h2>حسابداری دوبل</h2>
@@ -75,10 +77,123 @@ class AccountingViewImpl {
       case 'trial': return this.renderTrial();
       case 'reports': return this.renderReports();
       case 'reconciliation': return this.renderReconciliation();
+      case 'opening': return Auth.isAdmin() ? this.renderOpening() : '<p>دسترسی مجاز نیست.</p>';
       case 'integration': return this.renderIntegration();
       default: return this.renderJournals();
     }
   }
+  renderOpening() {
+    if (!Auth.isAdmin()) return '<p>دسترسی مجاز نیست.</p>';
+    return `
+      <section class="card" style="max-width:850px">
+        <h3>ثبت دفتر افتتاحیه — فقط داده‌های پایه موجود</h3>
+        <p style="line-height:1.9">
+          پیش از هر ثبت، باید اشخاص، حساب‌ها، موجودی انبار و بانک/صندوق در شرکت فعال
+          ایجاد و کنترل شده باشند. این صفحه <strong>هیچ داده قدیمی را وارد نمی‌کند</strong>
+          و فقط یک سند دفتر کل افتتاحیه تراز و تأییدشده ثبت می‌کند.
+        </p>
+        <p style="color:var(--text-muted);font-size:12px">
+          فایل JSON باید حاوی periodId، openingDate، lines، contacts، stock و cash
+          مطابق قرارداد docs/A02_OPENING_LEDGER_SCOPE_FA.md باشد.
+          فایل برای بررسی در حافظه خوانده می‌شود و بدون تأیید شما نوشته نخواهد شد.
+        </p>
+        <div class="form-group">
+          <label class="form-label" for="openingFileInput">فایل افتتاحیه برای بررسی</label>
+          <input id="openingFileInput" class="form-control" type="file"
+            accept=".json,application/json"
+            onchange="window.AccountingView.resetOpeningPreview()" />
+        </div>
+        <button class="btn btn-secondary" onclick="window.AccountingView.previewOpeningFile()">
+          کنترل مانده‌ها و دوره (بدون ثبت)
+        </button>
+        <div id="openingPreviewReport" style="margin-top:16px" role="status">
+          <p>هنوز فایلی بررسی نشده است.</p>
+        </div>
+      </section>
+    `;
+  }
+
+  resetOpeningPreview() {
+    this._openingCandidate = null;
+    this._openingReview = null;
+    const host = document.getElementById('openingPreviewReport');
+    if (host) host.textContent = 'فایل تغییر کرد؛ لازم است دوباره بررسی شود.';
+  }
+
+  async previewOpeningFile() {
+    if (!Auth.isAdmin()) { Toast.error('دسترسی فقط برای مدیر مجاز است'); return; }
+    const file = document.getElementById('openingFileInput')?.files?.[0];
+    if (!file || file.size > 1024 * 1024) {
+      Toast.error('یک فایل JSON معتبر و حداکثر ۱ مگابایتی انتخاب کنید');
+      return;
+    }
+    const host = document.getElementById('openingPreviewReport');
+    this._openingCandidate = null;
+    this._openingReview = null;
+    try {
+      const raw = await file.text();
+      const candidate = JSON.parse(raw);
+      if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+        throw Error('ساختار فایل ورودی نامعتبر است');
+      }
+      const review = await OpeningBalanceService.preview(candidate);
+      this._openingCandidate = candidate;
+      this._openingReview = review;
+      if (host) {
+        const issues = review.issues.map(code => `<li>${html(code)}</li>`).join('');
+        host.innerHTML = `
+          <p><strong>وضعیت:</strong>
+            ${review.readiness === 'ready-for-review' ? 'آماده تأیید' : 'ثبت مسدود'}
+          </p>
+          <p>بدهکار: ${Formatters.number(review.journal.debit)} ریال
+          | بستانکار: ${Formatters.number(review.journal.credit)} ریال</p>
+          ${issues ? `<ul style="color:var(--danger)">${issues}</ul>` :
+            '<p>در کنترل‌های فعلی مغایرتی یافت نشد.</p>'}
+          <button class="btn btn-danger" ${review.readiness === 'ready-for-review' ? '' : 'disabled'}
+            onclick="window.AccountingView.confirmOpeningPosting()">
+            ثبت قطعی سند افتتاحیه
+          </button>
+          <p style="font-size:12px;color:var(--text-muted)">
+            در زمان ثبت، تمام کنترل‌ها دوباره در یک تراکنش انجام می‌شوند.
+            بدون تأیید صریح هیچ داده‌ای نوشته نخواهد شد.
+          </p>
+        `;
+      }
+    } catch (error) {
+      if (host) host.textContent = 'بررسی افتتاحیه ناموفق بود: ' + error.message;
+      Toast.error('بررسی افتتاحیه متوقف شد: ' + error.message);
+    }
+  }
+
+  confirmOpeningPosting() {
+    if (!Auth.isAdmin() || this._openingReview?.readiness !== 'ready-for-review' ||
+        !this._openingCandidate) {
+      Toast.error('ابتدا فایل افتتاحیه را بدون مغایرت بررسی کنید');
+      return;
+    }
+    Modal.confirm({
+      title: 'تأیید ثبت قطعی افتتاحیه',
+      message: 'این عملیات سند دفتر کل افتتاحیه و رویداد حسابرسی ثبت می‌کند. داده‌های پایه باید قبلاً کنترل و پشتیبان‌گیری شده باشند. آیا ثبت قطعی را تأیید می‌کنید؟',
+      confirmText: 'تأیید ثبت قطعی',
+      danger: true,
+      onConfirm: async () => {
+        const candidate = this._openingCandidate;
+        this._openingCandidate = null;
+        this._openingReview = null;
+        try {
+          const result = await OpeningBalanceService.commit(candidate, {
+            confirmation: 'CONFIRM_OPENING_LEDGER'
+          });
+          Toast.success('سند افتتاحیه ' + result.journalId + ' با موفقیت ثبت شد');
+          this.tab = 'journals';
+          await this.refresh();
+        } catch (error) {
+          Toast.error('ثبت افتتاحیه انجام نشد: ' + error.message);
+        }
+      }
+    });
+  }
+
   openPeriods() {
     this.tab = 'periods';
     return this.refresh();
