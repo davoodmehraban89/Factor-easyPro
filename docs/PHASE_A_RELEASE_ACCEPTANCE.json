@@ -26,7 +26,8 @@
       "accepted": false,
       "evidence": [
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38922551919",
-        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38939141475"
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38939141475",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38942948274"
       ],
       "name": "Versioned restore, v6 migration and real backup recovery"
     },
