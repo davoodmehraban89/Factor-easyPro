@@ -10,6 +10,8 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'tests/windows-vm-installed-tauri-cdp.cjs'
+      - 'tests/windows-vm-native-origin.cjs'
+      - 'tests/windows-vm-native-origin.test.mjs'
       - 'tests/windows-vm-native-functional-matrix.cjs'
       - 'scripts/windows-vm-native-lab.ps1'
       - 'scripts/windows-vm-set-candidate.cjs'
