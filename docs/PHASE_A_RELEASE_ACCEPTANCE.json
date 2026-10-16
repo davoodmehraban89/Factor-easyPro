@@ -46,7 +46,8 @@
       "accepted": false,
       "evidence": [
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38920001588",
-        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38921787116"
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38921787116",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38924043704"
       ],
       "name": "Windows install-upgrade, RTL printing and offline operation"
     },
