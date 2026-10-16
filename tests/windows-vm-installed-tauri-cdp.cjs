@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn, execFileSync } = require('node:child_process');
+const verifyNativeFunctionalMatrix = require('./windows-vm-native-functional-matrix.cjs');
 
 const [exe, profile, mode, expectedVersion, reportPath] = process.argv.slice(2);
 assert.equal(process.platform, 'win32');
@@ -204,6 +205,11 @@ async function connect(url) {
       '})()');
       assert.deepEqual(dpapi, {roundtrip:true,encrypted:true,hex:true});
       report.dpapi = 'native-Windows-roundtrip-passed';
+    }
+    if (mode === 'fresh') {
+      // The real installed desktop window, not the browser-only preview:
+      // verify accounting activation, financial journal, stock, backup and RTL.
+      report.nativeFunctional = await verifyNativeFunctionalMatrix(cdp);
     }
     report.status = 'PASSED';
     console.log(JSON.stringify(report, null, 2));
