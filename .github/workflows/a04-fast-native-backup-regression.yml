@@ -1,0 +1,65 @@
+name: A04 Windows fast native backup regression (prebuilt installer)
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: 'Successful PR-quality run containing factor-easypro-windows-pr-preview; verify it matches the tested product source'
+        required: true
+        type: string
+      expected_version:
+        description: 'Version displayed by the NSIS preview installer'
+        required: true
+        type: string
+        default: '2.0.3'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  fast-native-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate run ID, version and completed preview source
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.artifact_run_id }}
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+        run: |
+          if ($env:SOURCE_RUN -notmatch '^[0-9]+$') { throw 'Run ID must be numeric' }
+          if ($env:EXPECTED_VERSION -notmatch '^\d+\.\d+\.\d+$') { throw 'Version must be semantic' }
+          $info = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SOURCE_RUN" | ConvertFrom-Json
+          if ($info.conclusion -ne 'success') { throw 'Prebuilt installer source workflow has not passed' }
+          Write-Host ("Source run: " + $info.html_url + " commit: " + $info.head_sha)
+      - name: Fetch a checksum-verified previous Windows NSIS preview
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ github.token }}
+          name: factor-easypro-windows-pr-preview
+          path: test-installer
+      - name: Execute the installed native application and encrypted backup UI
+        shell: pwsh
+        env:
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+        run: |
+          $files = @(Get-ChildItem test-installer -Recurse -Filter '*x64-setup.exe')
+          if ($files.Count -ne 1) { throw 'Expected exactly one x64 NSIS preview' }
+          ./scripts/windows-vm-fast-native-backup-smoke.ps1 -Installer $files[0].FullName -ExpectedVersion $env:EXPECTED_VERSION
+      - name: Upload synthetic evidence including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a04-fast-native-company-backup-evidence
+          path: ${{ runner.temp }}/factor-fast-native-backup-lab/reports/*.json
+          retention-days: 14
+          if-no-files-found: warn
