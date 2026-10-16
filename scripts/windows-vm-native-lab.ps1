@@ -36,7 +36,7 @@ function Install-NSIS([string]$installer,[string]$directory) {
   if ($directory.Contains(' ')) { throw 'Use a disposable NSIS test path without spaces' }
   New-Item -ItemType Directory -Force -Path $directory | Out-Null
   $args = @('/S',("/D=" + $directory))
-  Write-Output ("Installing " + (Split-Path $installer -Leaf) + ' to ' + $directory)
+  Write-Host ("Installing " + (Split-Path $installer -Leaf) + ' to ' + $directory)
   $process = Start-Process -FilePath $installer -ArgumentList $args -PassThru
   try {
     if (-not $process.WaitForExit(150000)) {
@@ -52,7 +52,7 @@ function Install-NSIS([string]$installer,[string]$directory) {
   if (-not $candidate) {
     $discovered = @(Get-ChildItem -LiteralPath $directory -Recurse -File -ErrorAction SilentlyContinue |
       Select-Object -First 15 -ExpandProperty FullName)
-    Write-Output ("NSIS installation contents: " + ($discovered -join '; '))
+    Write-Host ("NSIS installation contents: " + ($discovered -join '; '))
     $uninstallRoots = @(
       'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
       'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
@@ -80,7 +80,7 @@ function Install-NSIS([string]$installer,[string]$directory) {
 }
 function Run-Native([string]$exe,[string]$profile,[string]$mode,[string]$version) {
   $report = Join-Path $reportDir ($mode + '-native-result.json')
-  & node 'tests/windows-vm-installed-tauri-cdp.cjs' $exe $profile $mode $version $report
+  & node 'tests/windows-vm-installed-tauri-cdp.cjs' $exe $profile $mode $version $report | Out-Host
   if ($LASTEXITCODE -ne 0) { throw "Installed native application $mode test failed (exit $LASTEXITCODE)" }
   $result = Get-Content $report -Raw | ConvertFrom-Json
   if ($result.status -ne 'PASSED' -or $result.installedNativeTauri -ne $true) {
