@@ -45,7 +45,8 @@ class TreasuryViewImpl {
     cache.balances = await TreasuryController.getBalanceMap();
     cache.transactions = await TreasuryController.getTransactions();
     cache.contacts = await ContactController.getAll();
-    cache.invoices = await InvoiceController.getAll();
+    // Invoice list is loaded only when opening a settlement dialog, not on
+    // every Treasury route render or startup (large companies may have 50k+).
   }
 
   _switchTab(tab, btn) {
@@ -427,11 +428,13 @@ class TreasuryViewImpl {
     if(row?.contactId && contact) contact.value=row.contactId;
   }
 
-  openReceiptModal() {
+  async openReceiptModal() {
     if (cache.accounts.length === 0) {
       Toast.warning('ابتدا یک حساب یا صندوق تعریف کنید');
       return;
     }
+    try { cache.invoices = await InvoiceController.getAll(); }
+    catch (error) { Toast.error('بارگذاری فاکتورها: ' + error.message); return; }
     const body = `
       <div class="form-row">
         <div class="form-group">
@@ -485,11 +488,13 @@ class TreasuryViewImpl {
     Modal.open({ title: 'ثبت دریافت وجه', body, footer, size: 'md' });
   }
 
-  openPaymentModal() {
+  async openPaymentModal() {
     if (cache.accounts.length === 0) {
       Toast.warning('ابتدا یک حساب یا صندوق تعریف کنید');
       return;
     }
+    try { cache.invoices = await InvoiceController.getAll(); }
+    catch (error) { Toast.error('بارگذاری فاکتورها: ' + error.message); return; }
     const body = `
       <div class="form-row">
         <div class="form-group">
