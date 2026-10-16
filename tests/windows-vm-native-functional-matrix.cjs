@@ -614,7 +614,7 @@ async function nativeReturnCashSettlementGuardrails() {
   const before=()=>Promise.all(['journal_entries','treasury','settlements'].map(async name=>
     (await db.getAll(name)).length));
   const testReceipt=async(amount)=>{
-    view.openReceiptModal();
+    await view.openReceiptModal();
     const sel=document.getElementById('txInvoiceRef');
     check(sel&&[...sel.options].some(x=>x.value===sale.id),
       'Real treasury UI does not list the unpaid original sale');
@@ -634,7 +634,7 @@ async function nativeReturnCashSettlementGuardrails() {
   await testReceipt(200);
   check((await db.get('invoices',sale.id)).paidAmount===400,
     'Allowed residual collection did not reach net post-return amount');
-  view.openPaymentModal();
+  await view.openPaymentModal();
   const sel=document.getElementById('txInvoiceRef');
   check(sel&&[...sel.options].some(x=>x.value===returned.id),
     'Real treasury UI cannot select the customer return');
