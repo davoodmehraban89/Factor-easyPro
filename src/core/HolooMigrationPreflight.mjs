@@ -105,7 +105,16 @@ export function previewHolooExtract(input = {}, { maxIssues = 100 } = {}) {
   for (const { table, key, parent } of references) {
     const rows = datasets[table] || [];
     const mapped = mappings[table]?.[key];
-    if (!rows.length || !mapped || !counts[parent] || !mappings[parent]?.sourceId) continue;
+    if (!rows.length || !mapped) continue;
+    // A missing parent table cannot silently be treated as a clean migration.
+    // Real migrations require all referenced master-data exports to be present.
+    if (!counts[parent] || !mappings[parent]?.sourceId) {
+      if (rows.some(record => record && typeof record === 'object' &&
+          identity(field(table, record, key)))) {
+        add('REFERENCE_PARENT_DATASET_REQUIRED', table);
+      }
+      continue;
+    }
     rows.forEach((record, i) => {
       if (!record || typeof record !== 'object' || Array.isArray(record)) return;
       const id = identity(field(table, record, key));
