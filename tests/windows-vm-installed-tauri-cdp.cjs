@@ -11,10 +11,10 @@ const { verifyNativeOrigin } = require('./windows-vm-native-origin.cjs');
 
 const [exe, profile, mode, expectedVersion, reportPath] = process.argv.slice(2);
 assert.equal(process.platform, 'win32');
-assert.ok(['seed','upgrade','reopen','fresh'].includes(mode), 'unknown lab mode');
+assert.ok(['seed','upgrade','reopen','fresh','benchmark'].includes(mode), 'unknown lab mode');
 assert.ok(fs.existsSync(exe), 'installed Windows executable missing');
 fs.mkdirSync(profile, { recursive: true });
-const port = mode === 'seed' ? 9371 : mode === 'upgrade' ? 9372 : mode === 'reopen' ? 9374 : 9373;
+const port = mode === 'seed' ? 9371 : mode === 'upgrade' ? 9372 : mode === 'reopen' ? 9374 : mode === 'benchmark' ? 9375 : 9373;
 const PASSWORD = 'VmOnly-Factor-83471!'; // Synthetic password, never printed.
 
 const REG_POLICY = [
@@ -143,7 +143,7 @@ async function connect(url) {
       assert.equal(ready.version, expectedVersion, 'candidate build runtime version mismatch');
     }
     const setup = ready.initialMode.includes('تعیین رمز');
-    if (mode === 'seed' || mode === 'fresh') {
+    if (mode === 'seed' || mode === 'fresh' || mode === 'benchmark') {
       assert.equal(setup, true, 'a new native profile must prompt to set the administrator password');
     } else {
       assert.equal(setup, false, 'upgrade/reopen should preserve existing administrator credentials');
@@ -379,6 +379,25 @@ async function connect(url) {
           offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1
         });
       }
+    }
+    if (mode === 'benchmark') {
+      // A08 performance sample from the actually installed NSIS/Tauri/WebView2
+      // binary with a brand-new disposable profile, not Node fake-indexeddb.
+      // The separate profile prevents benchmark fixtures from affecting
+      // upgrade, accounting or restoration tests.
+      const code = fs.readFileSync(
+        path.join(__dirname, 'windows-vm-native-performance-browser.js'), 'utf8'
+      );
+      const measured = await cdp.evaluate(code, 240000);
+      assert.equal(measured.products, 10000);
+      assert.equal(measured.invoices, 50000);
+      assert.equal(measured.companyInvoices, 50000);
+      assert.equal(measured.environment, 'installed-Tauri-WebView2-IndexedDB');
+      assert.ok(measured.timingsMs.seedProducts >= 0 &&
+        measured.timingsMs.seedInvoices >= 0 &&
+        measured.timingsMs.companyInvoiceReadP95 >= 0 &&
+        measured.timingsMs.snapshotExport >= 0);
+      report.nativePerformance = measured;
     }
     report.status = 'PASSED';
     console.log(JSON.stringify(report, null, 2));
