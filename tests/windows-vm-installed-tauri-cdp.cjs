@@ -399,6 +399,28 @@ async function connect(url) {
         measured.timingsMs.snapshotExport >= 0);
       report.nativePerformance = measured;
     }
+    if (mode === 'fresh') {
+      // LAST operation: real installed WebView2 PDF engine, using production
+      // RTL formal-invoice renderer with 110 synthetic items only.
+      const code = fs.readFileSync(
+        path.join(__dirname, 'windows-vm-native-print-pdf-browser.js'), 'utf8');
+      const template = await cdp.evaluate(code, 60000);
+      assert.equal(template.itemRows, 110);
+      const printed = await cdp.command('Page.printToPDF', {
+        printBackground: true, preferCSSPageSize: true,
+        displayHeaderFooter: false
+      }, 90000);
+      assert.ok(printed?.data, 'Installed WebView2 returned no PDF');
+      const pdf = Buffer.from(printed.data, 'base64');
+      assert.ok(pdf.length > 10000 && pdf.subarray(0, 5).toString('ascii') === '%PDF-',
+        'Invalid WebView2 PDF result');
+      const pages = [...pdf.toString('latin1').matchAll(/\/Type\s*\/Page\b/g)].length;
+      assert.ok(pages >= 2, 'Invoice PDF is not multipage: ' + pages);
+      const filename = 'a07-native-rtl-multipage-invoice.pdf';
+      fs.writeFileSync(path.join(path.dirname(reportPath), filename), pdf);
+      report.nativePrint = { ...template, pages, pdfBytes: pdf.length,
+        filename, physicalPrinter: 'not-tested' };
+    }
     report.status = 'PASSED';
     console.log(JSON.stringify(report, null, 2));
   } catch (err) {

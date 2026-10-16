@@ -14,6 +14,7 @@ on:
       - 'tests/windows-vm-native-origin.test.mjs'
       - 'tests/windows-vm-native-functional-matrix.cjs'
       - 'tests/windows-vm-encrypted-company-backup-browser.js'
+      - 'tests/windows-vm-native-print-pdf-browser.js'
       - 'tests/windows-vm-native-performance-browser.js'
       - 'scripts/windows-vm-native-lab.ps1'
       - 'scripts/windows-vm-set-candidate.cjs'
@@ -73,6 +74,7 @@ jobs:
           path: |
             ${{ runner.temp }}/factor-easypro-native-vm-lab/reports/*.json
             ${{ runner.temp }}/factor-easypro-native-vm-lab/reports/*.png
+            ${{ runner.temp }}/factor-easypro-native-vm-lab/reports/*.pdf
           retention-days: 30
           if-no-files-found: warn
       - name: State acceptance boundary
