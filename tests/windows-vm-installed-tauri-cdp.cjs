@@ -205,6 +205,26 @@ async function connect(url) {
       assert.deepEqual(dpapi, {roundtrip:true,encrypted:true,hex:true});
       report.dpapi = 'native-Windows-roundtrip-passed';
     }
+    if (mode === 'fresh') {
+      // Drive synthetic records, complete snapshot replay and every SPA route
+      // inside the actually installed Tauri WebView2, not Vite preview.
+      const ui = await cdp.evaluate("(async () => {\n  const ensure = (pass, message) => { if (!pass) throw Error(message); };\n  ensure(!document.getElementById('finoraAuthOverlay'), 'Cannot test UI before login');\n  const person = await window.ContactController.create({\n    name: 'شخص آزمایشی ماشین مجازی', role: 'both'\n  });\n  const product = await window.ProductController.createProduct({\n    name: 'کالای آزمایشی ماشین مجازی', code: 'WINDOWS-VM-LAB',\n    buyPrice: 150, sellPrice: 250, trackInventory: true\n  });\n  const db = window.FINORA.Storage;\n  const before = {\n    contacts: (await db.getAll('contacts')).length,\n    products: (await db.getAll('products')).length\n  };\n  ensure((await db.get('contacts',person.id))?.name === 'شخص آزمایشی ماشین مجازی',\n    'Contact did not persist in the native app');\n  ensure((await db.get('products',product.id))?.sellPrice === 250,\n    'Product did not persist in the native app');\n  const snapshot = await db.exportAll();\n  ensure(snapshot.version === 7 && snapshot.app === 'Factor-easyPro',\n    'Native snapshot identity/version mismatch');\n  ensure(snapshot.data.users.every(u => !u.pwHash && !u.pwSalt && !u.pass),\n    'Credential hash leaked into plain export');\n  ensure(snapshot.data.contacts.some(c => c.id === person.id) &&\n    snapshot.data.products.some(p => p.id === product.id),\n    'Native snapshot missing committed master data');\n  ensure(await db.importAll(snapshot) === true,\n    'Native full snapshot replay did not succeed');\n  const after = {\n    contacts: (await db.getAll('contacts')).length,\n    products: (await db.getAll('products')).length\n  };\n  ensure(before.contacts === after.contacts && before.products === after.products,\n    'Snapshot replay duplicated a contact or product');\n  const routes = [\n    'dashboard', 'invoices', 'products', 'contacts', 'treasury',\n    'cheques', 'expenses', 'reports', 'accounting', 'settings'\n  ];\n  const pages = [];\n  for (const route of routes) {\n    await FINORA.Router.go(route);\n    const view = document.getElementById('pageContent');\n    const text = (view?.textContent || '').trim();\n    ensure(FINORA.Router.current() === route, 'Unexpected route: ' + route);\n    ensure(text.length > 10, 'Empty page: ' + route);\n    ensure(!text.includes('خطا در بارگذاری صفحه'),\n      'Router reported a page rendering error: ' + route);\n    ensure(!document.querySelector('.toast-error'),\n      'Error toast while navigating to: ' + route);\n    pages.push({route, renderedCharacters: text.length});\n  }\n  await FINORA.Router.go('dashboard');\n  ensure(!document.getElementById('finoraAuthOverlay'),\n    'Navigation unexpectedly returned to authentication overlay');\n  return {masterData:before, backup:'plain-no-credentials-replay-idempotent',\n    routes:pages, visibleVersion:FINORA.version};\n})()");
+      assert.equal(ui.routes.length, 10);
+      assert.equal(ui.visibleVersion, expectedVersion);
+      report.nativeUI = ui;
+      try {
+        const screen = await cdp.command('Page.captureScreenshot', {
+          format: 'png', captureBeyondViewport: false, fromSurface: true
+        });
+        if (!screen?.data) throw Error('No PNG image data');
+        const filename = path.join(path.dirname(reportPath), 'fresh-native-dashboard.png');
+        fs.writeFileSync(filename, Buffer.from(screen.data, 'base64'));
+        report.screenshot = path.basename(filename);
+      } catch (screenshotError) {
+        // A screenshot is NOT claimed as verified if native CDP denies it.
+        report.screenshot = 'UNVERIFIED: ' + screenshotError.message;
+      }
+    }
     report.status = 'PASSED';
     console.log(JSON.stringify(report, null, 2));
   } catch (err) {
