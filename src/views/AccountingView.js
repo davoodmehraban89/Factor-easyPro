@@ -304,7 +304,7 @@ class AccountingViewImpl {
       <td>${html(item.expected === null ? '—' : Formatters.number(item.expected))}</td>
       <td>${html(item.actual === null ? '—' : Formatters.number(item.actual))}</td></tr>`).join('');
     return `<div class="card">
-      <div class="toolbar"><strong>کنترل مغایرت اسناد، تسویه‌ها و موجودی</strong>
+      <div class="toolbar"><strong>کنترل مغایرت اسناد، تسویه‌ها، چک‌ها و موجودی</strong>
         <button class="btn btn-secondary" onclick="window.AccountingView.exportReconciliation()">خروجی CSV</button>
         <button class="btn btn-secondary" onclick="window.AccountingView.refresh()">بررسی مجدد</button>
       </div>
@@ -313,6 +313,7 @@ class AccountingViewImpl {
       <p><strong>اسناد قطعی:</strong> ${Formatters.number(counts.journals)} |
         <strong>فاکتورهای مالی:</strong> ${Formatters.number(counts.invoices)} |
         <strong>تسویه‌ها:</strong> ${Formatters.number(counts.settlements)} |
+        <strong>چک‌های مالی:</strong> ${Formatters.number(counts.cheques)} |
         <strong>مغایرت‌های شناسایی‌شده:</strong> ${Formatters.number(counts.issues)}</p>
       ${report.integrated ? `<p>ارزش موجودی انبار: ${Formatters.number(totals.inventoryBook)} ریال |
         مانده دفتر کل موجودی: ${Formatters.number(totals.inventoryLedger)} ریال</p>` : ''}
