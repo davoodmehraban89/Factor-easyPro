@@ -16,8 +16,8 @@ const port = mode === 'seed' ? 9371 : mode === 'upgrade' ? 9372 : 9373;
 const PASSWORD = 'VmOnly-Factor-83471!'; // Synthetic password, never printed.
 
 const REG_POLICY = [
-  'HKCU\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments',
-  'HKLM\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
+  'HKCU\\Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments',
+  'HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments'
 ];
 const EXE_NAME = path.basename(exe);
 function setDebugPolicies() {
