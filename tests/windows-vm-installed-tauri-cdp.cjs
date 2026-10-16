@@ -422,7 +422,12 @@ async function connect(url) {
       const code = fs.readFileSync(
         path.join(__dirname, 'windows-vm-native-performance-browser.js'), 'utf8'
       );
+      // CDP is attached to the actual installed Windows WebView2 renderer.
+      // JS heap is not total process RSS or Windows working set; record
+      // accurately, without claiming physical memory or SLA verification.
+      const beforeHeap = await cdp.command('Runtime.getHeapUsage', {}, 30000);
       const measured = await cdp.evaluate(code, 240000);
+      const afterHeap = await cdp.command('Runtime.getHeapUsage', {}, 30000);
       assert.equal(measured.products, 10000);
       assert.equal(measured.invoices, 50000);
       assert.equal(measured.companyInvoices, 50000);
@@ -431,6 +436,18 @@ async function connect(url) {
         measured.timingsMs.seedInvoices >= 0 &&
         measured.timingsMs.companyInvoiceReadP95 >= 0 &&
         measured.timingsMs.snapshotExport >= 0);
+      const validHeap = item =>
+        Number.isSafeInteger(item?.usedSize) && item.usedSize >= 0 &&
+        Number.isSafeInteger(item?.totalSize) && item.totalSize >= item.usedSize;
+      assert.ok(validHeap(beforeHeap) && validHeap(afterHeap),
+        'A08 installed WebView2 JS heap size metrics are not valid');
+      measured.jsHeapBytes = {
+        beforeUsed: beforeHeap.usedSize,
+        afterUsed: afterHeap.usedSize,
+        afterAllocated: afterHeap.totalSize,
+        usedChange: afterHeap.usedSize - beforeHeap.usedSize
+      };
+      measured.jsHeapScope = 'renderer-js-heap-not-total-Windows-process-memory';
       report.nativePerformance = measured;
     }
     if (mode === 'fresh') {
