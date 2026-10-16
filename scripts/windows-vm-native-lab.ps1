@@ -131,6 +131,12 @@ try {
   $verified = Run-Native $newExe $upgradeData 'upgrade' $CandidateVersion
   $summary.upgrade = $verified.persistence
   $summary.nativeGUI = 'real-native-WebView2-validated'
+  $summary.backupRecovery = $verified.backupRecovery
+  $summary.atomicTamperRollback = $verified.immutableRestoreRollback
+  # Reopen the real installed executable with the SAME Windows WebView2
+  # profile after the restore and rollback tests. This proves disk durability.
+  $reopened = Run-Native $newExe $upgradeData 'reopen' $CandidateVersion
+  $summary.restartPersistence = $reopened.persistence
 
   $freshDir = Join-Path $lab 'installed-fresh'
   $freshData = Join-Path $lab 'webview2-fresh-profile'

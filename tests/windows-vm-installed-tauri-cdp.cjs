@@ -10,10 +10,10 @@ const verifyNativeFunctionalMatrix = require('./windows-vm-native-functional-mat
 
 const [exe, profile, mode, expectedVersion, reportPath] = process.argv.slice(2);
 assert.equal(process.platform, 'win32');
-assert.ok(['seed','upgrade','fresh'].includes(mode), 'unknown lab mode');
+assert.ok(['seed','upgrade','reopen','fresh'].includes(mode), 'unknown lab mode');
 assert.ok(fs.existsSync(exe), 'installed Windows executable missing');
 fs.mkdirSync(profile, { recursive: true });
-const port = mode === 'seed' ? 9371 : mode === 'upgrade' ? 9372 : 9373;
+const port = mode === 'seed' ? 9371 : mode === 'upgrade' ? 9372 : mode === 'reopen' ? 9374 : 9373;
 const PASSWORD = 'VmOnly-Factor-83471!'; // Synthetic password, never printed.
 
 const REG_POLICY = [
@@ -145,7 +145,7 @@ async function connect(url) {
     if (mode === 'seed' || mode === 'fresh') {
       assert.equal(setup, true, 'a new native profile must prompt to set the administrator password');
     } else {
-      assert.equal(setup, false, 'upgrade should preserve existing administrator credentials');
+      assert.equal(setup, false, 'upgrade/reopen should preserve existing administrator credentials');
     }
     await cdp.evaluate('(() => {' +
       'document.getElementById("faUser").value="مدیر";' +
@@ -163,13 +163,28 @@ async function connect(url) {
         'await S.put("products",{id:"vm-upgrade-product",companyId:"company_default",name:"Synthetic VM product",sellPrice:123456});' +
         'await S.put("invoices",{id:"vm-upgrade-draft",companyId:"company_default",kind:"sale",isPreInvoice:true,financePosted:false,grandTotal:987654,paidAmount:0,remaining:987654});' +
         'const db=await S.init();' +
-        'return {version:db.version,products:(await S.getAll("products")).length,amount:(await S.get("invoices","vm-upgrade-draft")).grandTotal};' +
+        // Real v2.0.3 backup format: all stores, v6 schema, credentials excluded.
+        // Keep a synthetic backup only in the disposable Windows profile so the
+        // upgraded app can test restoring the OLD version without cloud artifacts.
+        'const snapshot=await S.exportAll();' +
+        'await S.put("settings",{id:"vm-legacy-backup",companyId:"company_default",payload:snapshot});' +
+        'return {version:db.version,products:(await S.getAll("products")).length,amount:(await S.get("invoices","vm-upgrade-draft")).grandTotal,' +
+        'backupVersion:snapshot.version,backupApp:snapshot.app,' +
+        'backupContainsProduct:snapshot.data.products.some(p=>p.id==="vm-upgrade-product"),' +
+        'backupContainsInvoice:snapshot.data.invoices.some(i=>i.id==="vm-upgrade-draft"),' +
+        'backupCredentialsExcluded:!snapshot.data.users.some(u=>"pwHash" in u||"pwSalt" in u)};' +
       '})()');
       assert.equal(seeded.version, 6, 'old release should have IndexedDB v6');
       assert.equal(seeded.amount, 987654);
+      assert.equal(seeded.backupVersion, 6);
+      assert.equal(seeded.backupApp, 'Factor-easyPro');
+      assert.equal(seeded.backupContainsProduct, true);
+      assert.equal(seeded.backupContainsInvoice, true);
+      assert.equal(seeded.backupCredentialsExcluded, true);
+      report.legacyBackup = 'real-v2.0.3-snapshot-saved-in-test-profile';
       report.indexedDb = 'v6-written';
       report.persistence = 'synthetic-legacy-fixtures-created';
-    } else if (mode === 'upgrade') {
+    } else if (mode === 'upgrade' || mode === 'reopen') {
       const restored = await cdp.evaluate('(async()=>{' +
         'const S=FINORA.Storage, db=await S.init();' +
         'const product=await S.get("products","vm-upgrade-product");' +
@@ -180,10 +195,78 @@ async function connect(url) {
       assert.equal(restored.version, 7);
       assert.equal(restored.product, 'Synthetic VM product');
       assert.equal(restored.amount, 987654);
-      assert.equal(restored.audits, 0, 'migration must not manufacture historical audit events');
+      assert.equal(restored.audits, mode === 'upgrade' ? 0 : 1,
+        'migration must not fabricate history; an explicitly created event must persist after restart');
       assert.equal(restored.corrections, true);
-      report.indexedDb = 'real-WebView2-v6-to-v7-passed';
+      report.indexedDb = mode === 'upgrade' ?
+        'real-WebView2-v6-to-v7-passed' : 'persisted-real-WebView2-v7-on-restart';
       report.persistence = 'product-invoice-and-login-survived-upgrade';
+      if (mode === 'upgrade') {
+      // Exercise the actual importer in the INSTALLED Tauri WebView2 process.
+      // Intentionally delete only the synthetic draft and product, restore an
+      // older real v6 snapshot, verify both records, and assert a corrupted
+      // snapshot cannot produce partial writes.
+      const recovery = await cdp.evaluate('(async()=>{' +
+        'const S=FINORA.Storage;' +
+        'const snapshot=(await S.get("settings","vm-legacy-backup"))?.payload;' +
+        'if(!snapshot || snapshot.version!==6) throw Error("v2.0.3 backup not persisted");' +
+        'await S.delete("products","vm-upgrade-product");' +
+        'await S.delete("invoices","vm-upgrade-draft");' +
+        'const emptyBefore=!(await S.get("products","vm-upgrade-product"))&&!(await S.get("invoices","vm-upgrade-draft"));' +
+        'await S.importAll(snapshot);' +
+        'const p=await S.get("products","vm-upgrade-product");' +
+        'const i=await S.get("invoices","vm-upgrade-draft");' +
+        'const tampered=structuredClone(snapshot);' +
+        'tampered.data.products.push({...p,id:"vm-would-rollback"});' +
+        'tampered.data.invoices.push({...i,grandTotal:1});' +
+        'let blocked=false;' +
+        'try {await S.importAll({...tampered,app:"foreign-finance"});}catch(e){blocked=true;}' +
+        'return {emptyBefore,restoredProduct:p?.name,restoredInvoice:i?.grandTotal,' +
+        'blockedBadApp:blocked,afterBadApp:(await S.get("products","vm-would-rollback"))??null,' +
+        'databaseVersion:(await S.init()).version};' +
+      '})()');
+      assert.deepEqual(recovery, {
+        emptyBefore:true,restoredProduct:'Synthetic VM product',
+        restoredInvoice:987654,blockedBadApp:true,afterBadApp:null,
+        databaseVersion:7
+      });
+      report.backupRecovery = 'actual-v2.0.3-v6-snapshot-restored-on-installed-v7';
+      report.invalidBackup = 'foreign-app-rejected-no-writes';
+
+      const immutable = await cdp.evaluate('(async()=>{' +
+        'const S=FINORA.Storage;' +
+        'const audit={id:"vm-audit-immutable",companyId:"company_default",' +
+        'commandKey:"company_default:vm-native-test",eventType:"journal_posted",' +
+        'actorId:"user_admin",sourceId:"vm-upgrade-draft",safeSummary:{lineCount:2}};' +
+        'await S.put("audit_events",audit);' +
+        'const stored=await S.get("audit_events",audit.id);' +
+        'let refused=false;' +
+        'try {await S.importAll({app:"Factor-easyPro",version:7,data:{' +
+        'products:[{id:"vm-should-roll-back",companyId:"company_default",name:"No partial writes"}],' +
+        'audit_events:[{...stored,eventType:"period_closed"}]}});}' +
+        'catch(e){refused=true;}' +
+        'return {refused,product:(await S.get("products","vm-should-roll-back"))??null,' +
+        'auditType:(await S.get("audit_events",audit.id)).eventType};' +
+      '})()');
+      assert.deepEqual(immutable, {
+        refused:true,product:null,auditType:'journal_posted'
+      });
+      report.immutableRestoreRollback = 'full-restore-transaction-rolled-back-on-audit-conflict';
+      }
+      if (mode === 'reopen') {
+        const persisted = await cdp.evaluate('(async()=>{' +
+          'const S=FINORA.Storage;' +
+          'const audit=await S.get("audit_events","vm-audit-immutable");' +
+          'return {product:(await S.get("products","vm-upgrade-product"))?.name,' +
+          'invoice:(await S.get("invoices","vm-upgrade-draft"))?.grandTotal,' +
+          'auditType:audit?.eventType,dbVersion:(await S.init()).version};' +
+        '})()');
+        assert.deepEqual(persisted, {
+          product:'Synthetic VM product', invoice:987654,
+          auditType:'journal_posted', dbVersion:7
+        });
+        report.persistence = 'v6-backup-recovery-and-audit-survived-real-native-restart';
+      }
     } else {
       const fresh = await cdp.evaluate('(async()=>{' +
         'const S=FINORA.Storage, db=await S.init();' +
