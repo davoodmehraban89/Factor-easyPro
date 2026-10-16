@@ -12,6 +12,8 @@ function verifyNativeOrigin(href) {
   if (!tauriHttp && !tauriScheme) {
     throw Error('Installed WebView2 unexpectedly loaded a non-Tauri application origin');
   }
-  return url.origin;
+  // URL.origin is "null" for custom schemes in JavaScript; preserve Tauri's
+  // validated local custom origin explicitly rather than reporting "null".
+  return tauriScheme ? 'tauri://localhost' : url.origin;
 }
 module.exports = { verifyNativeOrigin };
