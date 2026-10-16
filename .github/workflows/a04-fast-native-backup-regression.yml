@@ -39,6 +39,7 @@ jobs:
           if ($env:EXPECTED_VERSION -notmatch '^\d+\.\d+\.\d+$') { throw 'Version must be semantic' }
           $info = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SOURCE_RUN" | ConvertFrom-Json
           if ($info.conclusion -ne 'success') { throw 'Prebuilt installer source workflow has not passed' }
+          if ($info.head_sha -ne $env:GITHUB_SHA) { throw 'Prebuilt NSIS source SHA differs from the checked-out test source' }
           Write-Host ("Source run: " + $info.html_url + " commit: " + $info.head_sha)
       - name: Fetch a checksum-verified previous Windows NSIS preview
         uses: actions/download-artifact@v4

@@ -10,6 +10,8 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'tests/windows-vm-installed-tauri-cdp.cjs'
+      - 'tests/windows-vm-native-origin.cjs'
+      - 'tests/windows-vm-native-origin.test.mjs'
       - 'tests/windows-vm-native-functional-matrix.cjs'
       - 'tests/windows-vm-encrypted-company-backup-browser.js'
       - 'scripts/windows-vm-native-lab.ps1'
@@ -69,6 +71,7 @@ jobs:
           name: phase-a-native-windows-vm-evidence
           path: |
             ${{ runner.temp }}/factor-easypro-native-vm-lab/reports/*.json
+            ${{ runner.temp }}/factor-easypro-native-vm-lab/reports/*.png
           retention-days: 30
           if-no-files-found: warn
       - name: State acceptance boundary

@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn, execFileSync } = require('node:child_process');
 const verifyNativeFunctionalMatrix = require('./windows-vm-native-functional-matrix.cjs');
+const { verifyNativeOrigin } = require('./windows-vm-native-origin.cjs');
 
 const [exe, profile, mode, expectedVersion, reportPath] = process.argv.slice(2);
 assert.equal(process.platform, 'win32');
@@ -80,16 +81,16 @@ async function connect(url) {
     if (reply.error) current.reject(Error(JSON.stringify(reply.error)));
     else current.resolve(reply.result);
   });
-  const command = (method, params = {}) => new Promise((resolve, reject) => {
+  const command = (method, params = {}, timeoutMs = 12000) => new Promise((resolve, reject) => {
     const next = ++id;
-    const timer = setTimeout(() => { pending.delete(next); reject(Error('CDP ' + method + ' timed out')); }, 12000);
+    const timer = setTimeout(() => { pending.delete(next); reject(Error('CDP ' + method + ' timed out')); }, timeoutMs);
     pending.set(next, { resolve, reject, timer });
     ws.send(JSON.stringify({ id: next, method, params }));
   });
-  const evaluate = async expression => {
+  const evaluate = async (expression, timeoutMs = 12000) => {
     const r = await command('Runtime.evaluate', {
       expression, awaitPromise: true, returnByValue: true
-    });
+    }, timeoutMs);
     if (r.exceptionDetails) throw Error('Native UI exception: ' + r.exceptionDetails.text);
     if (r.result?.subtype === 'error') throw Error('Native UI rejected JavaScript evaluation');
     return r.result?.value;
@@ -129,7 +130,7 @@ async function connect(url) {
       '(function(){return window.FINORA && document.getElementById("finoraAuthOverlay") && !!globalThis.__TAURI_INTERNALS__?.invoke ? { title:document.title, version:window.FINORA.version, href:location.href, initialMode:document.getElementById("faTitle").textContent, databaseReady:true } : null})()'
     ), 65000);
     report.installedNativeTauri = true;
-    report.browserOrigin = ready.href.replace(/[/#?].*$/, '');
+    report.browserOrigin = verifyNativeOrigin(ready.href);
     report.displayedVersion = ready.version;
     report.versionMatchesPackage = ready.version === expectedVersion;
     // Verified against git tag v2.0.3: that shipped src/main.js hardcodes
@@ -290,12 +291,16 @@ async function connect(url) {
       report.dpapi = 'native-Windows-roundtrip-passed';
     }
     if (mode === 'fresh') {
-      // Run the full native financial matrix first, on a clean fresh install,
-      // then exercise encrypted company recovery WITH posted ledger/stock data.
+      // The real installed desktop window, not the browser-only preview:
+      // verify accounting activation, financial journal, stock, backup and RTL.
       report.nativeFunctional = await verifyNativeFunctionalMatrix(cdp);
+    }
+    if (mode === 'fresh') {
+      // Verify encrypted .fbackup BEFORE sweeping all 10 native UI routes.
+      // Intentional wrong-password toast/dialog are dismissed through the UI;
+      // unexpected errors still fail the following navigation regression.
       const script = fs.readFileSync(
-        path.join(__dirname, 'windows-vm-encrypted-company-backup-browser.js'),
-        'utf8'
+        path.join(__dirname, 'windows-vm-encrypted-company-backup-browser.js'), 'utf8'
       );
       const validated = await cdp.evaluate(script);
       assert.deepEqual(validated, {
@@ -309,6 +314,26 @@ async function connect(url) {
       });
       report.encryptedCompanyBackup =
         'native-SettingsUI-AES-GCM-PBKDF2-wrong-password-and-audited-restore-passed';
+    }
+    if (mode === 'fresh') {
+      // Drive synthetic records, complete snapshot replay and every SPA route
+      // inside the actually installed Tauri WebView2, not Vite preview.
+      const ui = await cdp.evaluate("(async () => {\n  const ensure = (pass, message) => { if (!pass) throw Error(message); };\n  ensure(!document.getElementById('finoraAuthOverlay'), 'Cannot test UI before login');\n  const person = await window.ContactController.create({\n    name: 'شخص آزمایشی ماشین مجازی', role: 'both'\n  });\n  const product = await window.ProductController.createProduct({\n    name: 'کالای آزمایشی ماشین مجازی', code: 'WINDOWS-VM-LAB',\n    buyPrice: 150, sellPrice: 250, trackInventory: true\n  });\n  const db = window.FINORA.Storage;\n  const before = {\n    contacts: (await db.getAll('contacts')).length,\n    products: (await db.getAll('products')).length\n  };\n  ensure((await db.get('contacts',person.id))?.name === 'شخص آزمایشی ماشین مجازی',\n    'Contact did not persist in the native app');\n  ensure((await db.get('products',product.id))?.sellPrice === 250,\n    'Product did not persist in the native app');\n  const snapshot = await db.exportAll();\n  ensure(snapshot.version === 7 && snapshot.app === 'Factor-easyPro',\n    'Native snapshot identity/version mismatch');\n  ensure(snapshot.data.users.every(u => !u.pwHash && !u.pwSalt && !u.pass),\n    'Credential hash leaked into plain export');\n  ensure(snapshot.data.contacts.some(c => c.id === person.id) &&\n    snapshot.data.products.some(p => p.id === product.id),\n    'Native snapshot missing committed master data');\n  ensure(await db.importAll(snapshot) === true,\n    'Native full snapshot replay did not succeed');\n  const after = {\n    contacts: (await db.getAll('contacts')).length,\n    products: (await db.getAll('products')).length\n  };\n  ensure(before.contacts === after.contacts && before.products === after.products,\n    'Snapshot replay duplicated a contact or product');\n  const routes = [\n    'dashboard', 'invoices', 'products', 'contacts', 'treasury',\n    'cheques', 'expenses', 'reports', 'accounting', 'settings'\n  ];\n  const pages = [];\n  for (const route of routes) {\n    await FINORA.Router.go(route);\n    const view = document.getElementById('pageContent');\n    const text = (view?.textContent || '').trim();\n    ensure(FINORA.Router.current() === route, 'Unexpected route: ' + route);\n    ensure(text.length > 10, 'Empty page: ' + route);\n    ensure(!text.includes('خطا در بارگذاری صفحه'),\n      'Router reported a page rendering error: ' + route);\n    ensure(!document.querySelector('.toast-error'),\n      'Error toast while navigating to: ' + route);\n    pages.push({route, renderedCharacters: text.length});\n  }\n  await FINORA.Router.go('dashboard');\n  ensure(!document.getElementById('finoraAuthOverlay'),\n    'Navigation unexpectedly returned to authentication overlay');\n  return {masterData:before, backup:'plain-no-credentials-replay-idempotent',\n    routes:pages, visibleVersion:FINORA.version};\n})()", 45000);
+      assert.equal(ui.routes.length, 10);
+      assert.equal(ui.visibleVersion, expectedVersion);
+      report.nativeUI = ui;
+      try {
+        const screen = await cdp.command('Page.captureScreenshot', {
+          format: 'png', captureBeyondViewport: false, fromSurface: true
+        });
+        if (!screen?.data) throw Error('No PNG image data');
+        const filename = path.join(path.dirname(reportPath), 'fresh-native-dashboard.png');
+        fs.writeFileSync(filename, Buffer.from(screen.data, 'base64'));
+        report.screenshot = path.basename(filename);
+      } catch (screenshotError) {
+        // A screenshot is NOT claimed as verified if native CDP denies it.
+        report.screenshot = 'UNVERIFIED: ' + screenshotError.message;
+      }
     }
     report.status = 'PASSED';
     console.log(JSON.stringify(report, null, 2));

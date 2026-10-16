@@ -83,9 +83,41 @@
       throw Error('Encrypted company backup accepted an incorrect password');
     }
 
+    // The incorrect-password result MUST produce the real, visible error toast.
+    // ToastManager deliberately retains errors until dismissed.
+    // Dismiss ONLY the expected toast and modal through their real UI actions.
+    // Any unrelated errors remain visible and will fail the navigation sweep.
+    const expectedError = 'رمز نادرست است یا فایل پشتیبان آسیب دیده است';
+    if (capturedErrors.length !== 1 || !capturedErrors[0].includes(expectedError)) {
+      throw Error('Wrong-password restore did not emit exactly the expected error');
+    }
+    const visibleErrors = [...document.querySelectorAll('.toast-error')];
+    if (visibleErrors.length !== 1 || !visibleErrors[0].textContent.includes(expectedError)) {
+      throw Error('Expected wrong-password error toast was absent or extra errors were shown');
+    }
+    const dismiss = visibleErrors[0].querySelector('.toast-close');
+    if (!dismiss) throw Error('Expected error toast cannot be dismissed');
+    dismiss.click();
+    if (document.querySelector('.toast-error')) {
+      throw Error('Unexpected error toast survived wrong-password cleanup');
+    }
+    // A failed restore deliberately keeps its form open for the user to retry.
+    // The test must close that form before opening a second restore dialog.
+    if (!document.getElementById('restoreFile')) {
+      throw Error('Wrong-password recovery unexpectedly closed its dialog');
+    }
+    FINORA.Modal.close();
+    if (document.getElementById('restoreFile')) {
+      throw Error('Failed recovery dialog could not be closed');
+    }
+
     restoreFile(encryptedText);
     window.prompt = () => password;
     await window.SettingsView.restoreBackup();
+    if (capturedErrors.length !== 1 || document.querySelector('.toast-error') ||
+        document.querySelector('.modal-backdrop')) {
+      throw Error('Correct-password restore failed or left modal/error state');
+    }
     const recovered = await store.get('contacts', contactId);
     if (recovered?.name !== synthetic || recovered.companyId !== company.id) {
       throw Error('Encrypted native company backup did not restore the exact contact');
