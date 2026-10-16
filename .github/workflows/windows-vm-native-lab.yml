@@ -1,0 +1,72 @@
+name: Phase A Windows VM Native Installer and Upgrade Lab
+
+on:
+  pull_request:
+    paths:
+      - 'tests/windows-vm-installed-tauri-cdp.cjs'
+      - 'scripts/windows-vm-native-lab.ps1'
+      - 'scripts/windows-vm-set-candidate.cjs'
+      - '.github/workflows/windows-vm-native-lab.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-windows-lab:
+    name: Install, login, migrate v6 to v7, verify DPAPI and reinstall
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout candidate source in disposable Windows runner
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies from committed lockfile
+        run: npm ci
+      - name: Run unit and integration regression tests
+        run: npm test
+      - name: Generate a non-public higher version for actual NSIS upgrade
+        id: candidate
+        run: node scripts/windows-vm-set-candidate.cjs
+      - name: Build actual Windows x64 NSIS installer
+        run: npm exec tauri build
+      - name: Confirm single newly built NSIS installer exists
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem 'src-tauri/target/release/bundle/nsis/*x64-setup.exe' -ErrorAction SilentlyContinue)
+          if ($files.Count -ne 1) { throw 'Expected one actual Tauri NSIS setup EXE' }
+          $installer = $files[0]
+          if (!$installer.Name.Contains('${{ steps.candidate.outputs.version }}')) {
+            throw 'Installer filename/version does not match the disposable candidate'
+          }
+          if ($installer.Length -lt 500000) { throw 'Native installer is suspiciously small' }
+          (Get-FileHash $installer.FullName -Algorithm SHA256) | Format-List
+      - name: Install released 2.0.3, launch real native WebView2 and upgrade in place
+        shell: pwsh
+        run: |
+          $candidate = @(Get-ChildItem 'src-tauri/target/release/bundle/nsis/*x64-setup.exe')[0].FullName
+          ./scripts/windows-vm-native-lab.ps1 -CandidateInstaller $candidate -CandidateVersion '${{ steps.candidate.outputs.version }}'
+      - name: Upload native Windows VM evidence, including failure reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-a-native-windows-vm-evidence
+          path: |
+            ${{ runner.temp }}/factor-easypro-native-vm-lab/reports/*.json
+          retention-days: 30
+          if-no-files-found: warn
+      - name: State acceptance boundary
+        if: always()
+        shell: pwsh
+        run: |
+          "This VM lab exercises an actual Windows NSIS installer and installed Tauri WebView2." >> $env:GITHUB_STEP_SUMMARY
+          "Only synthetic VM data is used. Candidate version is local to CI; no public GitHub Release is created." >> $env:GITHUB_STEP_SUMMARY
+          "This lab does not replace physical printing, user-machine backup recovery or production signing approval." >> $env:GITHUB_STEP_SUMMARY
