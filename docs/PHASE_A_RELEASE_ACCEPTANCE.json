@@ -14,7 +14,9 @@
     {
       "id": "A02",
       "accepted": false,
-      "evidence": [],
+      "evidence": [
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38948801630"
+      ],
       "name": "Historical opening balances and migration rehearsal"
     },
     {
