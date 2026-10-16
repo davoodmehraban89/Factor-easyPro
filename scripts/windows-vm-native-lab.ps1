@@ -143,6 +143,14 @@ try {
   $freshExe = Install-NSIS $CandidateInstaller $freshDir
   $freshResult = Run-Native $freshExe $freshData 'fresh' $CandidateVersion
   $summary.freshInstall = $freshResult.indexedDb
+
+  # A08: after all functional checks, measure the real installed candidate
+  # using a separate disposable WebView2/IndexedDB profile. Never mix with
+  # data-preservation or first-run validation profiles.
+  $performanceData = Join-Path $lab 'webview2-native-performance-profile'
+  $nativePerformance = Run-Native $freshExe $performanceData 'benchmark' $CandidateVersion
+  $summary.nativePerformance = $nativePerformance.nativePerformance
+
   $summary.status = 'PASSED'
   Write-Output 'Verified fresh installation, NSIS in-place upgrade, retained v6 records, native login and Windows DPAPI'
   Cleanup-Installed $freshDir
