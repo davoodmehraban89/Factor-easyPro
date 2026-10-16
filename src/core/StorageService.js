@@ -251,7 +251,9 @@ class StorageServiceImpl {
         delete: (s, id) => APPEND_ONLY_STORES.has(s)
           ? Promise.reject(new Error('حذف مستقیم سابقه ممیزی یا اصلاح سند مجاز نیست'))
           : wrap(os(s).delete(id)).then(() => undefined),
-        clear: (s) => wrap(os(s).clear()).then(() => undefined)
+        clear: (s) => APPEND_ONLY_STORES.has(s)
+          ? Promise.reject(new Error('پاک‌سازی مستقیم سابقه ممیزی یا اصلاح سند مجاز نیست'))
+          : wrap(os(s).clear()).then(() => undefined)
       };
 
       let result;
@@ -326,9 +328,26 @@ class StorageServiceImpl {
     return this._exec(store, 'readonly', s => s.count());
   }
 
-  clearAll() {
-    return this.transaction(STORES, async tx => {
-      await Promise.all(STORES.map(name => tx.clear(name)));
+  // Explicit full-database reset/maintenance is intentionally separate from
+  // the ordinary transaction API. That API must never permit clearing
+  // append-only audit or correction history on its own.
+  // Keep the full reset atomic and wait for IDB transaction completion.
+  async clearAll() {
+    if (globalThis.FINORA?.License) globalThis.FINORA.License.assertWritable();
+    const db = await this.init();
+    return new Promise((resolve, reject) => {
+      let tx;
+      try {
+        tx = db.transaction(STORES, 'readwrite');
+        tx.oncomplete = () => resolve();
+        tx.onabort = () => reject(tx.error || new Error('بازنشانی کامل پایگاه داده لغو شد'));
+        for (const name of STORES) tx.objectStore(name).clear();
+      } catch (err) {
+        if (tx) {
+          try { tx.abort(); } catch (_) { /* Transaction may already be inactive. */ }
+        }
+        reject(err);
+      }
     });
   }
 

@@ -172,6 +172,7 @@ try {
     'partial-sale-and-inventory',
     'sale-return-immutable-stock-and-ledger',
     'purchase-return-and-stock-guardrails',
+    'append-only-history-bulk-clear-protection',
     'backup-and-atomic-rejection',
     'rtl-invoice-print-settings',
     'fiscal-close-atomic-guardrails',
