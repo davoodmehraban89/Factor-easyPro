@@ -155,6 +155,114 @@ async function saleInvoice() {
   return { salePaid: 200, saleRemaining: 400, salePosted: true, cashLedger: true };
 }
 
+async function nativeSaleReturnGuardrails() {
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const check = (ok, message) => { if (!ok) throw Error(message); };
+  const S = FINORA.Storage;
+  const sale = (await S.getAll('invoices'))
+    .find(i => i.kind === 'sale' && i.financePosted && i.grandTotal === 600);
+  const contact = sale && await S.get('contacts', sale.contactId);
+  const product = (await S.getAll('products')).find(p => p.code === 'VM-E2E-100');
+  check(sale && contact && product, 'Posted original sale fixture is required');
+  const originalAmount = sale.grandTotal;
+  const originalPaid = sale.paidAmount;
+  const buildReturn = async (qty, price) => {
+    await FINORA.Router.go('invoices');
+    await wait(220);
+    await window.InvoiceFormView.open();
+    await wait(160);
+    const kind = document.getElementById('invKind');
+    check(kind, 'Native return invoice form missing');
+    kind.value = 'sale_return';
+    await window.InvoiceFormView._onKindChange();
+    const reference = document.getElementById('invOriginalInvoice');
+    check([...reference.options].some(x => x.value === sale.id),
+      'Posted sale does not appear as the reference invoice');
+    reference.value = sale.id;
+    document.getElementById('invDate').value = '1405/07/18';
+    const contactSearch = document.getElementById('invContactSearch');
+    contactSearch.value = contact.name;
+    window.InvoiceFormView._showContactOptions(true);
+    const contactItem = document.querySelector('.contact-option[data-id="' + contact.id + '"]');
+    check(contactItem, 'Cannot select original customer in return form');
+    contactItem.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    const productSearch = document.querySelector('.row-product-search');
+    check(productSearch, 'Return product search field missing');
+    productSearch.value = product.code;
+    window.InvoiceFormView._showProductOptions(0, true);
+    const selected = document.querySelector('.product-option[data-id="' + product.id + '"]');
+    check(selected, 'Original sold product not selectable');
+    selected.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    document.querySelector('.row-qty').value = String(qty);
+    window.InvoiceFormView._onFieldChange(0, 'qty', String(qty));
+    document.querySelector('.row-price').value = String(price);
+    window.InvoiceFormView._onFieldChange(0, 'price', String(price));
+    document.getElementById('invPayment').value = 'credit';
+    window.InvoiceFormView._onPaymentChange();
+    await window.InvoiceFormView._save(false);
+    await wait(170);
+  };
+
+  await buildReturn(1, 200);
+  check(!document.querySelector('.toast-error'), 'Valid return showed an unexpected error');
+  const returns = (await S.getAll('invoices')).filter(x =>
+    x.kind === 'sale_return' && x.originalInvoiceId === sale.id);
+  check(returns.length === 1 && returns[0].financePosted &&
+    returns[0].grandTotal === 200 && returns[0].paidAmount === 0,
+    'Native return did not post a separate unpaid credit document');
+  const returned = returns[0];
+  const journal = await S.get('journal_entries', returned.journalId);
+  check(journal?.status === 'posted' && journal.sourceId === returned.id,
+    'Native sales return lacks its own posted ledger journal');
+  const lines = (await S.getAll('journal_lines')).filter(x => x.journalId === journal.id);
+  check(lines.length >= 2 && lines.reduce((n, x) => n + x.debit, 0) > 0 &&
+    lines.reduce((n, x) => n + x.debit, 0) ===
+      lines.reduce((n, x) => n + x.credit, 0),
+    'Return journal has invalid debit/credit balance');
+  check((await S.getAll('stock_movements'))
+    .some(x => x.refId === returned.id && x.type === 'in' && x.productId === product.id),
+    'Native sales return did not receive returned inventory');
+  check((await S.getAll('document_corrections')).some(x =>
+    x.sourceId === sale.id && x.resultId === returned.id),
+    'Return correction did not link to its immutable original');
+  check(!(await S.getAll('treasury')).some(x => x.invoiceId === returned.id &&
+    x.recordType === 'transaction'),
+    'Native return illegally generated an automatic refund');
+  const unchanged = await S.get('invoices', sale.id);
+  check(unchanged.grandTotal === originalAmount && unchanged.paidAmount === originalPaid &&
+    unchanged.financePosted, 'Posted source sale mutated during return');
+  const beforeInvalid = {
+    returns: (await S.getAll('invoices')).filter(x => x.kind === 'sale_return' &&
+      x.originalInvoiceId === sale.id).length,
+    stock: (await S.getAll('stock_movements')).length,
+    audits: (await S.getAll('audit_events')).length
+  };
+
+  // Quantity 3 would exceed the 2 units remaining from the original sale,
+  // while its 300 rial value is still below the remaining financial cap.
+  await buildReturn(3, 100);
+  let error = [...document.querySelectorAll('.toast-error')].find(x =>
+    x.textContent.includes('تعداد مرجوعی'));
+  check(error, 'Over-return quantity did not produce its expected UI rejection');
+  check((await S.getAll('invoices')).filter(x => x.kind === 'sale_return' &&
+    x.originalInvoiceId === sale.id).length === beforeInvalid.returns,
+    'Over-return created an extra financial invoice');
+  check((await S.getAll('stock_movements')).length === beforeInvalid.stock &&
+    (await S.getAll('audit_events')).length === beforeInvalid.audits,
+    'Rejected over-return left stock or audit side effects');
+  error.querySelector('.toast-close')?.click();
+  FINORA.Modal.close();
+  check(!document.querySelector('.toast-error') && !document.querySelector('.modal-backdrop'),
+    'Return guardrail left an error toast or modal after expected rejection');
+  return {
+    separatePostedReturn: true,
+    balancedLedgerAndReturnedStock: true,
+    postedOriginalImmutable: true,
+    noAutomaticCashRefund: true,
+    overReturnRejectedWithoutWrites: true
+  };
+}
+
 async function nativeBackupRestore() {
   const check = (value, message) => { if (!value) throw Error(message); };
   const S = FINORA.Storage;
@@ -305,6 +413,7 @@ module.exports = async function nativeFunctionalMatrix(cdp) {
     ['activate-accounting-and-inventory', activateAccounting],
     ['purchase-and-post-ledger', purchaseInvoice],
     ['partial-sale-and-inventory', saleInvoice],
+    ['sale-return-immutable-stock-and-ledger', nativeSaleReturnGuardrails],
     ['backup-and-atomic-rejection', nativeBackupRestore],
     ['rtl-invoice-print-settings', invoicePrintLayout],
     ['fiscal-close-atomic-guardrails', fiscalCloseGuardrails]
