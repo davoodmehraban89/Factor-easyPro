@@ -1,0 +1,26 @@
+name: A04 real Windows Edge v6 to v7 database migration
+on:
+  pull_request:
+    paths:
+      - 'tests/a04-windows-v6-v7-browser-migration.cjs'
+      - '.github/workflows/a04-windows-migration-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-legacy-migration:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Build local offline app resources
+        run: npm run build
+      - name: Seed v6 browser database and verify v7 migration on Windows Edge
+        run: node tests/a04-windows-v6-v7-browser-migration.cjs
