@@ -12,7 +12,7 @@ import { NumberInput } from '../utils/NumberInput.js';
 
 let currentTab = 'accounts';
 let txFilter = { search: '', type: '', accountId: '' };
-let cache = { accounts: [], balances: {}, transactions: [], contacts: [] };
+let cache = { accounts: [], balances: {}, transactions: [], contacts: [], invoices: [] };
 
 class TreasuryViewImpl {
   async render() {
@@ -45,6 +45,7 @@ class TreasuryViewImpl {
     cache.balances = await TreasuryController.getBalanceMap();
     cache.transactions = await TreasuryController.getTransactions();
     cache.contacts = await ContactController.getAll();
+    cache.invoices = await InvoiceController.getAll();
   }
 
   _switchTab(tab, btn) {
@@ -407,6 +408,25 @@ class TreasuryViewImpl {
     ).join('');
   }
 
+
+  _buildInvoiceOptions(type) {
+    const kinds=type==='receipt'
+      ? ['sale','non_formal','purchase_return']
+      : ['purchase','sale_return'];
+    const invoices=cache.invoices.filter(row=>
+      row.financePosted && !row.isPreInvoice && kinds.includes(row.kind) &&
+      Number(row.remaining)>0);
+    return '<option value="">— دریافت/پرداخت مستقل (بدون اتصال فاکتور) —</option>' +
+      invoices.map(row => `<option value="${this._esc(row.id)}">#${this._esc(row.number)} — ${this._esc(row.contactName||'بدون نام')} (${Formatters.number(row.remaining)} ریال)</option>`).join('');
+  }
+
+  _onInvoiceSelection() {
+    const id=document.getElementById('txInvoiceRef')?.value;
+    const row=cache.invoices.find(x=>x.id===id);
+    const contact=document.getElementById('txContact');
+    if(row?.contactId && contact) contact.value=row.contactId;
+  }
+
   openReceiptModal() {
     if (cache.accounts.length === 0) {
       Toast.warning('ابتدا یک حساب یا صندوق تعریف کنید');
@@ -429,6 +449,13 @@ class TreasuryViewImpl {
         <select class="form-control" id="txContact">
           <option value="">— بدون طرف حساب —</option>
           ${this._buildContactOptions()}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">فاکتور مرتبط (اختیاری)</label>
+        <select class="form-control" id="txInvoiceRef" onchange="window.TreasuryView._onInvoiceSelection()">
+          ${this._buildInvoiceOptions('receipt')}
         </select>
       </div>
 
@@ -480,6 +507,13 @@ class TreasuryViewImpl {
         <select class="form-control" id="txContact">
           <option value="">— بدون طرف حساب —</option>
           ${this._buildContactOptions()}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">فاکتور مرتبط / بازپرداخت (اختیاری)</label>
+        <select class="form-control" id="txInvoiceRef" onchange="window.TreasuryView._onInvoiceSelection()">
+          ${this._buildInvoiceOptions('payment')}
         </select>
       </div>
 
@@ -563,6 +597,7 @@ class TreasuryViewImpl {
       method: document.getElementById('txMethod')?.value || 'cash',
       contactId,
       contactName: contact?.name || '',
+      refInvoiceId: document.getElementById('txInvoiceRef')?.value || null,
       fromAccountId: document.getElementById('txFromAccount')?.value || null,
       toAccountId: document.getElementById('txToAccount')?.value || null,
       description: document.getElementById('txDescription')?.value || ''
