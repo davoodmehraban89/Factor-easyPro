@@ -22,7 +22,9 @@
     {
       "id": "A03",
       "accepted": false,
-      "evidence": [],
+      "evidence": [
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38949950396"
+      ],
       "name": "Complete atomic audit with permissions and retention"
     },
     {
@@ -47,7 +49,9 @@
     {
       "id": "A06",
       "accepted": false,
-      "evidence": [],
+      "evidence": [
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38949288708"
+      ],
       "name": "Production entitlement verification and authorization"
     },
     {
