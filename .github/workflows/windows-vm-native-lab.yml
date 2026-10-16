@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'tests/windows-vm-installed-tauri-cdp.cjs'
+      - 'tests/windows-vm-encrypted-company-backup-browser.js'
       - 'scripts/windows-vm-native-lab.ps1'
       - 'scripts/windows-vm-set-candidate.cjs'
       - '.github/workflows/windows-vm-native-lab.yml'
