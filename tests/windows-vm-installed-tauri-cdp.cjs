@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn, execFileSync } = require('node:child_process');
+const verifyNativeFunctionalMatrix = require('./windows-vm-native-functional-matrix.cjs');
 
 const [exe, profile, mode, expectedVersion, reportPath] = process.argv.slice(2);
 assert.equal(process.platform, 'win32');
@@ -289,6 +290,8 @@ async function connect(url) {
       report.dpapi = 'native-Windows-roundtrip-passed';
     }
     if (mode === 'fresh') {
+      // First verify the encrypted company backup from the real Settings UI
+      // on a clean company; then execute the financial integration matrix.
       const script = fs.readFileSync(
         path.join(__dirname, 'windows-vm-encrypted-company-backup-browser.js'),
         'utf8'
@@ -305,6 +308,9 @@ async function connect(url) {
       });
       report.encryptedCompanyBackup =
         'native-SettingsUI-AES-GCM-PBKDF2-wrong-password-and-audited-restore-passed';
+      // The real installed desktop window, not the browser-only preview:
+      // verify accounting activation, financial journal, stock, backup and RTL.
+      report.nativeFunctional = await verifyNativeFunctionalMatrix(cdp);
     }
     report.status = 'PASSED';
     console.log(JSON.stringify(report, null, 2));
