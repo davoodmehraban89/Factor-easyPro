@@ -45,9 +45,36 @@ function Install-NSIS([string]$installer,[string]$directory) {
     }
     if ($process.ExitCode -ne 0) { throw "NSIS installer exited $($process.ExitCode)" }
   } finally { $process.Dispose() }
+  # The current Rust binary target is "app.exe" even though the product
+  # and NSIS installer are called Factor-easyPro. Check both explicitly.
   $candidate = Get-ChildItem -LiteralPath $directory -Recurse -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -eq 'Factor-easyPro.exe' } | Select-Object -First 1
-  if (-not $candidate) { throw "Installed Factor-easyPro.exe not found in $directory" }
+    Where-Object { $_.Name -in @('app.exe', 'Factor-easyPro.exe') } | Select-Object -First 1
+  if (-not $candidate) {
+    $discovered = @(Get-ChildItem -LiteralPath $directory -Recurse -File -ErrorAction SilentlyContinue |
+      Select-Object -First 15 -ExpandProperty FullName)
+    Write-Output ("NSIS installation contents: " + ($discovered -join '; '))
+    $uninstallRoots = @(
+      'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+      'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+      'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+    )
+    foreach ($registry in $uninstallRoots) {
+      if (!(Test-Path $registry)) { continue }
+      $entries = @(Get-ChildItem $registry -ErrorAction SilentlyContinue |
+        Get-ItemProperty -ErrorAction SilentlyContinue |
+        Where-Object { $_.DisplayName -like 'Factor-easyPro*' })
+      foreach ($entry in $entries) {
+        $place = $entry.InstallLocation
+        if (!$place -or !(Test-Path $place)) { continue }
+        $candidate = Get-ChildItem -LiteralPath $place -Recurse -File -ErrorAction SilentlyContinue |
+          Where-Object { $_.Name -in @('app.exe', 'Factor-easyPro.exe') } |
+          Select-Object -First 1
+        if ($candidate) { break }
+      }
+      if ($candidate) { break }
+    }
+  }
+  if (-not $candidate) { throw "Installed native app executable not found in $directory or uninstall registry" }
   if ($candidate.Length -lt 300000) { throw 'Installed executable suspiciously small' }
   return $candidate.FullName
 }
