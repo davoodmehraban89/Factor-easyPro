@@ -92,11 +92,19 @@ async function examine(tx, companyId, input) {
   }
   // All chart rules are enforced even for readonly preview. This rejects
   // inactive accounts, group parents, out-of-period dates and overflow.
-  const validated = validateJournal({
-    companyId, date: input.openingDate, lines: (input.lines || []).map(row => ({
-      accountId: row.accountId, debit: row.debit, credit: row.credit
-    }))
-  }, accounts, period);
+  // A dry-run should explain an unbalanced opening journal rather than
+  // throwing before the user can see the specific discrepancy. Keep all
+  // account/date/amount validations; only defer the balance requirement.
+  const validated = input.lines.length
+    ? validateJournal({
+      companyId, date: input.openingDate, lines: input.lines.map(row => ({
+        accountId: row.accountId, debit: row.debit, credit: row.credit
+      }))
+    }, accounts, period, {
+      requireBalance: !problems.includes('UNBALANCED_OPENING_JOURNAL')
+    })
+    // An empty data-file is a blocked preview, not a failed posting attempt.
+    : { ...report.journal };
   if (validated.debit !== report.journal.debit ||
       validated.credit !== report.journal.credit) {
     throw Error('گزارش افتتاحیه با سطرهای سند مطابقت ندارد');

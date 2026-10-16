@@ -167,3 +167,26 @@ test('A02: ordinary users cannot preview or post ledger opening', async () => {
     confirmation: 'CONFIRM_OPENING_LEDGER'
   }), /فقط برای مدیر/);
 });
+
+test('A02: an unbalanced opening preview displays its discrepancy without ledger mutations', async () => {
+  const { input } = await setup();
+  input.lines[4].credit = 699;
+  const report = await OpeningBalanceService.preview(input);
+  assert.equal(report.readiness, 'blocked');
+  assert.ok(report.issues.includes('UNBALANCED_OPENING_JOURNAL'));
+  assert.deepEqual(report.journal, { debit: 900, credit: 899 });
+  assert.equal((await StorageService.getAll('journal_entries')).length, 0);
+  await assert.rejects(OpeningBalanceService.commit(input, {
+    confirmation: 'CONFIRM_OPENING_LEDGER'
+  }), /UNBALANCED_OPENING_JOURNAL/);
+  assert.equal((await StorageService.getAll('journal_entries')).length, 0);
+});
+
+test('A02: empty opening file produces a blocked report instead of a validation exception', async () => {
+  const { input } = await setup();
+  input.lines = [];
+  const review = await OpeningBalanceService.preview(input);
+  assert.equal(review.readiness, 'blocked');
+  assert.ok(review.issues.includes('MISSING_OPENING_JOURNAL_LINES'));
+  assert.equal((await StorageService.getAll('journal_entries')).length, 0);
+});
