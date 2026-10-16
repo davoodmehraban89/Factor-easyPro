@@ -164,11 +164,74 @@
     if (!audits.length) {
       throw Error('Company restore did not create a corresponding audit event');
     }
+    // A04 late-validation rollback: the first contact and a fake posted sale
+    // are staged INSIDE the same real IndexedDB transaction. Validation of the
+    // nonexistent posted journal must abort the entire transaction, including
+    // the earlier contact write and any audit receipt.
+    const rollbackContactId = 'vm-only-late-rollback-contact';
+    const rollbackInvoiceId = 'vm-only-late-rollback-invoice';
+    const auditCountBeforeLateRollback = (await store.getAll('audit_events')).length;
+    const corruptFinancialSnapshot = {
+      app: 'Factor-easyPro',
+      scope: 'company',
+      schemaVersion: 7,
+      companyId: company.id,
+      data: {
+        contacts: [{
+          id: rollbackContactId,
+          companyId: company.id,
+          ownerUserId: actor.id,
+          name: 'VM-ONLY aborted restore record'
+        }],
+        invoices: [{
+          id: rollbackInvoiceId,
+          companyId: company.id,
+          kind: 'sale',
+          financePosted: true,
+          journalId: 'vm-only-nonexistent-posted-journal',
+          grandTotal: 1000
+        }]
+      }
+    };
+    restoreFile(JSON.stringify(corruptFinancialSnapshot));
+    await window.SettingsView.restoreBackup();
+    if (await store.get('contacts', rollbackContactId) ||
+        await store.get('invoices', rollbackInvoiceId)) {
+      throw Error('Late ledger validation failed to roll back all staged rows');
+    }
+    if ((await store.getAll('audit_events')).length !== auditCountBeforeLateRollback) {
+      throw Error('Aborted restore incorrectly committed an audit receipt');
+    }
+    if ((await store.get('contacts', contactId))?.name !== synthetic) {
+      throw Error('Aborted restore modified an existing recovered contact');
+    }
+    const validationMessage = 'ارجاع دفتر کل سند مالی بازیابی‌شده نامعتبر است';
+    if (capturedErrors.length !== 3 ||
+        !capturedErrors[2].includes(validationMessage)) {
+      throw Error('Late validation failure was not exposed through Settings UI');
+    }
+    const rollbackToasts = [...document.querySelectorAll('.toast-error')];
+    if (rollbackToasts.length !== 1 ||
+        !rollbackToasts[0].textContent.includes(validationMessage)) {
+      throw Error('Late validation did not show exactly one expected error');
+    }
+    const rollbackDismiss = rollbackToasts[0].querySelector('.toast-close');
+    if (!rollbackDismiss) throw Error('Late validation error cannot be dismissed');
+    rollbackDismiss.click();
+    if (document.querySelector('.toast-error') || !document.getElementById('restoreFile')) {
+      throw Error('Late rollback left an unexpected error or closed its form');
+    }
+    FINORA.Modal.close();
+    if (document.querySelector('.modal-backdrop')) {
+      throw Error('Aborted restore form remained open');
+    }
+
     return {
       encryptedEnvelope: true,
       filenameSuffix: '.fbackup',
       wrongPasswordRejected: true,
       tamperedCiphertextRejectedWithoutWrites: true,
+      lateFinancialValidationRolledBack: true,
       sameCompanyRestore: true,
       restoredContact: true,
       restoreAudited: true,
