@@ -102,6 +102,9 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
           throw Error('ارجاع دفتر کل سند مالی بازیابی‌شده نامعتبر است');
         }
         if (store === 'cheques' && row.statusVersion === 2) {
+          if (!isId(row.statusJournalId)) {
+            throw Error('شناسه سند تغییر وضعیت چک بازیابی‌شده نامعتبر است');
+          }
           const statusJournal = await tx.get('journal_entries', row.statusJournalId);
           if (!statusJournal || statusJournal.companyId !== companyId ||
               statusJournal.status !== 'posted' ||
