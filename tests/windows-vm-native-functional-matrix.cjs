@@ -346,6 +346,100 @@ async function nativeSaleReturnGuardrails() {
   };
 }
 
+async function nativePurchaseReturnGuardrails() {
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const check = (ok,msg) => { if (!ok) throw Error(msg); };
+  const S = FINORA.Storage;
+  const original = (await S.getAll('invoices')).find(x =>
+    x.kind === 'purchase' && x.financePosted && x.grandTotal === 1000);
+  const contact = original && await S.get('contacts', original.contactId);
+  const product = (await S.getAll('products')).find(x => x.code === 'VM-E2E-100');
+  check(original && contact && product, 'A01 purchase-return source fixtures missing');
+  const originalJournal = original.journalId;
+  const makeReturn = async (qty, price) => {
+    await FINORA.Router.go('invoices');
+    await wait(200);
+    await window.InvoiceFormView.open();
+    await wait(140);
+    document.getElementById('invKind').value = 'purchase_return';
+    await window.InvoiceFormView._onKindChange();
+    const source = document.getElementById('invOriginalInvoice');
+    check([...source.options].some(x => x.value === original.id && !x.disabled),
+      'Posted purchase not an eligible source in return form');
+    source.value = original.id;
+    document.getElementById('invDate').value = '1405/07/18';
+    const search = document.getElementById('invContactSearch');
+    search.value = contact.name;
+    window.InvoiceFormView._showContactOptions(true);
+    const option = document.querySelector('.contact-option[data-id="' + contact.id + '"]');
+    check(option, 'Original supplier cannot be selected');
+    option.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    const productSearch = document.querySelector('.row-product-search');
+    productSearch.value = product.code;
+    window.InvoiceFormView._showProductOptions(0, true);
+    const prod = document.querySelector('.product-option[data-id="' + product.id + '"]');
+    check(prod, 'Purchased product cannot be selected');
+    prod.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    document.querySelector('.row-qty').value = String(qty);
+    window.InvoiceFormView._onFieldChange(0, 'qty', String(qty));
+    document.querySelector('.row-price').value = String(price);
+    window.InvoiceFormView._onFieldChange(0, 'price', String(price));
+    document.getElementById('invPayment').value = 'credit';
+    window.InvoiceFormView._onPaymentChange();
+    await window.InvoiceFormView._save(false);
+    await wait(180);
+  };
+  await makeReturn(1, 100);
+  check(!document.querySelector('.toast-error'), 'Valid supplier return showed unexpected error');
+  const found = (await S.getAll('invoices')).filter(x =>
+    x.kind === 'purchase_return' && x.originalInvoiceId === original.id);
+  check(found.length === 1 && found[0].financePosted &&
+    found[0].paidAmount === 0 && found[0].grandTotal === 100,
+    'Purchase return was not correctly posted without automatic cash receipt');
+  const returned = found[0];
+  const ledger = await S.get('journal_entries', returned.journalId);
+  check(ledger?.status === 'posted' && ledger.sourceId === returned.id,
+    'Purchase return journal link missing');
+  const lines = (await S.getAll('journal_lines')).filter(x => x.journalId === ledger.id);
+  const debit = lines.reduce((n,x)=>n+x.debit,0);
+  const credit = lines.reduce((n,x)=>n+x.credit,0);
+  check(lines.length >= 2 && debit > 0 && debit === credit,
+    'Native purchase return failed ledger balancing');
+  check((await S.getAll('stock_movements')).some(x =>
+    x.refId === returned.id && x.type === 'out' && x.productId === product.id),
+    'Returned purchased inventory did not leave warehouse');
+  check((await S.getAll('document_corrections')).some(x =>
+    x.sourceId === original.id && x.resultId === returned.id),
+    'Supplier return must be a linked correction');
+  check((await S.get('invoices', original.id)).journalId === originalJournal,
+    'Supplier return illegally changed source purchase');
+  check(!(await S.getAll('treasury')).some(x =>
+    x.recordType === 'transaction' && x.invoiceId === returned.id),
+    'Supplier return created unauthorized treasury cash event');
+  const before = {
+    invoices:(await S.getAll('invoices')).length,
+    movements:(await S.getAll('stock_movements')).length,
+    audits:(await S.getAll('audit_events')).length
+  };
+  // 10 more units exceeds the 9 remaining, even though the proposed
+  // 500-rial credit is BELOW the remaining purchase monetary cap.
+  await makeReturn(10, 50);
+  const toast = [...document.querySelectorAll('.toast-error')].find(x =>
+    x.textContent.includes('تعداد مرجوعی'));
+  check(toast, 'Over-quantity supplier return did not fail visibly');
+  check((await S.getAll('invoices')).length === before.invoices &&
+    (await S.getAll('stock_movements')).length === before.movements &&
+    (await S.getAll('audit_events')).length === before.audits,
+    'Rejected supplier return wrote an invoice, stock or audit event');
+  toast.querySelector('.toast-close')?.click();
+  FINORA.Modal.close();
+  check(!document.querySelector('.toast-error') && !document.querySelector('.modal-backdrop'),
+    'A01 supplier return negative test left UI error or modal');
+  return { postedSupplierReturn:true, balancedLedger:true, stockIssued:true,
+    originalPurchaseImmutable:true, noAutomaticTreasury:true,
+    overReturnRejectedAtomically:true };
+}
+
 async function nativeBackupRestore() {
   const check = (value, message) => { if (!value) throw Error(message); };
   const S = FINORA.Storage;
@@ -562,6 +656,7 @@ module.exports = async function nativeFunctionalMatrix(cdp) {
     ['purchase-and-post-ledger', purchaseInvoice],
     ['partial-sale-and-inventory', saleInvoice],
     ['sale-return-immutable-stock-and-ledger', nativeSaleReturnGuardrails],
+    ['purchase-return-and-stock-guardrails', nativePurchaseReturnGuardrails],
     ['backup-and-atomic-rejection', nativeBackupRestore],
     ['rtl-invoice-print-settings', invoicePrintLayout],
     ['fiscal-close-atomic-guardrails', fiscalCloseGuardrails],
