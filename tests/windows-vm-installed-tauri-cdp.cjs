@@ -162,10 +162,25 @@ async function connect(url) {
         'await S.put("products",{id:"vm-upgrade-product",companyId:"company_default",name:"Synthetic VM product",sellPrice:123456});' +
         'await S.put("invoices",{id:"vm-upgrade-draft",companyId:"company_default",kind:"sale",isPreInvoice:true,financePosted:false,grandTotal:987654,paidAmount:0,remaining:987654});' +
         'const db=await S.init();' +
-        'return {version:db.version,products:(await S.getAll("products")).length,amount:(await S.get("invoices","vm-upgrade-draft")).grandTotal};' +
+        // Real v2.0.3 backup format: all stores, v6 schema, credentials excluded.
+        // Keep a synthetic backup only in the disposable Windows profile so the
+        // upgraded app can test restoring the OLD version without cloud artifacts.
+        'const snapshot=await S.exportAll();' +
+        'await S.put("settings",{id:"vm-legacy-backup",companyId:"company_default",payload:snapshot});' +
+        'return {version:db.version,products:(await S.getAll("products")).length,amount:(await S.get("invoices","vm-upgrade-draft")).grandTotal,' +
+        'backupVersion:snapshot.version,backupApp:snapshot.app,' +
+        'backupContainsProduct:snapshot.data.products.some(p=>p.id==="vm-upgrade-product"),' +
+        'backupContainsInvoice:snapshot.data.invoices.some(i=>i.id==="vm-upgrade-draft"),' +
+        'backupCredentialsExcluded:!snapshot.data.users.some(u=>"pwHash" in u||"pwSalt" in u)};' +
       '})()');
       assert.equal(seeded.version, 6, 'old release should have IndexedDB v6');
       assert.equal(seeded.amount, 987654);
+      assert.equal(seeded.backupVersion, 6);
+      assert.equal(seeded.backupApp, 'Factor-easyPro');
+      assert.equal(seeded.backupContainsProduct, true);
+      assert.equal(seeded.backupContainsInvoice, true);
+      assert.equal(seeded.backupCredentialsExcluded, true);
+      report.legacyBackup = 'real-v2.0.3-snapshot-saved-in-test-profile';
       report.indexedDb = 'v6-written';
       report.persistence = 'synthetic-legacy-fixtures-created';
     } else if (mode === 'upgrade') {
@@ -183,6 +198,36 @@ async function connect(url) {
       assert.equal(restored.corrections, true);
       report.indexedDb = 'real-WebView2-v6-to-v7-passed';
       report.persistence = 'product-invoice-and-login-survived-upgrade';
+      // Exercise the actual importer in the INSTALLED Tauri WebView2 process.
+      // Intentionally delete only the synthetic draft and product, restore an
+      // older real v6 snapshot, verify both records, and assert a corrupted
+      // snapshot cannot produce partial writes.
+      const recovery = await cdp.evaluate('(async()=>{' +
+        'const S=FINORA.Storage;' +
+        'const snapshot=(await S.get("settings","vm-legacy-backup"))?.payload;' +
+        'if(!snapshot || snapshot.version!==6) throw Error("v2.0.3 backup not persisted");' +
+        'await S.delete("products","vm-upgrade-product");' +
+        'await S.delete("invoices","vm-upgrade-draft");' +
+        'const emptyBefore=!(await S.get("products","vm-upgrade-product"))&&!(await S.get("invoices","vm-upgrade-draft"));' +
+        'await S.importAll(snapshot);' +
+        'const p=await S.get("products","vm-upgrade-product");' +
+        'const i=await S.get("invoices","vm-upgrade-draft");' +
+        'const tampered=structuredClone(snapshot);' +
+        'tampered.data.products.push({...p,id:"vm-would-rollback"});' +
+        'tampered.data.invoices.push({...i,grandTotal:1});' +
+        'let blocked=false;' +
+        'try {await S.importAll({...tampered,app:"foreign-finance"});}catch(e){blocked=true;}' +
+        'return {emptyBefore,restoredProduct:p?.name,restoredInvoice:i?.grandTotal,' +
+        'blockedBadApp:blocked,afterBadApp:(await S.get("products","vm-would-rollback"))??null,' +
+        'databaseVersion:(await S.init()).version};' +
+      '})()');
+      assert.deepEqual(recovery, {
+        emptyBefore:true,restoredProduct:'Synthetic VM product',
+        restoredInvoice:987654,blockedBadApp:true,afterBadApp:null,
+        databaseVersion:7
+      });
+      report.backupRecovery = 'actual-v2.0.3-v6-snapshot-restored-on-installed-v7';
+      report.invalidBackup = 'foreign-app-rejected-no-writes';
     } else {
       const fresh = await cdp.evaluate('(async()=>{' +
         'const S=FINORA.Storage, db=await S.init();' +
