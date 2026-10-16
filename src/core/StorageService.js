@@ -430,18 +430,46 @@ class StorageServiceImpl {
   }
 
   async _importUsers(tx, items) {
+    const localUsers = await tx.getAll('users');
+    const byId = new Map(localUsers.map(u => [u.id, u]));
+    const imported = new Map();
     for (const incoming of items) {
       const user = stripCredentials(incoming);
       if (!user.id) user.id = this.uid();
-      const existing = await tx.get('users', user.id);
+      const existing = byId.get(user.id);
       if (existing) {
-        CREDENTIAL_FIELDS.forEach(f => { if (existing[f] !== undefined) user[f] = existing[f]; });
-        if (existing.mustSetPassword !== undefined) user.mustSetPassword = existing.mustSetPassword;
+        // Passwords and access grants belong to the authenticated local
+        // installation. A JSON backup cannot promote a user to admin or
+        // assign another company's permissions.
+        CREDENTIAL_FIELDS.forEach(f => {
+          if (existing[f] !== undefined) user[f] = existing[f];
+        });
+        user.role = existing.role;
+        user.companyIds = existing.companyIds;
+        if (existing.mustSetPassword !== undefined) {
+          user.mustSetPassword = existing.mustSetPassword;
+        }
       } else {
+        user.role = 'user';
+        user.companyIds = [];
         user.mustSetPassword = true;
       }
-      await tx.putRaw('users', user);
+      imported.set(user.id, user);
     }
+    const final = new Map(byId);
+    for (const [id, user] of imported) final.set(id, user);
+    if (final.size > 4) {
+      throw Error('فایل پشتیبان بیش از چهار کاربر برای این نصب ایجاد می‌کند');
+    }
+    const names = new Set();
+    for (const user of final.values()) {
+      const name = typeof user.username === 'string' ? user.username.trim() : '';
+      if (!name || names.has(name)) {
+        throw Error('نام کاربری تکراری یا نامعتبر در فایل پشتیبان');
+      }
+      names.add(name);
+    }
+    for (const user of imported.values()) await tx.putRaw('users', user);
   }
 
   // ---------- شناسه یکتا ----------
