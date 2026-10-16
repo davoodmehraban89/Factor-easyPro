@@ -71,7 +71,8 @@
       "accepted": false,
       "evidence": [
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38627028939",
-        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38945788170"
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38945788170",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38950537874"
       ],
       "name": "Measured synthetic/Windows performance and crash recovery"
     },
