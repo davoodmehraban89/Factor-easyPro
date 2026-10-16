@@ -61,6 +61,7 @@ jobs:
           name: phase-a-native-windows-vm-evidence
           path: |
             ${{ runner.temp }}/factor-easypro-native-vm-lab/reports/*.json
+            ${{ runner.temp }}/factor-easypro-native-vm-lab/reports/*.png
           retention-days: 30
           if-no-files-found: warn
       - name: State acceptance boundary
