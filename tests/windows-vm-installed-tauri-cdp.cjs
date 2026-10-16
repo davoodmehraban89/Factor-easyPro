@@ -288,6 +288,24 @@ async function connect(url) {
       assert.deepEqual(dpapi, {roundtrip:true,encrypted:true,hex:true});
       report.dpapi = 'native-Windows-roundtrip-passed';
     }
+    if (mode === 'fresh') {
+      const script = fs.readFileSync(
+        path.join(__dirname, 'windows-vm-encrypted-company-backup-browser.js'),
+        'utf8'
+      );
+      const validated = await cdp.evaluate(script);
+      assert.deepEqual(validated, {
+        encryptedEnvelope: true,
+        filenameSuffix: '.fbackup',
+        wrongPasswordRejected: true,
+        sameCompanyRestore: true,
+        restoredContact: true,
+        restoreAudited: true,
+        plaintextSensitiveDataAbsent: true
+      });
+      report.encryptedCompanyBackup =
+        'native-SettingsUI-AES-GCM-PBKDF2-wrong-password-and-audited-restore-passed';
+    }
     report.status = 'PASSED';
     console.log(JSON.stringify(report, null, 2));
   } catch (err) {
