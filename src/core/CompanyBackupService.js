@@ -74,6 +74,37 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
           counts.skipped++;
           continue;
         }
+        // Replace mode is NOT permission to rewrite posted commercial or
+        // accounting facts. A recovery of older data must be append-only for
+        // finalized documents; superseding them requires a new correction.
+        let protectedPosted = false;
+        if (existing) {
+          protectedPosted =
+            (store === 'journal_entries' && (existing.status === 'posted' || row.status === 'posted')) ||
+            (store === 'invoices' && (existing.financePosted || row.financePosted)) ||
+            (store === 'cheques' && (existing.financePosted || row.financePosted)) ||
+            (store === 'expenses' && (existing.financePosted || row.financePosted)) ||
+            (store === 'treasury' && (existing.recordType === 'transaction' || row.recordType === 'transaction')) ||
+            ['stock_movements', 'settlements', 'transactions'].includes(store);
+          if (store === 'journal_lines' || store === 'invoice_items') {
+            const refStore = store === 'journal_lines' ? 'journal_entries' : 'invoices';
+            const refId = store === 'journal_lines' ? row.journalId : row.invoiceId;
+            const existingParentId = store === 'journal_lines' ? existing.journalId : existing.invoiceId;
+            const parent = await tx.get(refStore, refId);
+            const previousParent = refId === existingParentId ? parent :
+              await tx.get(refStore, existingParentId);
+            protectedPosted = store === 'journal_lines'
+              ? parent?.status === 'posted' || previousParent?.status === 'posted'
+              : Boolean(parent?.financePosted || previousParent?.financePosted);
+          }
+        }
+        if (existing && protectedPosted) {
+          if (!sameImmutableRecord(existing, row)) {
+            throw new Error('بازنویسی سند مالی قطعی از فایل پشتیبان مجاز نیست');
+          }
+          counts.skipped++;
+          continue;
+        }
         if (existing && mode === 'merge') {
           counts.skipped++;
           continue;
