@@ -8,7 +8,8 @@
       "accepted": false,
       "evidence": [
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38947474640",
-        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38956709934"
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38956709934",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38957782413"
       ],
       "name": "Commercial corrections and reversals including refunds"
     },
@@ -17,7 +18,8 @@
       "accepted": false,
       "evidence": [
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38948801630",
-        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38955574896"
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38955574896",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38957782413"
       ],
       "name": "Historical opening balances and migration rehearsal"
     },
@@ -25,7 +27,8 @@
       "id": "A03",
       "accepted": false,
       "evidence": [
-        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38949950396"
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38949950396",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38957782413"
       ],
       "name": "Complete atomic audit with permissions and retention"
     },
@@ -37,7 +40,8 @@
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38939141475",
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38942948274",
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38945374347",
-        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38956382667"
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38956382667",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38957782413"
       ],
       "name": "Versioned restore, v6 migration and real backup recovery"
     },
@@ -45,7 +49,8 @@
       "id": "A05",
       "accepted": false,
       "evidence": [
-        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38946201604"
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38946201604",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38957782413"
       ],
       "name": "Fiscal closure and treasury settlement invariants"
     },
@@ -66,7 +71,8 @@
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38924043704",
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38925949798",
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38947068034",
-        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38955075618"
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38955075618",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38957782413"
       ],
       "name": "Windows install-upgrade, RTL printing and offline operation"
     },
@@ -76,7 +82,8 @@
       "evidence": [
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38627028939",
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38945788170",
-        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38950537874"
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38950537874",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38957782413"
       ],
       "name": "Measured synthetic/Windows performance and crash recovery"
     },
