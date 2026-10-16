@@ -51,6 +51,89 @@ async function activateAccounting() {
     integration: 'enabled', warehouse: 'created' };
 }
 
+async function nativePositiveOpeningLedger() {
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const check = (value, message) => { if (!value) throw Error(message); };
+  const store = FINORA.Storage;
+  const company = await FINORA.Company.current();
+  check(company?.id && FINORA.Auth.isAdmin(), 'Native A02 posting needs synthetic administrator');
+  const period = (await store.getAll('fiscal_periods'))
+    .find(x => x.companyId === company.id && x.closed === false);
+  const accounts = (await store.getAll('account_chart'))
+    .filter(x => x.companyId === company.id && x.postable !== false);
+  const receivable = accounts.find(x => x.code === '102');
+  const equity = accounts.find(x => x.code === '301');
+  check(period && receivable && equity, 'Synthetic opening prerequisites missing');
+  const person = await window.ContactController.create({
+    name: 'شخص افتتاحیه ساختگی ویندوز', role: 'customer'
+  });
+  const candidate = {
+    periodId: period.id, openingDate: period.startDate,
+    lines: [
+      { accountId: receivable.id, role: 'receivable', debit: 300, credit: 0 },
+      { accountId: equity.id, role: 'equity', debit: 0, credit: 300 }
+    ],
+    contacts: [{ contactId: person.id, receivable: 300, payable: 0 }],
+    stock: [], cash: []
+  };
+  await FINORA.Router.go('accounting');
+  await wait(160);
+  const view = window.AccountingView;
+  await view.switchTab('opening');
+  const attach = () => {
+    const input = document.getElementById('openingFileInput');
+    check(input, 'A02 native JSON picker missing');
+    const file = new File([JSON.stringify(candidate)], 'vm-a02-opening.json',
+      { type: 'application/json' });
+    Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+  };
+  attach();
+  await view.previewOpeningFile();
+  check(view._openingReview?.readiness === 'ready-for-review' &&
+    view._openingReview?.writePerformed === false &&
+    view._openingReview?.issues.length === 0,
+    'Balanced synthetic opening was not ready without writes');
+  const priorPosted = (await store.getAll('journal_entries'))
+    .filter(x => x.companyId === company.id && x.sourceType === 'opening_balance');
+  check(priorPosted.length === 0, 'Preview unexpectedly posted an opening journal');
+  view.confirmOpeningPosting();
+  const confirmation = document.querySelector('.modal-footer [data-action="confirm"]');
+  check(confirmation, 'Opening posting explicit approval was not displayed');
+  confirmation.click();
+  let opening = null;
+  for (let i = 0; i < 80; i++) {
+    opening = (await store.getAll('journal_entries')).find(x =>
+      x.companyId === company.id && x.sourceType === 'opening_balance' &&
+      x.sourceId === period.id && x.status === 'posted');
+    if (opening) break;
+    await wait(100);
+  }
+  check(opening && opening.debit === 300 && opening.credit === 300,
+    'Confirmed synthetic opening was not posted as balanced ledger');
+  const lines = (await store.getAll('journal_lines')).filter(x => x.journalId === opening.id);
+  check(lines.length === 2 && lines.reduce((n, x) => n + x.debit, 0) === 300 &&
+    lines.reduce((n, x) => n + x.credit, 0) === 300,
+    'Opening journal lines do not match the dry-run');
+  const receipt = (await store.getAll('audit_events')).filter(x =>
+    x.companyId === company.id && x.eventType === 'opening_posted' && x.sourceId === opening.id);
+  check(receipt.length === 1 && receipt[0].actorId === FINORA.Auth.current().id,
+    'Opening journal missing unique actor-linked audit receipt');
+  await view.switchTab('opening');
+  attach();
+  await view.previewOpeningFile();
+  check(view._openingReview?.readiness === 'blocked' &&
+    view._openingReview?.issues.includes('EXISTING_POSTED_JOURNALS') &&
+    document.querySelector('#openingPreviewReport button[disabled]'),
+    'A02 second posting attempt not disabled in native UI');
+  check((await store.getAll('journal_entries')).filter(x =>
+    x.companyId === company.id && x.sourceType === 'opening_balance').length === 1,
+    'Repeated opening preview created another posted journal');
+  await view.switchTab('journals');
+  check(!document.querySelector('.toast-error'), 'Native opening workflow displayed unexpected error');
+  return { dryRunFirst: true, postedBalancedOpening: true,
+    actorAuditedOnce: true, repeatPostingBlocked: true };
+}
+
 async function purchaseInvoice() {
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   const check = (value, message) => { if (!value) throw Error(message); };
@@ -475,6 +558,7 @@ async function openingDryRunWithExistingActivity() {
 module.exports = async function nativeFunctionalMatrix(cdp) {
   const phases = [
     ['activate-accounting-and-inventory', activateAccounting],
+    ['positive-opening-ledger-and-idempotency', nativePositiveOpeningLedger],
     ['purchase-and-post-ledger', purchaseInvoice],
     ['partial-sale-and-inventory', saleInvoice],
     ['sale-return-immutable-stock-and-ledger', nativeSaleReturnGuardrails],
