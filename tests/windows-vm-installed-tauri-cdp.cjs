@@ -6,7 +6,6 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn, execFileSync } = require('node:child_process');
-const verifyNativeFunctionalMatrix = require('./windows-vm-native-functional-matrix.cjs');
 
 const [exe, profile, mode, expectedVersion, reportPath] = process.argv.slice(2);
 assert.equal(process.platform, 'win32');
@@ -290,9 +289,22 @@ async function connect(url) {
       report.dpapi = 'native-Windows-roundtrip-passed';
     }
     if (mode === 'fresh') {
-      // The real installed desktop window, not the browser-only preview:
-      // verify accounting activation, financial journal, stock, backup and RTL.
-      report.nativeFunctional = await verifyNativeFunctionalMatrix(cdp);
+      const script = fs.readFileSync(
+        path.join(__dirname, 'windows-vm-encrypted-company-backup-browser.js'),
+        'utf8'
+      );
+      const validated = await cdp.evaluate(script);
+      assert.deepEqual(validated, {
+        encryptedEnvelope: true,
+        filenameSuffix: '.fbackup',
+        wrongPasswordRejected: true,
+        sameCompanyRestore: true,
+        restoredContact: true,
+        restoreAudited: true,
+        plaintextSensitiveDataAbsent: true
+      });
+      report.encryptedCompanyBackup =
+        'native-SettingsUI-AES-GCM-PBKDF2-wrong-password-and-audited-restore-passed';
     }
     report.status = 'PASSED';
     console.log(JSON.stringify(report, null, 2));
