@@ -20,18 +20,24 @@ class LicenseServiceImpl {
 
   async init() {
     let stored = await SecureState.get(KEY);
-    if (!stored) {
-      try { stored = JSON.parse(localStorage.getItem(LEGACY_KEY) || 'null'); }
-      catch (_) { /* Invalid legacy state is not an entitlement. */ }
+    let hadStoredState = stored !== null && stored !== undefined;
+    if (!hadStoredState) {
+      const legacyRaw = localStorage.getItem(LEGACY_KEY);
+      if (legacyRaw !== null) {
+        hadStoredState = true;
+        try { stored = JSON.parse(legacyRaw); }
+        catch (_) { stored = null; /* Invalid legacy state must fail closed. */ }
+      }
     }
     stored = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
     const now = Date.now();
-    if (!stored.trialStartedAt || !Number.isFinite(Date.parse(stored.trialStartedAt))) {
+    if (!hadStoredState) {
+      // Only a truly new installation receives an initial free trial.
       stored.trialStartedAt = new Date(now).toISOString();
-    }
-    if (!Number.isSafeInteger(stored.issuedInvoiceCount) || stored.issuedInvoiceCount < 0) {
       stored.issuedInvoiceCount = 0;
     }
+    // Never rewrite malformed persisted dates/counters into a fresh trial.
+    // trialStatus() leaves financial data readable but rejects further writes.
     if (!stored.installationId || typeof stored.installationId !== 'string') {
       stored.installationId = crypto.randomUUID();
     }
