@@ -47,3 +47,35 @@ test('A03: document correction history refuses replay writes and deletion', asyn
     /حذف مستقیم/);
   assert.deepEqual(await StorageService.get('document_corrections', correction.id), saved);
 });
+
+test('A03: transaction clear cannot erase either append-only history store or commit earlier writes', async () => {
+  await StorageService.clearAll();
+  for (const store of ['audit_events', 'document_corrections']) {
+    const historical = {
+      id: 'retained-' + store,
+      companyId: 'c1',
+      ...(store === 'audit_events'
+        ? { commandKey: 'c1:retained-audit', eventType: 'journal_posted' }
+        : { idempotencyKey: 'c1:retained-correction', sourceId: 'sale-1' })
+    };
+    await StorageService.put(store, historical);
+    const original = structuredClone(await StorageService.get(store, historical.id));
+    const sentinel = 'must-rollback-' + store;
+    await assert.rejects(
+      StorageService.transaction(['contacts', store], async tx => {
+        await tx.putRaw('contacts', { id: sentinel, companyId: 'c1', name: 'Aborted write' });
+        await tx.clear(store);
+      }),
+      /پاک‌سازی مستقیم/
+    );
+    assert.equal(await StorageService.get('contacts', sentinel), undefined,
+      'A rejected history clear must roll back the earlier contact write');
+    assert.deepEqual(await StorageService.get(store, historical.id), original,
+      'Append-only history must survive the blocked bulk clear');
+    assert.equal((await StorageService.getAll(store)).length, 1);
+  }
+  // Clearing a regular non-immutable table remains an authorized transaction.
+  await StorageService.put('contacts', { id: 'temporary', companyId: 'c1', name: 'Disposable' });
+  await StorageService.transaction('contacts', async tx => tx.clear('contacts'));
+  assert.equal((await StorageService.getAll('contacts')).length, 0);
+});
