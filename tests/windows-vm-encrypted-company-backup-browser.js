@@ -18,7 +18,13 @@
     prompt: window.prompt, create: URL.createObjectURL,
     revoke: URL.revokeObjectURL,
     anchorClick: HTMLAnchorElement.prototype.click,
-    timeout: window.setTimeout
+    timeout: window.setTimeout,
+    toastError: FINORA.Toast.error
+  };
+  const capturedErrors = [];
+  FINORA.Toast.error = function (message, ...args) {
+    capturedErrors.push(String(message).slice(0, 280));
+    return original.toastError.call(this, message, ...args);
   };
   let exportedBlob = null;
   let downloadedName = null;
@@ -53,7 +59,8 @@
 
     await window.SettingsView.downloadBackup();
     if (!(exportedBlob instanceof Blob)) {
-      throw Error('Actual SettingsView.downloadBackup did not create a Blob');
+      throw Error('Actual SettingsView.downloadBackup did not create a Blob: ' +
+        capturedErrors.join(' | '));
     }
     const encryptedText = await exportedBlob.text();
     const envelope = JSON.parse(encryptedText);
@@ -103,5 +110,6 @@
     URL.revokeObjectURL = original.revoke;
     HTMLAnchorElement.prototype.click = original.anchorClick;
     window.setTimeout = original.timeout;
+    FINORA.Toast.error = original.toastError;
   }
 })()
