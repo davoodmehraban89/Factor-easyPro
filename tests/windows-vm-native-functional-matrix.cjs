@@ -221,13 +221,93 @@ async function invoicePrintLayout() {
     physicalPrinterTest: 'not-covered' };
 }
 
+async function fiscalCloseGuardrails() {
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const check = (ok, message) => { if (!ok) throw Error(message); };
+  const store = FINORA.Storage;
+  const company = await FINORA.Company.current();
+  check(company?.id && FINORA.Auth.isAdmin(), 'Fiscal close test must use a synthetic admin');
+  await FINORA.Router.go('accounting');
+  await wait(180);
+  const view = window.AccountingView;
+  check(view, 'Native accounting view was not mounted');
+  await view.switchTab('periods');
+  const testName = 'A05 VM-only guarded closing period';
+  view.openPeriodModal();
+  check(document.getElementById('acPeriodName'), 'Fiscal period creation form missing');
+  document.getElementById('acPeriodName').value = testName;
+  document.getElementById('acPeriodStart').value = '1404/01/01';
+  document.getElementById('acPeriodEnd').value = '1404/12/29';
+  await view.savePeriod();
+  check(!document.querySelector('.toast-error'), 'Creating isolated fiscal period failed');
+  const period = (await store.getAll('fiscal_periods'))
+    .find(x => x.companyId === company.id && x.name === testName);
+  check(period && period.closed === false, 'Synthetic fiscal period did not persist as open');
+  const warehouses = (await store.getAll('warehouses')).filter(x => x.companyId === company.id);
+  check(warehouses.length, 'Warehouse prerequisite missing');
+  const stocktakeId = 'vm-a05-draft-stocktake';
+  await store.put('stocktakes', {
+    id: stocktakeId, companyId: company.id,
+    warehouseId: warehouses[0].id, status: 'draft'
+  });
+  const auditCount = (await store.getAll('audit_events'))
+    .filter(x => x.companyId === company.id && x.eventType === 'period_closed').length;
+  const confirmClose = () => {
+    view.closePeriod(period.id);
+    const confirm = document.querySelector('.modal-footer [data-action="confirm"]');
+    check(confirm, 'Real fiscal closure approval dialog missing');
+    confirm.click();
+  };
+  confirmClose();
+  let message = null;
+  for (let i = 0; i < 60; i++) {
+    message = [...document.querySelectorAll('.toast-error')]
+      .find(x => x.textContent.includes('انبارگردانی باز'));
+    if (message) break;
+    await wait(100);
+  }
+  check(message, 'Closing with an open stocktake was not rejected visibly');
+  check((await store.get('fiscal_periods', period.id))?.closed === false,
+    'Open stocktake allowed fiscal closure');
+  check((await store.getAll('audit_events'))
+    .filter(x => x.companyId === company.id && x.eventType === 'period_closed').length === auditCount,
+    'Rejected fiscal closing created an audit receipt');
+  message.querySelector('.toast-close')?.click();
+  check(!document.querySelector('.toast-error'), 'Expected fiscal rejection toast remained');
+  await store.delete('stocktakes', stocktakeId);
+  confirmClose();
+  let closed = null;
+  for (let i = 0; i < 70; i++) {
+    closed = await store.get('fiscal_periods', period.id);
+    if (closed?.closed) break;
+    await wait(100);
+  }
+  check(closed?.closed === true && closed.status === 'closed',
+    'Approved fiscal close was not committed');
+  const closureAudits = (await store.getAll('audit_events'))
+    .filter(x => x.companyId === company.id &&
+      x.eventType === 'period_closed' && x.sourceId === period.id);
+  check(closureAudits.length === 1 &&
+    closureAudits[0].actorId === FINORA.Auth.current().id,
+    'Successful fiscal closure did not produce exactly one actor-scoped audit');
+  check(!document.querySelector('.toast-error') && !document.querySelector('.modal-backdrop'),
+    'Fiscal guardrail test left an unexpected UI error or modal');
+  return {
+    openStocktakeBlocked: true,
+    failedCloseRolledBack: true,
+    successfulCloseCommitted: true,
+    singleAuditReceipt: true
+  };
+}
+
 module.exports = async function nativeFunctionalMatrix(cdp) {
   const phases = [
     ['activate-accounting-and-inventory', activateAccounting],
     ['purchase-and-post-ledger', purchaseInvoice],
     ['partial-sale-and-inventory', saleInvoice],
     ['backup-and-atomic-rejection', nativeBackupRestore],
-    ['rtl-invoice-print-settings', invoicePrintLayout]
+    ['rtl-invoice-print-settings', invoicePrintLayout],
+    ['fiscal-close-atomic-guardrails', fiscalCloseGuardrails]
   ];
   const report = {};
   for (const [name, fn] of phases) {
