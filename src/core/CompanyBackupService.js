@@ -14,6 +14,11 @@ export const COMPANY_BACKUP_STORES = Object.freeze([
   'audit_events', 'document_corrections'
 ]);
 const V2_STORES = new Set(['account_chart', 'fiscal_periods', 'journal_entries', 'journal_lines']);
+const HISTORICAL_ACTOR_STORES = new Set([
+  'journal_entries', 'journal_lines', 'invoices', 'invoice_items',
+  'stock_movements', 'settlements', 'treasury', 'transactions',
+  'cheques', 'expenses'
+]);
 const isId = id => typeof id === 'string' && id.trim().length > 0;
 
 // Backups serialize object fields in arbitrary insertion order. Immutable
@@ -59,7 +64,11 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
           throw new Error('رویداد ممیزی یا اصلاح سند متعلق به شرکت دیگری است');
         }
         const row = { ...incoming, companyId };
-        if (row.ownerUserId && !immutable) row.ownerUserId = userId;
+        // Never rewrite the original actor of an accounting/treasury event.
+        // The administrator performing recovery is recorded in backup_restored.
+        if (row.ownerUserId && !immutable && !HISTORICAL_ACTOR_STORES.has(store)) {
+          row.ownerUserId = userId;
+        }
         if (store === 'journal_entries' && row.sourceType && row.sourceId) {
           row.sourceKey = journalSourceKey(companyId, row.sourceType, row.sourceId, row.revision || 1);
         }
