@@ -204,7 +204,14 @@ async function connect(url) {
   } finally {
     if (reportPath) fs.writeFileSync(reportPath, JSON.stringify(report, null, 2) + '\n');
     try { cdp?.close(); } catch {}
-    try { proc?.kill(); } catch {}
+    // Ensure no WebView2 child process can hold the previous NSIS executable
+    // open during the subsequent in-place upgrade on this disposable runner.
+    if (proc?.pid) {
+      try {
+        execFileSync('taskkill.exe', ['/PID', String(proc.pid), '/T', '/F'],
+          { stdio: 'ignore', timeout: 10000 });
+      } catch (_) { try { proc.kill(); } catch (_) {} }
+    }
     cleanDebugPolicies(debugPolicyKeys);
     await wait(700);
   }
