@@ -60,3 +60,21 @@ test('A02: JSON preview UI calls only readonly preflight, not commit', async () 
     AccountingView._openingReview = null;
   }
 });
+
+test('A02: switching input files invalidates an earlier approval', () => {
+  const originalDocument = globalThis.document;
+  const reportNode = { textContent: '' };
+  try {
+    AccountingView._openingCandidate = { periodId: 'OLD_PERIOD' };
+    AccountingView._openingReview = { readiness: 'ready-for-review' };
+    globalThis.document = {
+      getElementById(id) { return id === 'openingPreviewReport' ? reportNode : null; }
+    };
+    AccountingView.resetOpeningPreview();
+    assert.equal(AccountingView._openingCandidate, null);
+    assert.equal(AccountingView._openingReview, null);
+    assert.match(reportNode.textContent, /دوباره بررسی/);
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});
