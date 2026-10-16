@@ -3,14 +3,8 @@ name: Phase A Windows VM Native Installer and Upgrade Lab
 on:
   pull_request:
     paths:
-      - 'src/**'
-      - 'src-tauri/**'
-      - 'vendor/**'
-      - 'index.html'
-      - 'package.json'
-      - 'package-lock.json'
       - 'tests/windows-vm-installed-tauri-cdp.cjs'
-      - 'tests/windows-vm-native-functional-matrix.cjs'
+      - 'tests/windows-vm-encrypted-company-backup-browser.js'
       - 'scripts/windows-vm-native-lab.ps1'
       - 'scripts/windows-vm-set-candidate.cjs'
       - '.github/workflows/windows-vm-native-lab.yml'
