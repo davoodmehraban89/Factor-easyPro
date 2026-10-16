@@ -482,6 +482,83 @@ async function nativeHistoryClearFailClosed() {
     historyUnchanged: true };
 }
 
+async function nativeInactiveBankSettlementGuard() {
+  const wait=ms=>new Promise(r=>setTimeout(r,ms));
+  const check=(ok,msg)=>{if(!ok)throw Error(msg);};
+  const db=FINORA.Storage,company=await FINORA.Company.current();
+  check(company?.id&&FINORA.Auth.isAdmin(),'A05 native admin required');
+  const contact=(await db.getAll('contacts')).find(c=>c.companyId===company.id&&c.name==='مشتری آزمایشی ویندوز');
+  const active=(await db.getAll('treasury')).find(x=>x.companyId===company.id&&x.recordType==='account'&&x.ledgerAccountId&&x.isActive!==false);
+  check(contact&&active,'Treasury fixtures absent');
+  await FINORA.Router.go('treasury');await wait(180);
+  const tv=window.TreasuryView;
+  await tv.openAccountModal();
+  document.getElementById('accName').value='VM-only inactive bank A05';
+  document.getElementById('accInitialBalance').value='0';
+  await tv.saveAccount(null);
+  const secondary=(await db.getAll('treasury')).find(x=>
+    x.companyId===company.id&&x.recordType==='account'&&x.name==='VM-only inactive bank A05');
+  check(secondary?.ledgerAccountId,'Actual treasury account creation failed');
+  await db.put('treasury',{...secondary,isActive:false});
+  const counts=async()=>({
+    journals:(await db.getAll('journal_entries')).length,
+    payments:(await db.getAll('treasury')).filter(x=>x.recordType==='transaction').length
+  });
+  const before=await counts();
+  tv.openTransferModal();
+  check(document.getElementById('txToAccount'),'Native transfer form not open');
+  document.getElementById('txDate').value='1405/07/18';
+  document.getElementById('txAmount').value='40';
+  document.getElementById('txFromAccount').value=active.id;
+  document.getElementById('txToAccount').value=secondary.id;
+  await tv._saveTransaction('transfer');
+  let toast=[...document.querySelectorAll('.toast-error')].find(x=>x.textContent.includes('غیرفعال'));
+  check(toast,'Inactive bank transfer did not display rejection');
+  check(JSON.stringify(await counts())===JSON.stringify(before),'Rejected transfer wrote journals or cash');
+  toast.querySelector('.toast-close')?.click();
+  FINORA.Modal.close();
+  check(!document.querySelector('.toast-error'),'Expected transfer toast not dismissed');
+
+  // With no active bank, the real cheque status UI must reject settlement
+  // without changing posted status or writing a cash receipt.
+  await db.put('treasury',{...active,isActive:false});
+  await FINORA.Router.go('cheques');await wait(200);
+  const cv=window.ChequesView;
+  await cv.openChequeModal();
+  check(document.getElementById('chqSayad'),'Native cheque form absent');
+  document.getElementById('chqDirection').value='inbound';
+  document.getElementById('chqContact').value=contact.id;
+  document.getElementById('chqSayad').value='1234567890123489';
+  document.getElementById('chqAmount').value='90';
+  document.getElementById('chqIssueDate').value='1405/07/18';
+  document.getElementById('chqDueDate').value='1405/07/18';
+  await cv.saveCheque(null);
+  const cheque=(await db.getAll('cheques')).find(x=>x.companyId===company.id&&x.sayadNumber==='1234567890123489');
+  check(cheque?.financePosted&&cheque.status==='pending','Native cheque posting failed');
+  const journalCount=(await db.getAll('journal_entries')).length;
+  await cv.changeStatus(cheque.id);
+  check(document.getElementById('newStatus'),'Cheque status form missing');
+  document.getElementById('newStatus').value='cleared';
+  await cv._applyStatusChange(cheque.id);
+  toast=[...document.querySelectorAll('.toast-error')].find(x=>
+    x.textContent.includes('حساب بانک یا صندوق برای وصول چک مشخص نیست'));
+  check(toast,'Cheque clearing with all banks inactive did not reject');
+  check((await db.get('cheques',cheque.id)).status==='pending'&&
+    (await db.getAll('journal_entries')).length===journalCount&&
+    !(await db.getAll('treasury')).some(t=>t.refChequeId===cheque.id),
+    'Rejected cheque clearance modified ledger or treasury');
+  toast.querySelector('.toast-close')?.click();
+  await db.put('treasury',active);
+  await cv._applyStatusChange(cheque.id);
+  check((await db.get('cheques',cheque.id)).status==='cleared'&&
+    (await db.getAll('treasury')).filter(t=>t.refChequeId===cheque.id).length===1,
+    'Restoring active bank did not clear cheque exactly once');
+  check(!document.querySelector('.toast-error')&&!document.querySelector('.modal-backdrop'),
+    'A05 native treasury scenario left error toast/modal');
+  return { inactiveTransferRejected:true, invalidTransferRolledBack:true,
+    disabledChequeClearingRejected:true, validChequeClearedExactlyOnce:true };
+}
+
 async function nativeBackupRestore() {
   const check = (value, message) => { if (!value) throw Error(message); };
   const S = FINORA.Storage;
@@ -743,6 +820,7 @@ module.exports = async function nativeFunctionalMatrix(cdp) {
     ['positive-opening-ledger-and-idempotency', nativePositiveOpeningLedger],
     ['purchase-and-post-ledger', purchaseInvoice],
     ['partial-sale-and-inventory', saleInvoice],
+    ['inactive-treasury-cheque-settlement', nativeInactiveBankSettlementGuard],
     ['sale-return-immutable-stock-and-ledger', nativeSaleReturnGuardrails],
     ['purchase-return-and-stock-guardrails', nativePurchaseReturnGuardrails],
     ['append-only-history-bulk-clear-protection', nativeHistoryClearFailClosed],

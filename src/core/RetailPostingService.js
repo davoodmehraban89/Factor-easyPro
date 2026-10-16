@@ -422,6 +422,8 @@ class RetailPostingServiceImpl {
       ctx.companyId,'حساب مبدا');
     const to=sameCompany(all.find(a=>a.id===info.toAccountId&&a.recordType==='account'),
       ctx.companyId,'حساب مقصد');
+    if(from.isActive===false||to.isActive===false)
+      throw Error('انتقال بین حساب‌های بانکی/صندوق غیرفعال مجاز نیست');
     if(from.id===to.id)throw Error('حساب مبدا و مقصد باید متفاوت باشند');
     const mapping=account=>cashLedger(ctx,account);
     const id=info.transactionId||uid('tx_');
@@ -453,7 +455,8 @@ class RetailPostingServiceImpl {
       if(await tx.get('expenses',row.id))throw Error('سند هزینه/درآمد تکراری است');
       const sum=positiveAmount(row.amount);
       if(row.method==='cheque')throw Error('هزینه یا درآمد چکی را در بخش چک‌ها ثبت کنید');
-      const cash=(await tx.getAll('treasury')).filter(a=>a.companyId===company&&a.recordType==='account');
+      const cash=(await tx.getAll('treasury')).filter(a=>a.companyId===company&&
+        a.recordType==='account'&&a.isActive!==false);
       const selected=cash.find(a=>a.isDefault)||cash[0];
       if(!selected)throw Error('صندوق یا بانک برای ثبت هزینه/درآمد موجود نیست');
       const cashLedgerId=cashLedger(ctx,selected);
@@ -508,9 +511,10 @@ class RetailPostingServiceImpl {
       const ctx=await this.context(tx,company,options.date||cheque.dueDate);
       const sum=amount(cheque.amount),inbound=cheque.direction==='inbound';
       const ref={contactId:cheque.contactId};
-      const accounts=(await tx.getAll('treasury')).filter(a=>a.companyId===company&&a.recordType==='account');
+      const accounts=(await tx.getAll('treasury')).filter(a=>a.companyId===company&&
+        a.recordType==='account'&&a.isActive!==false);
       if(options.accountId&&!accounts.some(a=>a.id===options.accountId))
-        throw Error('حساب بانکی انتخاب‌شده در شرکت فعال وجود ندارد');
+        throw Error('حساب بانکی انتخاب‌شده فعال نیست یا در شرکت فعال وجود ندارد');
       const bank=accounts.find(a=>a.id===options.accountId)||accounts.find(a=>a.isDefault)||accounts[0];
       if(status==='cleared'&&!bank)throw Error('حساب بانک یا صندوق برای وصول چک مشخص نیست');
       const bankLedger=status==='cleared'?cashLedger(ctx,bank):null;
