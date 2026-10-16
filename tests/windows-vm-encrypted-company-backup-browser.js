@@ -111,10 +111,47 @@
       throw Error('Failed recovery dialog could not be closed');
     }
 
+    // Corrupt the AES-GCM authentication tag of the genuine exported .fbackup.
+    // This must fail in the REAL installed Settings UI with no partial writes
+    // or false-positive backup_restored audit receipts.
+    const auditCountBeforeCorruption = (await store.getAll('audit_events')).length;
+    const damagedBytes = Uint8Array.from(atob(envelope.ciphertext), c => c.charCodeAt(0));
+    if (damagedBytes.length < 17) throw Error('Encrypted backup test ciphertext too short');
+    damagedBytes[damagedBytes.length - 1] ^= 1;
+    const damagedCiphertext = btoa(Array.from(damagedBytes,
+      byte => String.fromCharCode(byte)).join(''));
+    restoreFile(JSON.stringify({ ...envelope, ciphertext: damagedCiphertext }));
+    window.prompt = () => password;
+    await window.SettingsView.restoreBackup();
+    if (await store.get('contacts', contactId)) {
+      throw Error('Tampered encrypted backup wrote the deleted synthetic contact');
+    }
+    if ((await store.getAll('audit_events')).length !== auditCountBeforeCorruption) {
+      throw Error('Tampered encrypted backup incorrectly wrote an audit event');
+    }
+    if (capturedErrors.length !== 2 || !capturedErrors[1].includes(expectedError)) {
+      throw Error('Tampered encrypted backup did not show its expected error');
+    }
+    const damagedToasts = [...document.querySelectorAll('.toast-error')];
+    if (damagedToasts.length !== 1 ||
+        !damagedToasts[0].textContent.includes(expectedError)) {
+      throw Error('Tampered backup failure did not display exactly one error toast');
+    }
+    const corruptedToastClose = damagedToasts[0].querySelector('.toast-close');
+    if (!corruptedToastClose) throw Error('Tampered backup toast missing dismiss action');
+    corruptedToastClose.click();
+    if (document.querySelector('.toast-error') || !document.getElementById('restoreFile')) {
+      throw Error('Tampered backup left an unexpected error or dismissed the recovery form');
+    }
+    FINORA.Modal.close();
+    if (document.getElementById('restoreFile')) {
+      throw Error('Tampered backup recovery dialog was not closed');
+    }
+
     restoreFile(encryptedText);
     window.prompt = () => password;
     await window.SettingsView.restoreBackup();
-    if (capturedErrors.length !== 1 || document.querySelector('.toast-error') ||
+    if (capturedErrors.length !== 2 || document.querySelector('.toast-error') ||
         document.querySelector('.modal-backdrop')) {
       throw Error('Correct-password restore failed or left modal/error state');
     }
@@ -131,6 +168,7 @@
       encryptedEnvelope: true,
       filenameSuffix: '.fbackup',
       wrongPasswordRejected: true,
+      tamperedCiphertextRejectedWithoutWrites: true,
       sameCompanyRestore: true,
       restoredContact: true,
       restoreAudited: true,
