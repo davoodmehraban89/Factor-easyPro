@@ -440,6 +440,48 @@ async function nativePurchaseReturnGuardrails() {
     overReturnRejectedAtomically:true };
 }
 
+async function nativeHistoryClearFailClosed() {
+  const check = (value, message) => { if (!value) throw Error(message); };
+  const store = FINORA.Storage;
+  const company = await FINORA.Company.current();
+  check(company?.id && FINORA.Auth.isAdmin(),
+    'History protection must run in installed VM with synthetic administrator');
+  const preserved = {};
+  for (const name of ['audit_events', 'document_corrections']) {
+    const history = (await store.getAll(name))
+      .filter(row => row.companyId === company.id);
+    check(history.length > 0, 'Native immutable history prerequisite missing: ' + name);
+    preserved[name] = history.map(row => JSON.stringify(row)).sort();
+    const sentinel = 'vm-a03-aborted-clear-' + name;
+    let rejected = false;
+    try {
+      await store.transaction(['contacts', name], async tx => {
+        await tx.putRaw('contacts', {
+          id: sentinel, companyId: company.id,
+          name: 'VM ONLY must roll back before history clear'
+        });
+        await tx.clear(name);
+      });
+    } catch (error) {
+      rejected = String(error).includes('پاک‌سازی مستقیم');
+    }
+    check(rejected, 'Installed IndexedDB accepted a bulk history clear: ' + name);
+    check(!(await store.get('contacts', sentinel)),
+      'Rejected native history-clear transaction committed earlier writes');
+    const after = (await store.getAll(name))
+      .filter(row => row.companyId === company.id)
+      .map(row => JSON.stringify(row)).sort();
+    check(JSON.stringify(after) === JSON.stringify(preserved[name]),
+      'Failed clear mutated immutable history: ' + name);
+  }
+  check(!document.querySelector('.toast-error'),
+    'Native history protection left unrelated UI error');
+  return { immutableAuditClearRejected: true,
+    immutableCorrectionClearRejected: true,
+    bothTransactionsRolledBack: true,
+    historyUnchanged: true };
+}
+
 async function nativeBackupRestore() {
   const check = (value, message) => { if (!value) throw Error(message); };
   const S = FINORA.Storage;
@@ -657,6 +699,7 @@ module.exports = async function nativeFunctionalMatrix(cdp) {
     ['partial-sale-and-inventory', saleInvoice],
     ['sale-return-immutable-stock-and-ledger', nativeSaleReturnGuardrails],
     ['purchase-return-and-stock-guardrails', nativePurchaseReturnGuardrails],
+    ['append-only-history-bulk-clear-protection', nativeHistoryClearFailClosed],
     ['backup-and-atomic-rejection', nativeBackupRestore],
     ['rtl-invoice-print-settings', invoicePrintLayout],
     ['fiscal-close-atomic-guardrails', fiscalCloseGuardrails],
