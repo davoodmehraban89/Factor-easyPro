@@ -14,6 +14,11 @@ export const COMPANY_BACKUP_STORES = Object.freeze([
   'audit_events', 'document_corrections'
 ]);
 const V2_STORES = new Set(['account_chart', 'fiscal_periods', 'journal_entries', 'journal_lines']);
+const HISTORICAL_ACTOR_STORES = new Set([
+  'journal_entries', 'journal_lines', 'invoices', 'invoice_items',
+  'stock_movements', 'settlements', 'treasury', 'transactions',
+  'cheques', 'expenses'
+]);
 const isId = id => typeof id === 'string' && id.trim().length > 0;
 
 // Backups serialize object fields in arbitrary insertion order. Immutable
@@ -59,7 +64,11 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
           throw new Error('رویداد ممیزی یا اصلاح سند متعلق به شرکت دیگری است');
         }
         const row = { ...incoming, companyId };
-        if (row.ownerUserId && !immutable) row.ownerUserId = userId;
+        // Never rewrite the original actor of an accounting/treasury event.
+        // The administrator performing recovery is recorded in backup_restored.
+        if (row.ownerUserId && !immutable && !HISTORICAL_ACTOR_STORES.has(store)) {
+          row.ownerUserId = userId;
+        }
         if (store === 'journal_entries' && row.sourceType && row.sourceId) {
           row.sourceKey = journalSourceKey(companyId, row.sourceType, row.sourceId, row.revision || 1);
         }
@@ -70,6 +79,37 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
         if (existing && immutable) {
           if (!sameImmutableRecord(existing, row)) {
             throw new Error('بازنویسی سابقه ممیزی یا اصلاح سند مجاز نیست');
+          }
+          counts.skipped++;
+          continue;
+        }
+        // Replace mode is NOT permission to rewrite posted commercial or
+        // accounting facts. A recovery of older data must be append-only for
+        // finalized documents; superseding them requires a new correction.
+        let protectedPosted = false;
+        if (existing) {
+          protectedPosted =
+            (store === 'journal_entries' && (existing.status === 'posted' || row.status === 'posted')) ||
+            (store === 'invoices' && (existing.financePosted || row.financePosted)) ||
+            (store === 'cheques' && (existing.financePosted || row.financePosted)) ||
+            (store === 'expenses' && (existing.financePosted || row.financePosted)) ||
+            (store === 'treasury' && (existing.recordType === 'transaction' || row.recordType === 'transaction')) ||
+            ['stock_movements', 'settlements', 'transactions'].includes(store);
+          if (store === 'journal_lines' || store === 'invoice_items') {
+            const refStore = store === 'journal_lines' ? 'journal_entries' : 'invoices';
+            const refId = store === 'journal_lines' ? row.journalId : row.invoiceId;
+            const existingParentId = store === 'journal_lines' ? existing.journalId : existing.invoiceId;
+            const parent = await tx.get(refStore, refId);
+            const previousParent = refId === existingParentId ? parent :
+              await tx.get(refStore, existingParentId);
+            protectedPosted = store === 'journal_lines'
+              ? parent?.status === 'posted' || previousParent?.status === 'posted'
+              : Boolean(parent?.financePosted || previousParent?.financePosted);
+          }
+        }
+        if (existing && protectedPosted) {
+          if (!sameImmutableRecord(existing, row)) {
+            throw new Error('بازنویسی سند مالی قطعی از فایل پشتیبان مجاز نیست');
           }
           counts.skipped++;
           continue;
