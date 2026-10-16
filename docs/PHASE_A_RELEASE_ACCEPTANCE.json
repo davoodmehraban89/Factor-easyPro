@@ -15,7 +15,8 @@
       "id": "A02",
       "accepted": false,
       "evidence": [
-        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38948801630"
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38948801630",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38955574896"
       ],
       "name": "Historical opening balances and migration rehearsal"
     },
@@ -62,7 +63,8 @@
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38921787116",
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38924043704",
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38925949798",
-        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38947068034"
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38947068034",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38955075618"
       ],
       "name": "Windows install-upgrade, RTL printing and offline operation"
     },
