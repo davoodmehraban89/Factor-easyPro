@@ -151,6 +151,17 @@ try {
   $nativePerformance = Run-Native $freshExe $performanceData 'benchmark' $CandidateVersion
   $summary.nativePerformance = $nativePerformance.nativePerformance
 
+  # A04 destructive fault injection is strictly confined to a disposable
+  # Windows VM profile. Abruptly kill the native app during genuine importAll,
+  # reopen SAME persistent profile and check not one staged row committed.
+  $crashData = Join-Path $lab 'webview2-crash-restore-profile'
+  $armed = Run-Native $freshExe $crashData 'crash-arm' $CandidateVersion
+  if (!$armed.crashInjected.realWindowsProcessKilled) {
+    throw 'Native restore process was not genuinely force-terminated'
+  }
+  $crashVerified = Run-Native $freshExe $crashData 'crash-verify' $CandidateVersion
+  $summary.crashRestoreRollback = $crashVerified.crashRollback
+
   $summary.status = 'PASSED'
   Write-Output 'Verified fresh installation, NSIS in-place upgrade, retained v6 records, native login and Windows DPAPI'
   Cleanup-Installed $freshDir
