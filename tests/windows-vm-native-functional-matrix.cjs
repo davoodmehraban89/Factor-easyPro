@@ -559,6 +559,46 @@ async function nativeInactiveBankSettlementGuard() {
     disabledChequeClearingRejected:true, validChequeClearedExactlyOnce:true };
 }
 
+async function nativeTreasuryChequeReconciliation() {
+  const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  const check=(ok,msg)=>{if(!ok)throw Error(msg);};
+  const storage=FINORA.Storage,company=await FINORA.Company.current();
+  check(company?.id&&FINORA.Auth.isAdmin(),'A05 reconciliation requires synthetic admin');
+  await FINORA.Router.go('accounting');await wait(130);
+  const view=window.AccountingView;
+  await view.switchTab('reconciliation');
+  const original=await view.renderReconciliation();
+  check(original.includes('چک‌های مالی'),'Native reconciliation does not show cheque controls');
+  check(!original.includes('CHEQUE_SOURCE_JOURNAL_MISSING')&&
+    !original.includes('CHEQUE_CLEARING_CASH_COUNT'),
+    'Real posted VM cheque failed reconciliation before fault injection');
+  // Corrupt only a synthetic fixture in the disposable native VM, never
+  // alter a customer accounting record. This probes read-only detection.
+  const id='vm-a05-invalid-cheque-reconciliation';
+  const broken={id,companyId:company.id,financePosted:true,
+    direction:'inbound',status:'cleared',amount:90,journalId:'not-there',
+    statusJournalId:'not-there-either'};
+  await storage.put('cheques',broken);
+  const before=(await storage.getAll('journal_entries')).length;
+  const checked=await view.renderReconciliation();
+  check(checked.includes('CHEQUE_SOURCE_JOURNAL_MISSING')&&
+    checked.includes('CHEQUE_STATUS_JOURNAL_MISSING')&&
+    checked.includes('CHEQUE_CLEARING_CASH_COUNT'),
+    'Native installed reconciliation failed to report malformed cheque');
+  check((await storage.getAll('journal_entries')).length===before&&
+    (await storage.get('cheques',id))?.status==='cleared',
+    'Read-only reconciliation changed journal or cheque state');
+  await storage.delete('cheques',id);
+  const after=await view.renderReconciliation();
+  check(!after.includes('CHEQUE_SOURCE_JOURNAL_MISSING')&&
+    !after.includes('CHEQUE_CLEARING_CASH_COUNT'),
+    'Reconciliation still reports synthetic cheque after fixture removal');
+  await view.switchTab('journals');
+  check(!document.querySelector('.toast-error'),'A05 reconciliation left toast');
+  return {livePostedChequeReviewed:true,chequeDiscrepanciesDetected:true,
+    reportingReadOnly:true,fixtureRemoved:true};
+}
+
 async function nativeBackupRestore() {
   const check = (value, message) => { if (!value) throw Error(message); };
   const S = FINORA.Storage;
@@ -821,6 +861,7 @@ module.exports = async function nativeFunctionalMatrix(cdp) {
     ['purchase-and-post-ledger', purchaseInvoice],
     ['partial-sale-and-inventory', saleInvoice],
     ['inactive-treasury-cheque-settlement', nativeInactiveBankSettlementGuard],
+    ['treasury-cheque-reconciliation-readonly', nativeTreasuryChequeReconciliation],
     ['sale-return-immutable-stock-and-ledger', nativeSaleReturnGuardrails],
     ['purchase-return-and-stock-guardrails', nativePurchaseReturnGuardrails],
     ['append-only-history-bulk-clear-protection', nativeHistoryClearFailClosed],

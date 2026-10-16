@@ -171,6 +171,7 @@ try {
     'purchase-and-post-ledger',
     'partial-sale-and-inventory',
     'inactive-treasury-cheque-settlement',
+    'treasury-cheque-reconciliation-readonly',
     'sale-return-immutable-stock-and-ledger',
     'purchase-return-and-stock-guardrails',
     'append-only-history-bulk-clear-protection',

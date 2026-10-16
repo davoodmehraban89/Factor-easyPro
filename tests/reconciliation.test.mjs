@@ -112,3 +112,61 @@ test('accounting report period filters reject foreign periods and malformed Jala
   const report=await accounts.financialReports({periodId:p.id,from:'1405/01/01',to:'1405/12/29'});
   assert.equal(report.postedCount,0);
 });
+
+test('A05: reconciliation detects mismatched settlement transaction and duplicate allocation without mutations',()=>{
+ const f=fixture();
+ f.transactions=[{id:'cash-1',recordType:'transaction',type:'receipt',amount:35,refInvoiceId:'other',
+   financePosted:true}];
+ f.settlements=[
+   {id:'s1',invoiceId:'i1',transactionId:'cash-1',amount:40},
+   {id:'s2',invoiceId:'i1',transactionId:'cash-1',amount:35}
+ ];
+ f.invoices[0].paidAmount=75;f.invoices[0].remaining=25;
+ const snapshot=structuredClone(f);
+ const report=reconcileFinancialData(f);
+ for(const code of [
+   'SETTLEMENT_REFERENCE_MISMATCH','SETTLEMENT_CASH_MISMATCH',
+   'DUPLICATE_SETTLEMENT_TRANSACTION'
+ ]) assert.ok(report.issues.some(x=>x.code===code),code);
+ assert.deepEqual(f,snapshot,'A05 diagnostic must be read-only');
+});
+
+test('A05: reconciler checks posted cheque lifecycle and its single matched cash entry',()=>{
+ const f=fixture();
+ f.journals.push(
+   {id:'cheque-j1',status:'posted',sourceType:'cheque',sourceId:'ch-1',debit:80,credit:80},
+   {id:'cheque-j2',status:'posted',sourceType:'cheque_status',sourceId:'ch-1',debit:80,credit:80}
+ );
+ f.journalLines.push(
+   {id:'c1',journalId:'cheque-j1',accountId:'a103',debit:80,credit:0},
+   {id:'c2',journalId:'cheque-j1',accountId:'a201',debit:0,credit:80},
+   {id:'c3',journalId:'cheque-j2',accountId:'a103',debit:80,credit:0},
+   {id:'c4',journalId:'cheque-j2',accountId:'a201',debit:0,credit:80}
+ );
+ // No inventory ledger comparison from synthetic cheque-only ledger fixture.
+ f.integrated=true;
+ f.inventoryBalances[0].value=260;
+ f.stockMovements[0].cost=260;
+ f.cheques=[{id:'ch-1',financePosted:true,direction:'inbound',
+   status:'cleared',amount:80,journalId:'cheque-j1',statusJournalId:'cheque-j2'}];
+ f.transactions=[{id:'ct-1',recordType:'transaction',refChequeId:'ch-1',
+   type:'receipt',amount:80,journalId:'cheque-j2',financePosted:true}];
+ const baseline=reconcileFinancialData(f);
+ assert.equal(baseline.issues.length,0,JSON.stringify(baseline.issues));
+ assert.equal(baseline.counts.cheques,1);
+ const before=structuredClone(f);
+ f.transactions[0].amount=90;
+ const mismatch=reconcileFinancialData(f);
+ assert.ok(mismatch.issues.some(x=>x.code==='CHEQUE_CLEARING_CASH_MISMATCH'));
+ assert.equal(f.cheques[0].status,'cleared','read-only checker must never revert cheque status');
+ f.transactions[0].amount=80;
+ f.transactions.push({...f.transactions[0],id:'ct-dup'});
+ const duplicate=reconcileFinancialData(f);
+ assert.ok(duplicate.issues.some(x=>x.code==='CHEQUE_CLEARING_CASH_COUNT'));
+ f.transactions=f.transactions.slice(0,1);
+ f.cheques[0].status='bounced';
+ const bounced=reconcileFinancialData(f);
+ assert.ok(bounced.issues.some(x=>x.code==='NONCLEARED_CHEQUE_HAS_CASH'));
+ assert.equal(before.cheques[0].status,'cleared');
+});
+

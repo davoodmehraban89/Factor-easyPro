@@ -12,7 +12,7 @@ const safeAdd = (a,b) => {
 
 export function reconcileFinancialData({
   accounts = [], journals = [], journalLines = [], invoices = [],
-  settlements = [], transactions = [], inventoryBalances = [],
+  settlements = [], transactions = [], cheques = [], inventoryBalances = [],
   stockMovements = [], integrated = false
 } = {}) {
   const issues = [];
@@ -58,10 +58,27 @@ export function reconcileFinancialData({
 
   const allTransactions = new Map(transactions.filter(t => t.recordType === 'transaction').map(t => [t.id,t]));
   const invoiceById = new Map(invoices.map(i => [i.id,i]));
+  const settlementTransactionUse = new Map();
   const settlementsByInvoice = new Map();
   for (const row of settlements) {
     if (!invoiceById.has(row.invoiceId)) report('ORPHAN_SETTLEMENT', 'تسویه به فاکتور ناموجود متصل است', row.id);
-    if (!allTransactions.has(row.transactionId)) report('MISSING_SETTLEMENT_TRANSACTION', 'تراکنش مربوط به تسویه یافت نشد', row.id);
+    const cash = allTransactions.get(row.transactionId);
+    if (!cash) {
+      report('MISSING_SETTLEMENT_TRANSACTION', 'تراکنش مربوط به تسویه یافت نشد', row.id);
+    } else {
+      if (cash.refInvoiceId !== undefined && cash.refInvoiceId !== null &&
+          cash.refInvoiceId !== row.invoiceId) {
+        report('SETTLEMENT_REFERENCE_MISMATCH', 'ارجاع تسویه و تراکنش خزانه به فاکتور متفاوت است', row.id);
+      }
+      if (safeMoney(cash.amount) && cash.amount !== row.amount) {
+        report('SETTLEMENT_CASH_MISMATCH', 'مبلغ تسویه با تراکنش خزانه متناظر برابر نیست', row.id,
+          'error', row.amount, cash.amount);
+      }
+      if (settlementTransactionUse.has(row.transactionId)) {
+        report('DUPLICATE_SETTLEMENT_TRANSACTION', 'یک تراکنش خزانه در چند تسویه استفاده شده است', row.id);
+      }
+      settlementTransactionUse.set(row.transactionId, row.id);
+    }
     if (!safeMoney(row.amount) || row.amount === 0) report('INVALID_SETTLEMENT_AMOUNT', 'مبلغ تسویه نامعتبر است', row.id);
     if (!settlementsByInvoice.has(row.invoiceId)) settlementsByInvoice.set(row.invoiceId, []);
     settlementsByInvoice.get(row.invoiceId).push(row);
@@ -87,6 +104,57 @@ export function reconcileFinancialData({
     if (safeAdd(inv.paidAmount,inv.remaining) !== inv.grandTotal) {
       report('INVOICE_BALANCE_MISMATCH', 'مبلغ پرداخت‌شده و مانده با مبلغ کل فاکتور تطبیق ندارد',
         inv.number || inv.id, 'error', inv.grandTotal, inv.paidAmount + inv.remaining);
+    }
+  }
+
+
+  // A05: read-only cheque lifecycle and its bank/cash evidence.
+  // Legacy unposted cheques are not asserted to have journal references.
+  // Only posted integrated cheques can be reconciled against double-entry GL.
+  if (integrated) {
+    const chequeById = new Map(cheques.map(row => [row.id, row]));
+    const moneyByCheque = new Map();
+    for (const transaction of transactions.filter(row =>
+      row.recordType === 'transaction' && row.refChequeId)) {
+      if (!moneyByCheque.has(transaction.refChequeId)) moneyByCheque.set(transaction.refChequeId, []);
+      moneyByCheque.get(transaction.refChequeId).push(transaction);
+      if (!chequeById.has(transaction.refChequeId)) {
+        report('ORPHAN_CHEQUE_CASH', 'دریافت یا پرداخت چک به چک ناموجود متصل است', transaction.id);
+      }
+    }
+    for (const cheque of cheques.filter(row => row.financePosted)) {
+      const origin = byJournal.get(cheque.journalId);
+      if (!origin || origin.status !== 'posted' || origin.sourceType !== 'cheque' ||
+          origin.sourceId !== cheque.id) {
+        report('CHEQUE_SOURCE_JOURNAL_MISSING', 'چک قطعی سند اولیه معتبر ندارد', cheque.id);
+      }
+      const money = moneyByCheque.get(cheque.id) || [];
+      if (cheque.status === 'pending') {
+        if (cheque.statusJournalId || money.length) {
+          report('PENDING_CHEQUE_HAS_SETTLEMENT', 'چک در جریان دارای سند یا تراکنش تعیین‌تکلیف است', cheque.id);
+        }
+        continue;
+      }
+      const final = byJournal.get(cheque.statusJournalId);
+      if (!final || final.status !== 'posted' || final.sourceType !== 'cheque_status' ||
+          final.sourceId !== cheque.id) {
+        report('CHEQUE_STATUS_JOURNAL_MISSING', 'وضعیت قطعی چک سند تعیین‌تکلیف معتبر ندارد', cheque.id);
+      }
+      if (cheque.status === 'cleared') {
+        if (money.length !== 1) {
+          report('CHEQUE_CLEARING_CASH_COUNT', 'چک وصول‌شده باید دقیقاً یک دریافت یا پرداخت خزانه داشته باشد',
+            cheque.id, 'error', 1, money.length);
+        }
+        for (const transaction of money) {
+          const direction = cheque.direction === 'inbound' ? 'receipt' : 'payment';
+          if (transaction.type !== direction || transaction.amount !== cheque.amount ||
+              transaction.journalId !== cheque.statusJournalId || !transaction.financePosted) {
+            report('CHEQUE_CLEARING_CASH_MISMATCH', 'وصول چک با جهت یا مبلغ یا سند خزانه مغایرت دارد', cheque.id);
+          }
+        }
+      } else if (money.length) {
+        report('NONCLEARED_CHEQUE_HAS_CASH', 'چک وصول‌نشده دارای دریافت یا پرداخت خزانه است', cheque.id);
+      }
     }
   }
 
@@ -144,6 +212,7 @@ export function reconcileFinancialData({
   return {
     integrated, checkedAt: new Date().toISOString(),
     counts: { journals: posted.length, invoices: checkedInvoices, settlements: settlements.length,
+      cheques: cheques.filter(row => row.financePosted).length,
       inventoryBalances: inventoryBalances.length, issues: issues.length },
     totals: { inventoryBook, inventoryLedger, stockUnits },
     issues
