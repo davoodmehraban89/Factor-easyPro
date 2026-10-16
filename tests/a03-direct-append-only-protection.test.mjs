@@ -78,4 +78,9 @@ test('A03: transaction clear cannot erase either append-only history store or co
   await StorageService.put('contacts', { id: 'temporary', companyId: 'c1', name: 'Disposable' });
   await StorageService.transaction('contacts', async tx => tx.clear('contacts'));
   assert.equal((await StorageService.getAll('contacts')).length, 0);
+  // Explicit maintenance reset retains the previous full-database semantics.
+  // It is NOT exposed as a normal transaction clear of immutable history.
+  await StorageService.clearAll();
+  assert.equal((await StorageService.getAll('audit_events')).length, 0);
+  assert.equal((await StorageService.getAll('document_corrections')).length, 0);
 });
