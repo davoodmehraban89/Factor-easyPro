@@ -61,3 +61,35 @@ test('A05: an open stocktake blocks period close without changing the period', a
   await AccountingService.closePeriod(period.id);
   await assert.rejects(AccountingService.closePeriod(period.id), /بسته/);
 });
+
+test('A05: an unfinished journal blocks closing until the draft is removed', async () => {
+  const { period } = await setup();
+  const draftId = 'a05-unposted-ledger-draft';
+  await StorageService.put('journal_entries', {
+    id: draftId, companyId: 'a05', periodId: period.id,
+    date: '1405/06/15', status: 'draft', sourceType: 'manual'
+  });
+  await assert.rejects(AccountingService.closePeriod(period.id), /اسناد پیش‌نویس/);
+  assert.equal((await StorageService.get('fiscal_periods', period.id)).closed, false);
+  assert.equal((await AuditService.list()).filter(x => x.eventType === 'period_closed').length, 0);
+  await StorageService.delete('journal_entries', draftId);
+  await AccountingService.closePeriod(period.id);
+  assert.equal((await StorageService.get('fiscal_periods', period.id)).closed, true);
+});
+
+test('A05: simultaneous close commands commit only one period and one audit receipt', async () => {
+  const { period } = await setup();
+  const attempts = await Promise.allSettled([
+    AccountingService.closePeriod(period.id),
+    AccountingService.closePeriod(period.id)
+  ]);
+  assert.equal(attempts.filter(x => x.status === 'fulfilled').length, 1);
+  assert.equal(attempts.filter(x => x.status === 'rejected').length, 1);
+  assert.equal((await StorageService.get('fiscal_periods', period.id)).closed, true);
+  const events = (await AuditService.list()).filter(x =>
+    x.eventType === 'period_closed' && x.sourceId === period.id);
+  assert.equal(events.length, 1);
+  await assert.rejects(AccountingService.closePeriod(period.id), /بسته/);
+  assert.equal((await AuditService.list()).filter(x =>
+    x.eventType === 'period_closed' && x.sourceId === period.id).length, 1);
+});
