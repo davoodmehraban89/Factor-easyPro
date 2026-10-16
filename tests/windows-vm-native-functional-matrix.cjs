@@ -602,6 +602,34 @@ async function fiscalCloseGuardrails() {
   message.querySelector('.toast-close')?.click();
   check(!document.querySelector('.toast-error'), 'Expected fiscal rejection toast remained');
   await store.delete('stocktakes', stocktakeId);
+
+  // A05: another real fiscal-close attempt must still be blocked while
+  // there is an unfinished draft ledger in the same isolated period.
+  const draftId = 'vm-a05-unposted-draft-journal';
+  await store.put('journal_entries', {
+    id: draftId, companyId: company.id, periodId: period.id,
+    date: '1404/06/15', status: 'draft', sourceType: 'manual',
+    description: 'VM-only pending draft prevents closure'
+  });
+  confirmClose();
+  let draftToast = null;
+  for (let i = 0; i < 60; i++) {
+    draftToast = [...document.querySelectorAll('.toast-error')]
+      .find(x => x.textContent.includes('اسناد پیش‌نویس'));
+    if (draftToast) break;
+    await wait(100);
+  }
+  check(draftToast, 'Native fiscal closure ignored the pending draft journal');
+  check((await store.get('fiscal_periods', period.id))?.closed === false,
+    'Rejected draft-journal closure changed period state');
+  check((await store.getAll('audit_events'))
+    .filter(x => x.companyId === company.id &&
+      x.eventType === 'period_closed').length === auditCount,
+    'Rejected draft-journal closure wrote a successful close audit');
+  draftToast.querySelector('.toast-close')?.click();
+  check(!document.querySelector('.toast-error'),
+    'Expected unposted-journal rejection toast remained visible');
+  await store.delete('journal_entries', draftId);
   confirmClose();
   let closed = null;
   for (let i = 0; i < 70; i++) {
@@ -617,12 +645,30 @@ async function fiscalCloseGuardrails() {
   check(closureAudits.length === 1 &&
     closureAudits[0].actorId === FINORA.Auth.current().id,
     'Successful fiscal closure did not produce exactly one actor-scoped audit');
+  // Already-closed periods must not be closed again via the actual confirmation
+  // action, nor silently insert another period_closed audit receipt.
+  confirmClose();
+  let closedToast = null;
+  for (let i = 0; i < 60; i++) {
+    closedToast = [...document.querySelectorAll('.toast-error')]
+      .find(x => x.textContent.includes('دوره مالی بسته است'));
+    if (closedToast) break;
+    await wait(100);
+  }
+  check(closedToast, 'Duplicate native close did not visibly reject');
+  check((await store.getAll('audit_events'))
+    .filter(x => x.companyId === company.id &&
+      x.eventType === 'period_closed' && x.sourceId === period.id).length === 1,
+    'Duplicate fiscal close created a second audit receipt');
+  closedToast.querySelector('.toast-close')?.click();
   check(!document.querySelector('.toast-error') && !document.querySelector('.modal-backdrop'),
     'Fiscal guardrail test left an unexpected UI error or modal');
   return {
     openStocktakeBlocked: true,
+    draftJournalBlocked: true,
     failedCloseRolledBack: true,
     successfulCloseCommitted: true,
+    duplicateCloseRejected: true,
     singleAuditReceipt: true
   };
 }
