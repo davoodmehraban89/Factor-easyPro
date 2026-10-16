@@ -307,6 +307,7 @@ async function connect(url) {
         encryptedEnvelope: true,
         filenameSuffix: '.fbackup',
         wrongPasswordRejected: true,
+        tamperedCiphertextRejectedWithoutWrites: true,
         sameCompanyRestore: true,
         restoredContact: true,
         restoreAudited: true,
