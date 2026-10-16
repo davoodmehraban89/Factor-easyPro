@@ -408,6 +408,70 @@ async function fiscalCloseGuardrails() {
   };
 }
 
+async function openingDryRunWithExistingActivity() {
+  const check = (ok, message) => { if (!ok) throw Error(message); };
+  const store = FINORA.Storage;
+  const company = await FINORA.Company.current();
+  check(company?.id && FINORA.Auth.isAdmin(),
+    'Native A02 opening dry-run requires a synthetic administrator');
+  await FINORA.Router.go('accounting');
+  const view = window.AccountingView;
+  check(view, 'AccountingView missing in actual installed app');
+  await view.switchTab('opening');
+  const input = document.getElementById('openingFileInput');
+  const reportHost = document.getElementById('openingPreviewReport');
+  check(input && reportHost, 'Opening balance JSON dry-run form is missing');
+  const periods = (await store.getAll('fiscal_periods'))
+    .filter(x => x.companyId === company.id);
+  const period = periods.find(x => !x.closed);
+  check(period, 'An active period is required for A02 blocked historical migration test');
+  const priorJournals = (await store.getAll('journal_entries'))
+    .filter(x => x.companyId === company.id && x.status === 'posted');
+  check(priorJournals.length > 0,
+    'Financial activity prerequisite missing: opening must be blocked after posting');
+  const before = {
+    entries: (await store.getAll('journal_entries')).length,
+    lines: (await store.getAll('journal_lines')).length,
+    events: (await store.getAll('audit_events')).length,
+    settings: (await store.getAll('settings')).length
+  };
+  const fixture = {
+    periodId: period.id, openingDate: period.startDate,
+    lines: [], contacts: [], stock: [], cash: []
+  };
+  const file = new File([JSON.stringify(fixture)], 'vm-only-a02-opening.json',
+    { type: 'application/json' });
+  Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+  view.resetOpeningPreview();
+  await view.previewOpeningFile();
+  const review = view._openingReview;
+  check(review && review.readiness === 'blocked' && review.writePerformed === false,
+    'Native opening dry-run failed to block incompatible historical data');
+  check(review.issues.includes('EXISTING_POSTED_JOURNALS') &&
+    review.issues.includes('MISSING_OPENING_JOURNAL_LINES'),
+    'Native blocked opening preview omitted journal issues');
+  check(reportHost.textContent.includes('ثبت مسدود') &&
+    reportHost.querySelector('button[disabled]'),
+    'Native opening UI offered an actionable posting button despite issues');
+  const after = {
+    entries: (await store.getAll('journal_entries')).length,
+    lines: (await store.getAll('journal_lines')).length,
+    events: (await store.getAll('audit_events')).length,
+    settings: (await store.getAll('settings')).length
+  };
+  check(JSON.stringify(before) === JSON.stringify(after),
+    'Opening preview wrote to ledger, audit or settings');
+  check(!document.querySelector('.toast-error'),
+    'Blocked A02 dry-run unexpectedly threw rather than reporting issues');
+  await view.switchTab('journals');
+  return {
+    priorActivityBlocked: true,
+    discrepancyCodesVisible: true,
+    commitActionDisabled: true,
+    zeroWrites: true
+  };
+}
+
 module.exports = async function nativeFunctionalMatrix(cdp) {
   const phases = [
     ['activate-accounting-and-inventory', activateAccounting],
@@ -416,7 +480,8 @@ module.exports = async function nativeFunctionalMatrix(cdp) {
     ['sale-return-immutable-stock-and-ledger', nativeSaleReturnGuardrails],
     ['backup-and-atomic-rejection', nativeBackupRestore],
     ['rtl-invoice-print-settings', invoicePrintLayout],
-    ['fiscal-close-atomic-guardrails', fiscalCloseGuardrails]
+    ['fiscal-close-atomic-guardrails', fiscalCloseGuardrails],
+    ['opening-dry-run-rejects-existing-postings', openingDryRunWithExistingActivity]
   ];
   const report = {};
   for (const [name, fn] of phases) {
