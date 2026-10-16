@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn, execFileSync } = require('node:child_process');
 const verifyNativeFunctionalMatrix = require('./windows-vm-native-functional-matrix.cjs');
+const verifyNativeRoutes = require('./windows-vm-native-routes.cjs');
 
 const [exe, profile, mode, expectedVersion, reportPath] = process.argv.slice(2);
 assert.equal(process.platform, 'win32');
@@ -80,16 +81,16 @@ async function connect(url) {
     if (reply.error) current.reject(Error(JSON.stringify(reply.error)));
     else current.resolve(reply.result);
   });
-  const command = (method, params = {}) => new Promise((resolve, reject) => {
+  const command = (method, params = {}, timeoutMs = 12000) => new Promise((resolve, reject) => {
     const next = ++id;
-    const timer = setTimeout(() => { pending.delete(next); reject(Error('CDP ' + method + ' timed out')); }, 12000);
+    const timer = setTimeout(() => { pending.delete(next); reject(Error('CDP ' + method + ' timed out')); }, timeoutMs);
     pending.set(next, { resolve, reject, timer });
     ws.send(JSON.stringify({ id: next, method, params }));
   });
-  const evaluate = async expression => {
+  const evaluate = async (expression, timeoutMs = 12000) => {
     const r = await command('Runtime.evaluate', {
       expression, awaitPromise: true, returnByValue: true
-    });
+    }, timeoutMs);
     if (r.exceptionDetails) throw Error('Native UI exception: ' + r.exceptionDetails.text);
     if (r.result?.subtype === 'error') throw Error('Native UI rejected JavaScript evaluation');
     return r.result?.value;
@@ -293,6 +294,7 @@ async function connect(url) {
       // The real installed desktop window, not the browser-only preview:
       // verify accounting activation, financial journal, stock, backup and RTL.
       report.nativeFunctional = await verifyNativeFunctionalMatrix(cdp);
+      report.nativeRoutes = await verifyNativeRoutes(cdp, expectedVersion, reportPath);
     }
     report.status = 'PASSED';
     console.log(JSON.stringify(report, null, 2));
