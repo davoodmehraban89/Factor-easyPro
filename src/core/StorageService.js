@@ -45,6 +45,32 @@ const INDEXES = {
 const CREDENTIAL_FIELDS = ['pass', 'pwHash', 'pwSalt', 'pwIter', 'pwAlgo'];
 
 const APPEND_ONLY_STORES = new Set(['audit_events', 'document_corrections']);
+const FINALIZED_COMMERCE_STORES = new Set([
+  'stock_movements', 'settlements', 'transactions'
+]);
+
+async function existingFinalizedRecord(tx, store, incoming, existing) {
+  if (!existing) return false;
+  if (FINALIZED_COMMERCE_STORES.has(store)) return true;
+  if (store === 'journal_entries') return existing.status === 'posted' || incoming.status === 'posted';
+  if (store === 'invoices' || store === 'cheques' || store === 'expenses') {
+    return Boolean(existing.financePosted || incoming.financePosted);
+  }
+  if (store === 'treasury') {
+    return existing.recordType === 'transaction' || incoming.recordType === 'transaction';
+  }
+  if (store === 'journal_lines' || store === 'invoice_items') {
+    const parentStore = store === 'journal_lines' ? 'journal_entries' : 'invoices';
+    const relation = store === 'journal_lines' ? 'journalId' : 'invoiceId';
+    const a = await tx.get(parentStore, existing[relation]);
+    const b = existing[relation] === incoming[relation] ? a :
+      await tx.get(parentStore, incoming[relation]);
+    return parentStore === 'journal_entries'
+      ? a?.status === 'posted' || b?.status === 'posted'
+      : Boolean(a?.financePosted || b?.financePosted);
+  }
+  return false;
+}
 
 // Compare snapshot metadata without depending on JSON property insertion order.
 function snapshotComparable(value) {
@@ -383,7 +409,20 @@ class StorageServiceImpl {
             }
           }
         } else {
-          await Promise.all(items.map(item => tx.putRaw(store, item)));
+          for (const item of items) {
+            // A full backup is not an authorization to rewrite posted invoices,
+            // journals, settlements, cheques, money or inventory movements.
+            // Older snapshots may add missing rows but conflicting historical
+            // financial facts fail the complete restore transaction.
+            const previous = item.id === undefined ? null : await tx.get(store, item.id);
+            if (previous && await existingFinalizedRecord(tx, store, item, previous)) {
+              if (!sameSnapshotRecord(previous, item)) {
+                throw new Error('بازنویسی سند قطعی مالی در بازیابی کامل مجاز نیست');
+              }
+              continue;
+            }
+            await tx.putRaw(store, item);
+          }
         }
       }
     });
