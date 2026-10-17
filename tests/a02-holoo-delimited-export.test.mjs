@@ -108,3 +108,95 @@ test('A02: reject large cells and unsupported separator without emitting source 
   assert.throws(()=>parseStrictDelimitedRows('id,name\n1,'+'z'.repeat(270000)),/CSV_CELL_TOO_LARGE/);
   assert.throws(()=>parseStrictDelimitedRows('id|name\n1|x',{delimiter:'|'}),/CSV_UNSUPPORTED_DELIMITER/);
 });
+
+
+test('A02: declared Holoo report control counts and rial totals match explicit mapped data', () => {
+  const sample = fixture();
+  sample.declaredControlTotals = {
+    contacts: { count: 1, receivable: 0, payable: 0 },
+    products: { count: 1 },
+    invoices: { count: 1, grandTotal: 300, paidAmount: 100 },
+    invoiceLines: { count: 1 }, cheques: { count: 1, amount: 50 }
+  };
+  const before = structuredClone(sample);
+  const result = previewHolooDelimitedExport(sample);
+  assert.equal(result.issueCount, 0, JSON.stringify(result.issues));
+  assert.equal(result.declaredControlChecks, 10);
+  assert.equal(result.sourceControlClaimsPresent, true);
+  assert.equal(result.independentlyVerified, false);
+  assert.equal(result.canCommit, false);
+  assert.deepEqual(sample, before);
+});
+
+test('A02: source-report amount and row-count differences fail without leaking actual financial numbers', () => {
+  const sample = fixture();
+  sample.declaredControlTotals = { invoices: { count: 2, grandTotal: 97531, paidAmount: 99999 } };
+  const result = previewHolooDelimitedExport(sample);
+  const codes = result.issues.map(x => x.code);
+  for (const code of ['CONTROL_COUNT_MISMATCH','CONTROL_AMOUNT_MISMATCH'])
+    assert.ok(codes.includes(code));
+  for (const secret of ['97531','99999','مشتری'])
+    assert.ok(!JSON.stringify(result).includes(secret));
+  assert.equal(result.canCommit, false);
+  assert.equal(result.status, 'blocked');
+});
+
+test('A02: explicit toman source amounts are reconciled only against correctly converted rial controls', () => {
+  const sample = fixture();
+  sample.moneyUnit = 'toman';
+  sample.declaredControlTotals = { invoices: { grandTotal: 3000, paidAmount: 1000 } };
+  assert.equal(previewHolooDelimitedExport(sample).issueCount, 0);
+  sample.declaredControlTotals.invoices.grandTotal = 300;
+  const report = previewHolooDelimitedExport(sample);
+  assert.ok(report.issues.some(x => x.code === 'CONTROL_AMOUNT_MISMATCH'));
+});
+
+test('A02: controls never claim success when their table is missing or the source amount is invalid', () => {
+  const sample = fixture();
+  sample.declaredControlTotals = { cheques: { count: 1 } };
+  delete sample.tables.cheques;
+  const missing = previewHolooDelimitedExport(sample);
+  assert.ok(missing.issues.some(x => x.code === 'CONTROL_SOURCE_DATASET_MISSING'));
+  sample.tables.cheques = {text:'id,amount\nQ1,N/A\n'};
+  sample.declaredControlTotals = { cheques: { amount: 50 } };
+  const invalid = previewHolooDelimitedExport(sample);
+  assert.ok(invalid.issues.some(x => x.code === 'CONTROL_SOURCE_AMOUNT_INVALID'));
+});
+
+test('A02: large per-row safe amounts detect aggregate overflow and never silently round', () => {
+  const sample = fixture();
+  sample.tables.invoices.text =
+    'id,contact,gross,paid\nI1,C1,9007199254740990,0\nI2,C1,9007199254740990,0\n';
+  sample.declaredControlTotals = { invoices: { grandTotal: 9007199254740990 } };
+  const result = previewHolooDelimitedExport(sample);
+  assert.ok(result.issues.some(x => x.code === 'CONTROL_SOURCE_SUM_OVERFLOW'));
+});
+
+test('A02: reject unauthorized control schema, unsafe numbers and prototype-name tables', () => {
+  const sample = fixture();
+  sample.declaredControlTotals = { invoices: { amount: 10 } };
+  assert.throws(() => previewHolooDelimitedExport(sample), /CONTROL_TOTALS_SCHEMA_INVALID/);
+  sample.declaredControlTotals = { invoices: { grandTotal: Number.MAX_SAFE_INTEGER + 1 } };
+  assert.throws(() => previewHolooDelimitedExport(sample), /CONTROL_TOTAL_NOT_SAFE_RIAL/);
+  sample.declaredControlTotals = { constructor: { count: 1 } };
+  assert.throws(() => previewHolooDelimitedExport(sample), /CONTROL_TOTALS_SCHEMA_INVALID/);
+  delete sample.declaredControlTotals;
+  sample.tables.constructor = { text: 'id\nx\n' };
+  assert.throws(() => previewHolooDelimitedExport(sample), /SOURCE_UNSUPPORTED_TABLE/);
+});
+
+test('A02: bounded combined diagnostics preserve total count without leaking raw data', () => {
+  const sample = fixture();
+  sample.tables.cheques.text = 'id,amount\nX,-45\n';
+  sample.declaredControlTotals = {
+    cheques: { count: 2, amount: 123456 },
+    invoices: { count: 0, grandTotal: 999999 }
+  };
+  const result = previewHolooDelimitedExport(sample, { maxIssues: 2 });
+  assert.equal(result.issues.length, 2);
+  assert.equal(result.truncated, true);
+  assert.ok(result.issueCount > 2);
+  assert.equal(result.independentlyVerified, false);
+  assert.ok(!JSON.stringify(result).includes('123456'));
+  assert.ok(!JSON.stringify(result).includes('999999'));
+});
