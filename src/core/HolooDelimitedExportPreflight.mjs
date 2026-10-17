@@ -95,14 +95,80 @@ export function parseStrictDelimitedRows(text, { delimiter = ',' } = {}) {
   return { headers, rows: data };
 }
 
+/**
+ * Source-report control totals are *claims provided by the operator*,
+ * NEVER external accountant signoff. This function cannot read Holoo data
+ * directly and must never leak individual rows or financial amounts.
+ *
+ * All claims are denominated in RIAL after explicit source-unit conversion.
+ * Supported claims: { [table]: { count, ...sumFields } }.
+ */
+const SUM_FIELDS = Object.freeze({
+  contacts: ['receivable', 'payable'],
+  products: [],
+  invoices: ['grandTotal', 'paidAmount'],
+  invoiceLines: [],
+  cheques: ['amount']
+});
+function compareDeclaredControlTotals(datasets, mappings, declared, maxIssues) {
+  if (declared === null || declared === undefined) {
+    return { checks: 0, issueCount: 0, issues: [] };
+  }
+  if (!validMap(declared)) reject('CONTROL_TOTALS_INVALID');
+  let checks = 0, issueCount = 0;
+  const issues = [];
+  const add = (code, table) => {
+    issueCount++;
+    if (issues.length < maxIssues) issues.push(Object.freeze({ code, table, rowIndex: null }));
+  };
+  for (const [table, values] of Object.entries(declared)) {
+    if (!Object.hasOwn(SUM_FIELDS, table) || !validMap(values) ||
+        !Object.keys(values).length ||
+        Object.keys(values).some(key => key !== 'count' && !SUM_FIELDS[table].includes(key))) {
+      reject('CONTROL_TOTALS_SCHEMA_INVALID');
+    }
+    const rows = datasets[table];
+    if (!rows) {
+      add('CONTROL_SOURCE_DATASET_MISSING', table);
+      continue;
+    }
+    for (const [key, expected] of Object.entries(values)) {
+      if (!Number.isSafeInteger(expected) || expected < 0) reject('CONTROL_TOTAL_NOT_SAFE_RIAL');
+      checks++;
+      if (key === 'count') {
+        if (rows.length !== expected) add('CONTROL_COUNT_MISMATCH', table);
+        continue;
+      }
+      const sourceColumn = mappings[table]?.[key];
+      if (typeof sourceColumn !== 'string' || !sourceColumn) {
+        add('CONTROL_SOURCE_MAPPING_MISSING', table);
+        continue;
+      }
+      let sum = 0n, invalid = false;
+      for (const row of rows) {
+        const value = row[sourceColumn];
+        if (!Number.isSafeInteger(value) || value < 0) {
+          invalid = true;
+          break;
+        }
+        sum += BigInt(value);
+      }
+      if (invalid) add('CONTROL_SOURCE_AMOUNT_INVALID', table);
+      else if (sum > BigInt(Number.MAX_SAFE_INTEGER)) add('CONTROL_SOURCE_SUM_OVERFLOW', table);
+      else if (sum !== BigInt(expected)) add('CONTROL_AMOUNT_MISMATCH', table);
+    }
+  }
+  return { checks, issueCount, issues };
+}
+
 export function previewHolooDelimitedExport({
-  sourceSystem, moneyUnit, tables, mappings
+  sourceSystem, moneyUnit, tables, mappings, declaredControlTotals = null
 } = {}, { maxIssues = 100 } = {}) {
   if (sourceSystem !== 'holoo') reject('SOURCE_SYSTEM_NOT_HOLOO');
   if (!['rial', 'toman'].includes(moneyUnit)) reject('MONEY_UNIT_REQUIRED');
   if (!validMap(tables) || !validMap(mappings)) reject('SOURCE_MAPPING_REQUIRED');
-  if (Object.keys(tables).some(name => !(name in COLUMNS)) ||
-      Object.keys(mappings).some(name => !(name in COLUMNS))) {
+  if (Object.keys(tables).some(name => !Object.hasOwn(COLUMNS, name)) ||
+      Object.keys(mappings).some(name => !Object.hasOwn(COLUMNS, name))) {
     reject('SOURCE_UNSUPPORTED_TABLE');
   }
   const datasets = {};
@@ -130,8 +196,24 @@ export function previewHolooDelimitedExport({
   const report = previewHolooExtract({
     sourceSystem: 'holoo', datasets, columns: mappings
   }, { maxIssues });
+  const controls = compareDeclaredControlTotals(
+    datasets, mappings, declaredControlTotals, maxIssues
+  );
+  const totalIssues = report.issueCount + controls.issueCount;
+  const mergedIssues = Object.freeze([
+    ...report.issues,
+    ...controls.issues.slice(0, Math.max(0, maxIssues - report.issues.length))
+  ]);
   return Object.freeze({
     ...report,
+    status: totalIssues ? 'blocked' : 'requires-source-and-accountant-review',
+    issueCount: totalIssues,
+    truncated: totalIssues > mergedIssues.length,
+    issues: mergedIssues,
+    declaredControlChecks: controls.checks,
+    sourceControlClaimsPresent: declaredControlTotals !== null &&
+      declaredControlTotals !== undefined,
+    independentlyVerified: false,
     inputType: 'explicit-mapped-delimited-export',
     sourceCurrencyUnit: moneyUnit,
     // This parser is not an authenticity check for Holoo CSV exports.
