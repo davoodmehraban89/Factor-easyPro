@@ -39,3 +39,25 @@ test('release gate: duplicate and missing acceptance entries fail closed', () =>
   accepted.requirements.pop();
   assert.throws(() => verifyPhaseARelease({ ...args, acceptance: accepted }), /unaccepted/);
 });
+
+test('release gate: extra gate and malformed evidence suffixes fail closed', () => {
+  const acceptance = structuredClone(manifest);
+  for (const row of acceptance.requirements) {
+    row.accepted = true;
+    row.evidence = ['https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/123'];
+  }
+  acceptance.requirements.push({
+    id: 'UNREVIEWED', accepted: true,
+    evidence: ['https://github.com/davoodmehraban89/Factor-easyPro/issues/1']
+  });
+  assert.throws(() => verifyPhaseARelease({ ...args, acceptance }), /Unexpected/);
+  acceptance.requirements.pop();
+  for (const invalid of [
+    'https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/123/extra',
+    'https://github.com/davoodmehraban89/Factor-easyPro/issues/123?fake=1',
+    'https://github.com/davoodmehraban89/Factor-easyPro/pull/0'
+  ]) {
+    acceptance.requirements[0].evidence = [invalid];
+    assert.throws(() => verifyPhaseARelease({ ...args, acceptance }), /unaccepted/);
+  }
+});
