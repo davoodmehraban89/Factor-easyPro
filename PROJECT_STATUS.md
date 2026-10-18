@@ -355,3 +355,9 @@
 - ده آزمون منفی/رگرسیون مصنوعی: NUL، BOM میانی، کاراکتر کنترلی در header، نبود جدول منبع، متن خالی، header تکراری پس از trim، جداکننده نامجاز، عرض سطر نامعتبر، مبلغ اعشاری بدون سیاست تبدیل و فیلد معنایی ناشناخته. چهار کنترل جدید/سخت‌گیرانه برای NUL، BOM، header کنترلی و نبود جدول اضافه شد.
 - شواهد exact SHA: [Quality #39169416717](https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39169416717) و [Windows Native #39169416704](https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39169416704)، هر دو success. آزمون‌ها با داده ساختگی‌اند و جای QA مستقل یا بکاپ واقعی را نمی‌گیرند.
 - بدون import، schema change، انتشار عمومی یا داده مشتری؛ `A02.accepted=false`. بازگشت: revert PR #108.
+
+## گیت انتشار فاز A — 2026-10-19
+
+- [PR #110](https://github.com/davoodmehraban89/Factor-easyPro/pull/110) پس از [Quality CI #39171146683](https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39171146683) با نتیجه success در `main` ادغام شد (`76f0a9d4121b158fe1e768e4de370e17be55e5f2`). head آزموده‌شده `2e86a5252c720345df70b51e3a805da48c97e8db`.
+- کنترل انتشار اکنون شناسه‌های دقیق ده گیت و URL کامل شواهد را بررسی می‌کند؛ آزمون‌های منفی برای گیت اضافه، گیت مفقود و لینک دارای suffix یا query نامعتبر اضافه شد.
+- این اصلاح صرفاً حفاظت گیت انتشار است، نه تکمیل A01/A03/A04/A05/A06/A07/A08 یا تأیید مستقل. تمامی `accepted`ها همچنان `false`؛ انتشار جدید ممنوع است. بازگشت: revert PR #110.
