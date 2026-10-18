@@ -247,3 +247,39 @@ test('A02: a mapping without its source table fails closed', () => {
   delete sample.tables.cheques;
   assert.throws(() => previewHolooDelimitedExport(sample), /CSV_MAPPING_WITHOUT_SOURCE_TABLE/);
 });
+
+test('A02 strict 1: reject embedded NUL bytes', () => {
+  assert.throws(() => parseStrictDelimitedRows('id,name\n1,a\0b\n'), /CSV_NUL_BYTE/);
+});
+test('A02 strict 2: reject a second BOM after header', () => {
+  assert.throws(() => parseStrictDelimitedRows('id,name\n1,\uFEFFname\n'), /CSV_EMBEDDED_BOM/);
+});
+test('A02 strict 3: reject header control characters', () => {
+  assert.throws(() => parseStrictDelimitedRows('id,na\u0001me\n1,a\n'), /CSV_INVALID_HEADER/);
+});
+test('A02 strict 4: reject missing source tables', () => {
+  const sample = fixture(); sample.tables = {}; sample.mappings = {};
+  assert.throws(() => previewHolooDelimitedExport(sample), /CSV_NO_SOURCE_TABLES/);
+});
+test('A02 strict 5: reject empty input', () => {
+  assert.throws(() => parseStrictDelimitedRows(''), /CSV_EMPTY_SOURCE/);
+});
+test('A02 strict 6: reject duplicate trimmed headers', () => {
+  assert.throws(() => parseStrictDelimitedRows('id, id\n1,2\n'), /CSV_INVALID_HEADER/);
+});
+test('A02 strict 7: reject unsupported pipe separator', () => {
+  assert.throws(() => parseStrictDelimitedRows('id|name\n1|a\n', {delimiter:'|'}), /CSV_UNSUPPORTED_DELIMITER/);
+});
+test('A02 strict 8: reject malformed row widths', () => {
+  assert.throws(() => parseStrictDelimitedRows('id,name\n1\n'), /CSV_ROW_WIDTH_MISMATCH/);
+});
+test('A02 strict 9: reject invalid amount without currency guessing', () => {
+  const sample = fixture(); sample.tables.cheques.text = 'id,amount\nQ1,1.50\n';
+  const report = previewHolooDelimitedExport(sample);
+  assert.ok(report.issues.some(x => x.code === 'AMOUNT_NOT_INTEGER_RIAL'));
+  assert.equal(report.canCommit, false);
+});
+test('A02 strict 10: reject unsupported canonical mapping key', () => {
+  const sample = fixture(); sample.mappings.cheques.extra = 'amount';
+  assert.throws(() => previewHolooDelimitedExport(sample), /CSV_UNSUPPORTED_CANONICAL_FIELD/);
+});
