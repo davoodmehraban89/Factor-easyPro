@@ -36,6 +36,9 @@ export function parseStrictDelimitedRows(text, { delimiter = ',' } = {}) {
     throw new RangeError('CSV_INVALID_SIZE');
   if (!SEPARATORS.has(delimiter)) reject('CSV_UNSUPPORTED_DELIMITER');
   if (!text.length) reject('CSV_EMPTY_SOURCE');
+  // Embedded NUL and non-leading BOM indicate a damaged or mixed-encoding export.
+  if (text.includes('\0')) reject('CSV_NUL_BYTE');
+  if (text.slice(1).includes('\uFEFF')) reject('CSV_EMBEDDED_BOM');
   const rows = [];
   let record = [], cell = '', quoted = false, afterQuote = false, begun = false;
   // Include the final sentinel newline to flush a possibly unterminated row.
@@ -86,7 +89,7 @@ export function parseStrictDelimitedRows(text, { delimiter = ',' } = {}) {
   if (record.length || cell || afterQuote || begun) submitRecord();
   if (!rows.length) reject('CSV_NO_HEADER');
   const headers = rows.shift().map(x => x.trim());
-  if (!headers.length || headers.some(x => !x) ||
+  if (!headers.length || headers.some(x => !x || /[\u0001-\u001F\u007F]/.test(x)) ||
       new Set(headers).size !== headers.length) reject('CSV_INVALID_HEADER');
   if (rows.some(row => row.length !== headers.length))
     reject('CSV_ROW_WIDTH_MISMATCH');
@@ -178,6 +181,7 @@ export function previewHolooDelimitedExport({
   // financial source table and falsely suggest the extract was inspected.
   if (Object.keys(mappings).some(table => !Object.hasOwn(tables, table)))
     reject('CSV_MAPPING_WITHOUT_SOURCE_TABLE');
+  if (!Object.keys(tables).length) reject('CSV_NO_SOURCE_TABLES');
   const datasets = {};
   for (const [table, item] of Object.entries(tables)) {
     if (!validMap(item) || typeof item.text !== 'string' ||
