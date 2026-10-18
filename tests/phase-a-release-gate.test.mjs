@@ -37,7 +37,7 @@ test('release gate: duplicate and missing acceptance entries fail closed', () =>
   assert.throws(() => verifyPhaseARelease({ ...args, acceptance: accepted }), /Duplicated/);
   accepted.requirements.pop();
   accepted.requirements.pop();
-  assert.throws(() => verifyPhaseARelease({ ...args, acceptance: accepted }), /unaccepted/);
+  assert.throws(() => verifyPhaseARelease({ ...args, acceptance: accepted }), /Unexpected/);
 });
 
 test('release gate: extra gate and malformed evidence suffixes fail closed', () => {
