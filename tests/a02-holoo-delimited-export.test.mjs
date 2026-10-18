@@ -203,15 +203,15 @@ test('A02: bounded combined diagnostics preserve total count without leaking raw
 
 test('A02: blank CSV records never disappear from source counts', () => {
   assert.throws(
-    () => parseStrictDelimitedRows('id,name\\nC1,A\\n\\nC2,B\\n'),
+    () => parseStrictDelimitedRows('id,name\nC1,A\n\nC2,B\n'),
     /CSV_EMPTY_RECORD/
   );
   assert.throws(
-    () => parseStrictDelimitedRows('id\\n""\\n'),
+    () => parseStrictDelimitedRows('id\n""\n'),
     /CSV_EMPTY_RECORD/
   );
   assert.deepEqual(
-    parseStrictDelimitedRows('id,name\\nC1,A\\n').rows,
+    parseStrictDelimitedRows('id,name\nC1,A\n').rows,
     [{ id: 'C1', name: 'A' }]
   );
 });
