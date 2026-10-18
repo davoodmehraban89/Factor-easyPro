@@ -341,3 +341,10 @@
 - `CSV_UNSUPPORTED_CANONICAL_FIELD` نگاشت فیلد معنایی ناشناخته را پیش از گزارش مالی رد می‌کند؛ آزمون منفی با داده ساختگی افزوده شد. هیچ import، تغییر schema یا انتشار عمومی انجام نشده است.
 - شواهد CI همان SHA: [Quality #39108731634](https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39108731634) و [Windows Native #39108731712](https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39108731712)، هر دو success.
 - پذیرش A02 همچنان `accepted:false` است؛ داده واقعی هلو و بررسی مستقل در دسترس نیست. بازگشت: revert PR #104.
+
+## A02 — کنترل نگاشت یتیم و شواهد PR #106 — 2026-10-19
+
+- [PR #106](https://github.com/davoodmehraban89/Factor-easyPro/pull/106) با merge SHA `43b9e4815ecd67f954af0d6b0d7af1ee1d81f634` ادغام شد؛ head آزموده‌شده `275a712d66ea711b2e4c541ce1f1c79e4bd2f155`.
+- `CSV_MAPPING_WITHOUT_SOURCE_TABLE` مانع حذف بی‌صدای جدول مفقود در استخراج CSV/TSV می‌شود؛ آزمون‌های مصنوعی مرتبط اصلاح و اضافه شدند. هیچ import یا تغییر schema انجام نشد.
+- شواهد CI همان SHA: [Quality #39155224100](https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39155224100) و [Windows Native #39155224025](https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39155224025)، هر دو success.
+- `A02.accepted=false`؛ بکاپ واقعی هلو و تطبیق مستقل وجود ندارد. بازگشت: revert PR #106.
