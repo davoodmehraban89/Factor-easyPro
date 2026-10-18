@@ -20,13 +20,16 @@ export function verifyPhaseARelease({ acceptance, packageVersion, desktopVersion
     }
     byId.set(row.id, row);
   }
+  if (byId.size !== required.length || [...byId.keys()].some(id => !required.includes(id))) {
+    throw new Error('Unexpected or missing release acceptance entry');
+  }
   const blocked = [];
   for (const id of required) {
     const row = byId.get(id);
     if (row?.accepted !== true ||
         !Array.isArray(row.evidence) || !row.evidence.length ||
         row.evidence.some(link => typeof link !== 'string' ||
-          !/^https:\/\/github\.com\/davoodmehraban89\/Factor-easyPro\/(?:actions\/runs|pull|issues)\/\d+/.test(link))) {
+          !/^https:\/\/github\.com\/davoodmehraban89\/Factor-easyPro\/(?:actions\/runs|pull|issues)\/[1-9]\d*$/.test(link))) {
       blocked.push(id);
     }
   }
