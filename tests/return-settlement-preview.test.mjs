@@ -72,3 +72,25 @@ test('A01 preview: invariant across varied safe integer rial inputs', () => {
     }
   }
 });
+
+test('A01 preview: exact safe-integer boundary retains credit conservation', () => {
+  const max = Number.MAX_SAFE_INTEGER;
+  const cases = [
+    { invoiceTotal: max, paidAmount: max, priorReturns: max - 1, returnAmount: 1 },
+    { invoiceTotal: max, paidAmount: max - 1, priorReturns: 0, returnAmount: max },
+    { invoiceTotal: max, paidAmount: 0, priorReturns: max - 1, returnAmount: 1 },
+    { invoiceTotal: max, paidAmount: max, priorReturns: 0, returnAmount: max }
+  ];
+  for (const input of cases) {
+    const result = preview(input);
+    for (const [key, value] of Object.entries(result)) {
+      if (typeof value === 'number') {
+        assert.ok(Number.isSafeInteger(value), key + ' must remain an exact rial amount');
+        assert.ok(value >= 0, key + ' must be nonnegative');
+      }
+    }
+    assert.equal(result.customerCreditAfter - result.priorCustomerCredit, result.newCustomerCredit);
+    assert.equal(result.receivableAfter - result.customerCreditAfter, result.invoiceNetAfter - input.paidAmount);
+    assert.equal(result.autoRefundAllowed, false);
+  }
+});
