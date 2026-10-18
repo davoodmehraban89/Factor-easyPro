@@ -180,6 +180,9 @@ export function previewHolooDelimitedExport({
         !validMap(mappings[table])) reject('CSV_TABLE_CONFIGURATION_REQUIRED');
     const parsed = parseStrictDelimitedRows(item.text, { delimiter: item.delimiter });
     const mapped = mappings[table];
+    const allowedFields = new Set(['sourceId', 'name', 'contactId', 'invoiceId', 'productId', ...COLUMNS[table]]);
+    if (Object.keys(mapped).some(field => !allowedFields.has(field)))
+      reject('CSV_UNSUPPORTED_CANONICAL_FIELD');
     const mappedColumns = Object.values(mapped);
     // Mapping two canonical fields to one source column is ambiguous for
     // financial reconciliation, even when the source headers are unique.
