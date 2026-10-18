@@ -159,6 +159,7 @@ test('A02: controls never claim success when their table is missing or the sourc
   const missing = previewHolooDelimitedExport(sample);
   assert.ok(missing.issues.some(x => x.code === 'CONTROL_SOURCE_DATASET_MISSING'));
   sample.tables.cheques = {text:'id,amount\nQ1,N/A\n'};
+  sample.mappings.cheques = { sourceId: 'id', amount: 'amount' };
   sample.declaredControlTotals = { cheques: { amount: 50 } };
   const invalid = previewHolooDelimitedExport(sample);
   assert.ok(invalid.issues.some(x => x.code === 'CONTROL_SOURCE_AMOUNT_INVALID'));
