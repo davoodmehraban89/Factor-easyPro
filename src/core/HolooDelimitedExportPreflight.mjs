@@ -47,10 +47,12 @@ export function parseStrictDelimitedRows(text, { delimiter = ',' } = {}) {
   };
   const submitRecord = () => {
     submitCell();
-    if (!(record.length === 1 && record[0] === '')) {
-      rows.push(record);
-      if (rows.length > MAX_DATA_ROWS + 1) reject('CSV_TOO_MANY_ROWS');
-    }
+    // Silently skipping empty records would undercount source rows and hide
+    // gaps in a migration extract. Only the terminal newline is implicit.
+    if (record.length === 1 && record[0].trim() === '')
+      reject('CSV_EMPTY_RECORD');
+    rows.push(record);
+    if (rows.length > MAX_DATA_ROWS + 1) reject('CSV_TOO_MANY_ROWS');
     record = [];
   };
   const input = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
@@ -115,6 +117,7 @@ function compareDeclaredControlTotals(datasets, mappings, declared, maxIssues) {
     return { checks: 0, issueCount: 0, issues: [] };
   }
   if (!validMap(declared)) reject('CONTROL_TOTALS_INVALID');
+  if (!Object.keys(declared).length) reject('CONTROL_TOTALS_SCHEMA_INVALID');
   let checks = 0, issueCount = 0;
   const issues = [];
   const add = (code, table) => {
@@ -177,7 +180,12 @@ export function previewHolooDelimitedExport({
         !validMap(mappings[table])) reject('CSV_TABLE_CONFIGURATION_REQUIRED');
     const parsed = parseStrictDelimitedRows(item.text, { delimiter: item.delimiter });
     const mapped = mappings[table];
-    for (const column of Object.values(mapped)) {
+    const mappedColumns = Object.values(mapped);
+    // Mapping two canonical fields to one source column is ambiguous for
+    // financial reconciliation, even when the source headers are unique.
+    if (new Set(mappedColumns).size !== mappedColumns.length)
+      reject('CSV_DUPLICATE_SOURCE_COLUMN_MAPPING');
+    for (const column of mappedColumns) {
       if (typeof column !== 'string' || !parsed.headers.includes(column))
         reject('CSV_MAPPED_COLUMN_ABSENT');
     }

@@ -200,3 +200,36 @@ test('A02: bounded combined diagnostics preserve total count without leaking raw
   assert.ok(!JSON.stringify(result).includes('123456'));
   assert.ok(!JSON.stringify(result).includes('999999'));
 });
+
+test('A02: blank CSV records never disappear from source counts', () => {
+  assert.throws(
+    () => parseStrictDelimitedRows('id,name\nC1,A\n\nC2,B\n'),
+    /CSV_EMPTY_RECORD/
+  );
+  assert.throws(
+    () => parseStrictDelimitedRows('id\n""\n'),
+    /CSV_EMPTY_RECORD/
+  );
+  assert.deepEqual(
+    parseStrictDelimitedRows('id,name\nC1,A\n').rows,
+    [{ id: 'C1', name: 'A' }]
+  );
+});
+
+test('A02: ambiguous mappings cannot reuse one source column for different fields', () => {
+  const sample = fixture();
+  sample.mappings.invoices.paidAmount = 'gross';
+  assert.throws(
+    () => previewHolooDelimitedExport(sample),
+    /CSV_DUPLICATE_SOURCE_COLUMN_MAPPING/
+  );
+});
+
+test('A02: supplied empty control claims are rejected, not presented as checked', () => {
+  const sample = fixture();
+  sample.declaredControlTotals = {};
+  assert.throws(
+    () => previewHolooDelimitedExport(sample),
+    /CONTROL_TOTALS_SCHEMA_INVALID/
+  );
+});
