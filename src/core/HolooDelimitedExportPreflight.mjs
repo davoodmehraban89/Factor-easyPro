@@ -174,6 +174,10 @@ export function previewHolooDelimitedExport({
       Object.keys(mappings).some(name => !Object.hasOwn(COLUMNS, name))) {
     reject('SOURCE_UNSUPPORTED_TABLE');
   }
+  // An orphan mapping must not be silently ignored: it can conceal a missing
+  // financial source table and falsely suggest the extract was inspected.
+  if (Object.keys(mappings).some(table => !Object.hasOwn(tables, table)))
+    reject('CSV_MAPPING_WITHOUT_SOURCE_TABLE');
   const datasets = {};
   for (const [table, item] of Object.entries(tables)) {
     if (!validMap(item) || typeof item.text !== 'string' ||

@@ -155,9 +155,11 @@ test('A02: controls never claim success when their table is missing or the sourc
   const sample = fixture();
   sample.declaredControlTotals = { cheques: { count: 1 } };
   delete sample.tables.cheques;
+  delete sample.mappings.cheques;
   const missing = previewHolooDelimitedExport(sample);
   assert.ok(missing.issues.some(x => x.code === 'CONTROL_SOURCE_DATASET_MISSING'));
   sample.tables.cheques = {text:'id,amount\nQ1,N/A\n'};
+  sample.mappings.cheques = { sourceId: 'id', amount: 'amount' };
   sample.declaredControlTotals = { cheques: { amount: 50 } };
   const invalid = previewHolooDelimitedExport(sample);
   assert.ok(invalid.issues.some(x => x.code === 'CONTROL_SOURCE_AMOUNT_INVALID'));
@@ -238,4 +240,10 @@ test('A02: unknown canonical mapping fields fail closed before preflight', () =>
   const sample = fixture();
   sample.mappings.invoices.unrecognizedAmount = 'gross';
   assert.throws(() => previewHolooDelimitedExport(sample), /CSV_UNSUPPORTED_CANONICAL_FIELD/);
+});
+
+test('A02: a mapping without its source table fails closed', () => {
+  const sample = fixture();
+  delete sample.tables.cheques;
+  assert.throws(() => previewHolooDelimitedExport(sample), /CSV_MAPPING_WITHOUT_SOURCE_TABLE/);
 });
