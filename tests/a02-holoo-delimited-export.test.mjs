@@ -155,6 +155,7 @@ test('A02: controls never claim success when their table is missing or the sourc
   const sample = fixture();
   sample.declaredControlTotals = { cheques: { count: 1 } };
   delete sample.tables.cheques;
+  delete sample.mappings.cheques;
   const missing = previewHolooDelimitedExport(sample);
   assert.ok(missing.issues.some(x => x.code === 'CONTROL_SOURCE_DATASET_MISSING'));
   sample.tables.cheques = {text:'id,amount\nQ1,N/A\n'};
