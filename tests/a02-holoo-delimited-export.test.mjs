@@ -233,3 +233,9 @@ test('A02: supplied empty control claims are rejected, not presented as checked'
     /CONTROL_TOTALS_SCHEMA_INVALID/
   );
 });
+
+test('A02: unknown canonical mapping fields fail closed before preflight', () => {
+  const sample = fixture();
+  sample.mappings.invoices.unrecognizedAmount = 'gross';
+  assert.throws(() => previewHolooDelimitedExport(sample), /CSV_UNSUPPORTED_CANONICAL_FIELD/);
+});
