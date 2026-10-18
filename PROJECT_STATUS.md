@@ -348,3 +348,10 @@
 - `CSV_MAPPING_WITHOUT_SOURCE_TABLE` مانع حذف بی‌صدای جدول مفقود در استخراج CSV/TSV می‌شود؛ آزمون‌های مصنوعی مرتبط اصلاح و اضافه شدند. هیچ import یا تغییر schema انجام نشد.
 - شواهد CI همان SHA: [Quality #39155224100](https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39155224100) و [Windows Native #39155224025](https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39155224025)، هر دو success.
 - `A02.accepted=false`؛ بکاپ واقعی هلو و تطبیق مستقل وجود ندارد. بازگشت: revert PR #106.
+
+## A02 — ده سناریوی اعتبارسنجی CSV و شواهد PR #108 — 2026-10-19
+
+- [PR #108](https://github.com/davoodmehraban89/Factor-easyPro/pull/108) با merge SHA `0932c2fa075057f4d24f4aea487e07dd37f9d148` ادغام شد؛ head آزموده‌شده `ea09a88c5fc3b570d3d26c245f522e5b8e3dbc8e`.
+- ده آزمون منفی/رگرسیون مصنوعی: NUL، BOM میانی، کاراکتر کنترلی در header، نبود جدول منبع، متن خالی، header تکراری پس از trim، جداکننده نامجاز، عرض سطر نامعتبر، مبلغ اعشاری بدون سیاست تبدیل و فیلد معنایی ناشناخته. چهار کنترل جدید/سخت‌گیرانه برای NUL، BOM، header کنترلی و نبود جدول اضافه شد.
+- شواهد exact SHA: [Quality #39169416717](https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39169416717) و [Windows Native #39169416704](https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39169416704)، هر دو success. آزمون‌ها با داده ساختگی‌اند و جای QA مستقل یا بکاپ واقعی را نمی‌گیرند.
+- بدون import، schema change، انتشار عمومی یا داده مشتری؛ `A02.accepted=false`. بازگشت: revert PR #108.
