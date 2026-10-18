@@ -239,3 +239,9 @@ test('A02: unknown canonical mapping fields fail closed before preflight', () =>
   sample.mappings.invoices.unrecognizedAmount = 'gross';
   assert.throws(() => previewHolooDelimitedExport(sample), /CSV_UNSUPPORTED_CANONICAL_FIELD/);
 });
+
+test('A02: a mapping without its source table fails closed', () => {
+  const sample = fixture();
+  delete sample.tables.cheques;
+  assert.throws(() => previewHolooDelimitedExport(sample), /CSV_MAPPING_WITHOUT_SOURCE_TABLE/);
+});
