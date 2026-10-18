@@ -334,3 +334,10 @@
 - **مرز پذیرش:** هیچ بکاپ واقعی هلو، استخراج اختصاصی، ثبت تاریخچه/مانده در دیتابیس مقصد، QA مستقل یا تأیید مالک داده انجام نشده؛ `canCommit:false`، `importPerformed:false`، `independentlyVerified:false` و **A02.accepted=false** باقی‌اند. نسخه عمومی همچنان `v2.0.3` است؛ هیچ داده واقعی مشتری در GitHub/Actions وارد نشده.
 - **بازگشت:** revert PR #102، بدون نیاز به تغییر schema یا بازگرداندن داده؛ اصلاح source CSV/TSV و mapping سالم روش توصیه‌شده است.
 - **گام بعد:** بررسی امنِ **کپی خصوصی بکاپ قدیمی مجاز هلو** پس از تحویل مالک، تشخیص فرمت/نسخه بدون انتشار داده خام و سپس تعیین قرارداد آداپتور نسخه‌دار با شواهد. گیت‌های دیگر فاز A مستقل از این گام همچنان باز هستند.
+
+## A02 — کنترل نگاشت‌های ناشناخته و شواهد PR #104 — 2026-10-18
+
+- [PR #104](https://github.com/davoodmehraban89/Factor-easyPro/pull/104) با merge SHA `f9dd777e6e4cf02ed7609e11418d8d0f4aad0972` ادغام شد؛ head آزموده‌شده `4594a01c663b26cef0f8c9e64bb7e34f8d296dd9`.
+- `CSV_UNSUPPORTED_CANONICAL_FIELD` نگاشت فیلد معنایی ناشناخته را پیش از گزارش مالی رد می‌کند؛ آزمون منفی با داده ساختگی افزوده شد. هیچ import، تغییر schema یا انتشار عمومی انجام نشده است.
+- شواهد CI همان SHA: [Quality #39108731634](https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39108731634) و [Windows Native #39108731712](https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39108731712)، هر دو success.
+- پذیرش A02 همچنان `accepted:false` است؛ داده واقعی هلو و بررسی مستقل در دسترس نیست. بازگشت: revert PR #104.
