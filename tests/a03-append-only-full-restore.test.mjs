@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import { StorageService } from '../src/core/StorageService.js';
 
+// Seed historical fixtures atomically; standalone history writes are forbidden.
+const seedHistory = (store, row) => StorageService.transaction(store, tx => tx.put(store, row));
+
 test('A03: full restore refuses to mutate prior audit events and rolls back earlier writes', async () => {
   await StorageService.clearAll();
   const audit = {
@@ -11,7 +14,7 @@ test('A03: full restore refuses to mutate prior audit events and rolls back earl
     actorId: 'manager', sourceId: 'journal-1',
     result: 'committed', safeSummary: { lineCount: 2 }
   };
-  await StorageService.put('audit_events', { ...audit });
+  await seedHistory('audit_events', { ...audit });
   const before = await StorageService.get('audit_events', audit.id);
   await assert.rejects(StorageService.importAll({
     app: 'Factor-easyPro', version: 7,
@@ -41,7 +44,7 @@ test('A03: full restore preserves document corrections and rejects ID overwrite'
     idempotencyKey: 'return:invoice-1', sourceId: 'invoice-1',
     correctionType: 'return', resultId: 'return-1'
   };
-  await StorageService.put('document_corrections', { ...correction });
+  await seedHistory('document_corrections', { ...correction });
   const before = await StorageService.get('document_corrections', correction.id);
   await assert.rejects(StorageService.importAll({
     app: 'Factor-easyPro', version: 7,
