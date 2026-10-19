@@ -2,6 +2,9 @@ import { Auth } from './Auth.js';
 import { DataScope } from './DataScope.js';
 import { StorageService } from './StorageService.js';
 
+const trustedAuditRows = new WeakSet();
+export const isAuditServiceRow = row => !!row && trustedAuditRows.has(row);
+
 const VALID_TYPES = new Set([
   'journal_posted', 'journal_reversed', 'period_closed',
   'commercial_journal_posted', 'draft_posted', 'draft_updated',
@@ -40,8 +43,21 @@ class AuditServiceImpl {
     };
     // add() cannot overwrite an earlier event and a unique commandKey makes
     // replay fail atomically. No externally mutable audit status is stored.
+    trustedAuditRows.add(event);
     await tx.add('audit_events', event);
     return event;
+  }
+
+  // Historical restore is a distinct audited entry point; callers must
+  // validate snapshot ownership and immutable conflicts before invoking it.
+  async restoreHistorical(tx, row) {
+    if (!row || typeof row !== 'object' || Array.isArray(row) ||
+        !validId(row.id) || !validId(row.companyId)) {
+      throw new Error('رکورد تاریخچه ممیزی نامعتبر است');
+    }
+    const copy = { ...row };
+    trustedAuditRows.add(copy);
+    await tx.add('audit_events', copy);
   }
 
   async list({ limit = 100 } = {}) {
