@@ -301,6 +301,11 @@ class StorageServiceImpl {
   }
 
   async put(store, obj) {
+    // Audit/correction records must be appended in the same transaction as
+    // their business operation; standalone writes cannot prove atomicity.
+    if (APPEND_ONLY_STORES.has(store)) {
+      throw new Error('ثبت مستقیم سابقه ممیزی یا اصلاح سند مجاز نیست');
+    }
     if (globalThis.FINORA?.License && !['users', 'settings', 'logs'].includes(store)) globalThis.FINORA.License.assertWritable();
     this._touch(obj);
     await this._exec(store, 'readwrite',

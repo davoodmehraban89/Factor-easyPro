@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import { StorageService } from '../src/core/StorageService.js';
+
+// Seed historical fixtures atomically; standalone history writes are forbidden.
+const seedHistory = (store, row) => StorageService.transaction(store, tx => tx.put(store, row));
 import { OpeningBalanceService } from '../src/core/OpeningBalanceService.js';
 import { AccountingService } from '../src/core/AccountingService.js';
 import { CompanyService } from '../src/core/CompanyService.js';
@@ -144,7 +147,7 @@ test('A02: failed audit insert at transaction end rolls back already inserted jo
   const { period, input } = await setup();
   // This unique command index simulates an audit record already committed
   // outside of this posting; the late constraint failure must roll back all.
-  await StorageService.put('audit_events', {
+  await seedHistory('audit_events', {
     id: 'existing-opening-key', companyId: C,
     commandKey: C + ':opening-ledger:' + period.id,
     eventType: 'opening_posted', sourceId: 'prior-event'
