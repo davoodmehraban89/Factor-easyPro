@@ -8,7 +8,12 @@ A03 → A04 → A01 → A05 → A06 → A07 → A08.
 ## Closed gates
 None. The authoritative acceptance manifest `docs/PHASE_A_RELEASE_ACCEPTANCE.json` has all gates unaccepted.
 
-## A03 — in progress
+## A03 — in progress (direct-write bypass hardening)
+- Current implementation: AuditService brands authorized audit records; StorageService.transaction rejects unbranded audit rows through add/put/putRaw; raw helpers _exec/_tx and bulkPut reject direct audit writes.
+- Restores: CompanyBackupService and StorageService.importAll route audit history through AuditService.restoreHistorical; fixture tests updated.
+- Added protection tests before guard, plus negative direct add/put/putRaw rollback test.
+- Security limitation: AuditService.restoreHistorical is exported for validated restore flows and is not yet restricted to a restore-only capability; direct IndexedDB access via StorageService.init() or browser developer tools remains outside service-layer protection.
+- Latest CI must be checked before merge. No acceptance claim.
 - Previous audited immutable-store hardening merged: PR #114, merge commit `3077d42d0061b05f8bf623f77ca18869a1581d1c`.
 - Current branch: `gate/a03-audit-metadata-validation-20261019`.
 - Current changes: reject invalid audit business dates and overlong metadata identifiers; add positive/negative atomic rollback tests.
@@ -27,4 +32,4 @@ A01, A05, A06, A07, A08: not accepted; proceed in specified order after A03/A04.
 - DATA_BACKUP: restore of actual backup on actual target system.
 
 ## Next action
-Review CI on latest head `fe128ec2d2fedb7385a05088dbccfab1792b8834`, fix failures and separately design a service-layer append authorization mechanism that preserves valid audit seeding and restore. Do not merge red CI. Once all A03 acceptance criteria have evidence, update manifest and this file, then proceed to A04.
+Review CI on latest A03 PR head, fix failing fixtures and ensure restore authorization cannot be invoked outside validated restore. Do not merge red CI. Once all A03 acceptance criteria have evidence, update manifest and this file, then proceed to A04.
