@@ -3,13 +3,16 @@ import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import { StorageService } from '../src/core/StorageService.js';
 
+// Seed historical fixtures atomically; standalone history writes are forbidden.
+const seedHistory = (store, row) => StorageService.transaction(store, tx => tx.put(store, row));
+
 test('A03: public and transaction writes cannot replace or delete persisted audit events', async () => {
   await StorageService.clearAll();
   const event = {
     id: 'history-native-1', companyId: 'c1', commandKey: 'c1:posted-1',
     eventType: 'journal_posted', actorId: 'manager', sourceId: 'j1'
   };
-  await StorageService.put('audit_events', event);
+  await seedHistory('audit_events', event);
   const original = structuredClone(await StorageService.get('audit_events', event.id));
   await assert.rejects(StorageService.put('audit_events',
     { ...original, eventType: 'period_closed' }));
@@ -39,7 +42,7 @@ test('A03: document correction history refuses replay writes and deletion', asyn
   await StorageService.clearAll();
   const correction = { id: 'fix-1', companyId: 'c1',
     idempotencyKey: 'c1:return-1', sourceId: 'invoice-1' };
-  await StorageService.put('document_corrections', correction);
+  await seedHistory('document_corrections', correction);
   const saved = structuredClone(await StorageService.get('document_corrections', correction.id));
   await assert.rejects(StorageService.put('document_corrections',
     { ...saved, sourceId: 'tampered-invoice' }));
