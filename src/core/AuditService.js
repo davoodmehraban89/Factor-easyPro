@@ -3,6 +3,10 @@ import { DataScope } from './DataScope.js';
 import { StorageService } from './StorageService.js';
 
 const trustedAuditRows = new WeakSet();
+const authorizedRestoreTransactions = new WeakMap();
+const validUtc = value => typeof value === 'string' &&
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) &&
+  !Number.isNaN(Date.parse(value));
 export const isAuditServiceRow = row => !!row && trustedAuditRows.has(row);
 
 const VALID_TYPES = new Set([
@@ -48,13 +52,31 @@ class AuditServiceImpl {
     return event;
   }
 
-  // Historical restore is a distinct audited entry point; callers must
-  // validate snapshot ownership and immutable conflicts before invoking it.
+  // Restore permission is scoped to a single transaction and company.
+  // Only validated restore flows should invoke this entry point.
+  authorizeRestore(tx, { companyId, rows }) {
+    if (!Auth.isAdmin() || !validId(companyId) || !Array.isArray(rows) ||
+        rows.some(row => !row || row.companyId !== companyId)) {
+      throw new Error('مجوز بازیابی ممیزی نامعتبر است');
+    }
+    authorizedRestoreTransactions.set(tx, { companyId, rows: new WeakSet(rows) });
+  }
+
   async restoreHistorical(tx, row) {
+    const authorization = authorizedRestoreTransactions.get(tx);
+    if (!authorization || !authorization.rows.has(row) ||
+        authorization.companyId !== row?.companyId) {
+      throw new Error('بازیابی مستقیم ممیزی خارج از جریان مجاز است');
+    }
     if (!row || typeof row !== 'object' || Array.isArray(row) ||
-        !validId(row.id) || !validId(row.companyId)) {
+        !validId(row.id) || !validId(row.companyId) ||
+        !validId(row.actorId) || !VALID_TYPES.has(row.eventType) ||
+        !validId(row.commandKey) || !validId(row.sourceId) ||
+        (row.businessDate !== undefined && !validBusinessDate(row.businessDate)) ||
+        (row.occurredAtUtc !== undefined && !validUtc(row.occurredAtUtc))) {
       throw new Error('رکورد تاریخچه ممیزی نامعتبر است');
     }
+    authorization.rows.delete(row);
     const copy = { ...row };
     trustedAuditRows.add(copy);
     await tx.add('audit_events', copy);
