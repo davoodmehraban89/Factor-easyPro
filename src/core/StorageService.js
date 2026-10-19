@@ -1,3 +1,5 @@
+import { isAuditServiceRow, AuditService } from './AuditService.js';
+
 // ============================================================
 // StorageService — IndexedDB wrapper
 // v5: جدول‌های حسابداری دوبل و مهاجرت سازگار با نسخه‌های قبلی
@@ -234,6 +236,11 @@ class StorageServiceImpl {
         req.onerror = () => rej(req.error);
       });
       const os = (name) => tx.objectStore(name);
+      const guardAudit = (store, row) => {
+        if (store === 'audit_events' && !isAuditServiceRow(row)) {
+          throw new Error('ثبت مستقیم رویداد ممیزی مجاز نیست؛ از AuditService استفاده کنید');
+        }
+      };
 
       const api = {
         get: (s, id) => wrap(os(s).get(id)),
@@ -241,13 +248,13 @@ class StorageServiceImpl {
         getAllByIndex: (s, index, key) => wrap(os(s).index(index).getAll(key)).then(r => r || []),
         count: (s) => wrap(os(s).count()),
         // Audit/correction history may be appended, never overwritten.
-        put: (s, obj) => { this._touch(obj); return wrap(
+        put: (s, obj) => { guardAudit(s, obj); this._touch(obj); return wrap(
           APPEND_ONLY_STORES.has(s) ? os(s).add(obj) : os(s).put(obj)
         ).then(() => obj); },
-        putRaw: (s, obj) => { if (!obj.id) obj.id = this.uid(); return wrap(
+        putRaw: (s, obj) => { guardAudit(s, obj); if (!obj.id) obj.id = this.uid(); return wrap(
           APPEND_ONLY_STORES.has(s) ? os(s).add(obj) : os(s).put(obj)
         ).then(() => obj); },
-        add: (s, obj) => { if (!obj.id) obj.id = this.uid(); return wrap(os(s).add(obj)).then(() => obj); },
+        add: (s, obj) => { guardAudit(s, obj); if (!obj.id) obj.id = this.uid(); return wrap(os(s).add(obj)).then(() => obj); },
         delete: (s, id) => APPEND_ONLY_STORES.has(s)
           ? Promise.reject(new Error('حذف مستقیم سابقه ممیزی یا اصلاح سند مجاز نیست'))
           : wrap(os(s).delete(id)).then(() => undefined),
@@ -440,7 +447,8 @@ class StorageServiceImpl {
                 throw new Error('بازنویسی سابقه ممیزی یا اصلاح سند از پشتیبان مجاز نیست');
               }
             } else {
-              await tx.add(store, { ...item });
+              if (store === 'audit_events') await AuditService.restoreHistorical(tx, item);
+              else await tx.add(store, { ...item });
             }
           }
         } else {
