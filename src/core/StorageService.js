@@ -179,6 +179,9 @@ class StorageServiceImpl {
    * اجرای یک عملیات روی یک جدول. نتیجه فقط بعد از commit شدن تراکنش برمی‌گردد.
    */
   _exec(store, mode, op) {
+    if (store === 'audit_events' && mode !== 'readonly') {
+      return Promise.reject(new Error('ثبت مستقیم رویداد ممیزی مجاز نیست'));
+    }
     return this.init().then(db => new Promise((resolve, reject) => {
       let tx, req;
       try {
@@ -198,6 +201,9 @@ class StorageServiceImpl {
 
   // سازگاری با کدهای قدیمی (منسوخ): مستقیماً objectStore برمی‌گرداند
   async _tx(store, mode = 'readonly') {
+    if (store === 'audit_events' && mode !== 'readonly') {
+      throw new Error('ثبت مستقیم رویداد ممیزی مجاز نیست');
+    }
     const db = await this.init();
     return db.transaction(store, mode).objectStore(store);
   }
@@ -322,6 +328,7 @@ class StorageServiceImpl {
 
   // ثبت گروهی در یک تراکنش (زمان‌ها دست‌نخورده می‌مانند؛ مناسب بازیابی پشتیبان)
   bulkPut(store, items) {
+    if (store === 'audit_events') return Promise.reject(new Error('ثبت مستقیم رویداد ممیزی مجاز نیست'));
     return this.transaction(store, async tx => {
       await Promise.all(items.map(item => tx.putRaw(store, item)));
       return items.length;
