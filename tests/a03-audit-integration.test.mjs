@@ -182,3 +182,14 @@ test('A04: immutable company audit replay ignores JSON property ordering but rej
     /بازنویسی سابقه/);
   assert.equal((await StorageService.get('audit_events', original.id)).sourceId, original.sourceId);
 });
+
+test('A03: standalone storage cannot forge audit or correction history', async () => {
+  await setup();
+  const before = await AuditService.list();
+  for (const store of ['audit_events', 'document_corrections']) {
+    const forged = { id: `forged-${store}`, companyId: company, eventType: 'journal_posted' };
+    await assert.rejects(StorageService.put(store, forged), /ثبت مستقیم سابقه/);
+    assert.equal(await StorageService.get(store, forged.id), undefined);
+  }
+  assert.deepEqual(await AuditService.list(), before);
+});
