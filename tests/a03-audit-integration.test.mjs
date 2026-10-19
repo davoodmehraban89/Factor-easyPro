@@ -261,3 +261,14 @@ test('A03: direct audit mutation APIs reject forged records and roll back writes
     assert.equal(await StorageService.get('audit_events', id), undefined);
   }
 });
+
+
+test('A03: direct historical restore without authorization is rejected', async () => {
+  await setup();
+  await assert.rejects(StorageService.transaction('audit_events', tx =>
+    AuditService.restoreHistorical(tx, {
+      id: 'forged-restore', companyId: company, actorId: 'audit-admin',
+      eventType: 'journal_posted', sourceId: 'forged', commandKey: 'forged'
+    })), /بازیابی مستقیم ممیزی/);
+  assert.equal(await StorageService.get('audit_events', 'forged-restore'), undefined);
+});
