@@ -193,3 +193,32 @@ test('A03: standalone storage cannot forge audit or correction history', async (
   }
   assert.deepEqual(await AuditService.list(), before);
 });
+
+test('A03: invalid audit metadata aborts business writes without leaking payloads', async () => {
+  await setup();
+  const before = (await AuditService.list()).length;
+  for (const businessDate of [{ secret: 'customer phone' }, 'customer-name', '1405/07/18 extra']) {
+    const id = StorageService.uid('rejected_');
+    await assert.rejects(StorageService.transaction(['audit_events', 'products'], async tx => {
+      await tx.add('products', { id, companyId: company, name: 'rollback' });
+      await AuditService.append(tx, {
+        companyId: company, eventType: 'journal_posted', sourceType: 'journal',
+        sourceId: id, commandKey: id, businessDate
+      });
+    }), /نامعتبر/);
+    assert.equal(await StorageService.get('products', id), undefined);
+  }
+  assert.equal((await AuditService.list()).length, before);
+});
+
+test('A03: valid audit date is retained and cannot be overwritten', async () => {
+  await setup();
+  const commandKey = StorageService.uid('valid_');
+  const event = { companyId: company, eventType: 'journal_posted',
+    sourceType: 'journal', sourceId: commandKey, commandKey, businessDate };
+  await StorageService.transaction('audit_events', tx => AuditService.append(tx, event));
+  const saved = (await AuditService.list()).find(x => x.sourceId === commandKey);
+  assert.equal(saved.businessDate, businessDate);
+  await assert.rejects(StorageService.transaction('audit_events', tx => AuditService.append(tx, event)));
+  assert.equal((await AuditService.list()).filter(x => x.sourceId === commandKey).length, 1);
+});
