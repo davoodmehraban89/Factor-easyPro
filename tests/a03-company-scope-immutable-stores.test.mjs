@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import { StorageService } from '../src/core/StorageService.js';
+import { AuditService } from '../src/core/AuditService.js';
 
 // Seed historical fixtures atomically; standalone history writes are forbidden.
-const seedHistory = (store, row) => StorageService.transaction(store, tx => tx.put(store, row));
+const seedHistory = (store, row) => StorageService.transaction(store, tx =>
+  store === 'audit_events' ? AuditService.restoreHistorical(tx, row) : tx.put(store, row));
 import { DataScope } from '../src/core/DataScope.js';
 import { Auth } from '../src/core/Auth.js';
 import { CompanyService } from '../src/core/CompanyService.js';
