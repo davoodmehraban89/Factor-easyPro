@@ -8,7 +8,9 @@ const VALID_TYPES = new Set([
   'draft_discarded', 'draft_created', 'period_opened', 'backup_restored',
   'opening_posted'
 ]);
-const validId = value => typeof value === 'string' && value.trim().length > 0;
+const validId = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 256;
+const validBusinessDate = value => value === null ||
+  (typeof value === 'string' && /^\d{4}\/\d{2}\/\d{2}$/.test(value));
 
 class AuditServiceImpl {
   /**
@@ -21,6 +23,7 @@ class AuditServiceImpl {
     if (!validId(companyId) || !validId(actorId) ||
         !VALID_TYPES.has(eventType) || !validId(sourceType) ||
         !validId(sourceId) || !validId(commandKey) ||
+        !validBusinessDate(businessDate) ||
         !Number.isSafeInteger(lineCount) || lineCount < 0) {
       throw new Error('داده رویداد ممیزی نامعتبر است');
     }
