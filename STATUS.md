@@ -41,3 +41,11 @@ Review CI on latest A03 PR head, fix failing fixtures and ensure restore authori
 - Existing legacy fixture rows lack some new metadata fields and must be updated with complete valid audit records.
 - Hash chain (prevHash, eventHash, verifyChain) has NOT been implemented. Tamper, deletion and reordering tests are outstanding. A local unanchored hash chain cannot prove deletion of the final event; trusted head checkpoint required.
 - CI on current head is not yet verified. Next: repair company restore and fixture compatibility, then implement and test chain before merge.
+
+## A03 2026-10-19 continuation
+- CompanyBackupService restore authorization was added at commit 9c0d438e21c11ba6c47561b80e3de7e270defcce.
+- Fixed a WeakSet access defect in AuditService at commit 0056fd1748e9222603c7cd8ada89f41ba8ca6c2e.
+- Added src/core/AuditChain.js at commit 567b9af1759df9448e01b9982bfe6208bcff545f (SHA-256 and a standalone chain verifier). This is NOT yet integrated into audit event writes or backup metadata; no end-to-end chain claims.
+- Attempts to integrate hash code into AuditService and add chain regression tests were blocked by tool safety checks. No tests were run locally.
+- Legacy audit migration, full company restore compatibility and trusted backup anchor remain unfinished.
+- Client-side security boundary: the StorageService/AuditService checks defend normal application code paths, not a malicious user with IndexedDB/devtools or local file access. A backup-contained hash anchor is not independently trusted: an attacker who can rewrite the backup can rewrite its anchor. Signed or externally anchored checkpoints are needed for adversarial tamper evidence. A bare hash chain cannot detect tail deletion without an independently retained head.
