@@ -33,3 +33,11 @@ A01, A05, A06, A07, A08: not accepted; proceed in specified order after A03/A04.
 
 ## Next action
 Review CI on latest A03 PR head, fix failing fixtures and ensure restore authorization cannot be invoked outside validated restore. Do not merge red CI. Once all A03 acceptance criteria have evidence, update manifest and this file, then proceed to A04.
+
+## A03 continuation — restore authorization and hash chain
+- Added transaction/company-scoped restore authorization in AuditService and negative direct-call regression test.
+- Full restore now registers company-scoped grants before historical inserts.
+- BLOCKER: CompanyBackupService has not yet been updated to register grants; company restore currently risks rejection. Attempts to update the file were blocked by tool safety checks. Do not merge or mark gate accepted.
+- Existing legacy fixture rows lack some new metadata fields and must be updated with complete valid audit records.
+- Hash chain (prevHash, eventHash, verifyChain) has NOT been implemented. Tamper, deletion and reordering tests are outstanding. A local unanchored hash chain cannot prove deletion of the final event; trusted head checkpoint required.
+- CI on current head is not yet verified. Next: repair company restore and fixture compatibility, then implement and test chain before merge.
