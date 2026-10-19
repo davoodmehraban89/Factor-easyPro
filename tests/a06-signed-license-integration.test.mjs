@@ -66,3 +66,13 @@ test('A06: a caller-supplied forged public key is not automatically trusted by t
   const attackerToken = await sign(payload);
   assert.equal(await validateOfflineActivation(attackerToken, null, payload.installationId, NOW), false);
 });
+
+test('A06: invalid wall-clock inputs cannot validate a signed offline lease', async () => {
+  const { pub, payload, sign } = await newSignedExample();
+  const token = await sign(payload);
+  for (const invalidNow of [NaN, Infinity, -Infinity, -1, 1.5, Number.MAX_VALUE, null, undefined, '2026-10-15']) {
+    assert.equal(await validateOfflineActivation(token, pub, payload.installationId, invalidNow),
+      false, String(invalidNow));
+  }
+  assert.equal(await validateOfflineActivation(token, pub, payload.installationId, NOW), true);
+});
