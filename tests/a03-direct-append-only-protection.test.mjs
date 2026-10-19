@@ -61,7 +61,7 @@ test('A03: transaction clear cannot erase either append-only history store or co
         ? { commandKey: 'c1:retained-audit', eventType: 'journal_posted' }
         : { idempotencyKey: 'c1:retained-correction', sourceId: 'sale-1' })
     };
-    await StorageService.put(store, historical);
+    await seedHistory(store, historical);
     const original = structuredClone(await StorageService.get(store, historical.id));
     const sentinel = 'must-rollback-' + store;
     await assert.rejects(
