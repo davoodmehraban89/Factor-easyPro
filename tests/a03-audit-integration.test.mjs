@@ -222,3 +222,26 @@ test('A03: valid audit date is retained and cannot be overwritten', async () => 
   await assert.rejects(StorageService.transaction('audit_events', tx => AuditService.append(tx, event)));
   assert.equal((await AuditService.list()).filter(x => x.sourceId === commandKey).length, 1);
 });
+
+test('A03 guard: ordinary audited journal remains atomic', async () => {
+  const state = await setup();
+  const before = (await AuditService.list()).length;
+  const posted = await AccountingService.postJournal(journal(state));
+  assert.equal((await StorageService.get('journal_entries', posted.id)).status, 'posted');
+  assert.equal((await AuditService.list()).length, before + 1);
+});
+
+test('A03 guard: company backup round trip preserves historical audit', async () => {
+  await setup();
+  const backup = await SettingsController.exportBackup();
+  const before = (await AuditService.list()).length;
+  await SettingsController.importBackup(backup);
+  assert.equal((await AuditService.list()).length, before + 1);
+});
+
+test('A03 guard: full backup replay of identical audit is accepted', async () => {
+  await setup();
+  const snapshot = await StorageService.exportAll();
+  await StorageService.importAll(snapshot);
+  assert.ok((await AuditService.list()).length >= 1);
+});
