@@ -21,7 +21,9 @@ export function loadProductionLicensePublicKey(rawValue) {
  * supplied by the application build configuration.
  */
 export async function validateOfflineActivation(token, publicJwk, installationId, nowMs = Date.now()) {
-  if (!publicJwk || !token || typeof token !== 'object' ||
+  // Invalid or untrusted clock values must never extend an offline lease.
+  if (!Number.isSafeInteger(nowMs) || nowMs < 0 ||
+      !publicJwk || !token || typeof token !== 'object' ||
       !validateEntitlementPayload(token.payload, installationId, nowMs)) return false;
   const lease = token.payload.lastOnlineCheckAt;
   if (typeof lease !== 'string' || !lease.trim()) return false;
