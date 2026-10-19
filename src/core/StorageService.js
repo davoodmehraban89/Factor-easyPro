@@ -219,6 +219,12 @@ class StorageServiceImpl {
     if (mode === 'readwrite' && globalThis.FINORA?.License) globalThis.FINORA.License.assertWritable();
     const db = await this.init();
     const names = Array.isArray(storeNames) ? storeNames : [storeNames];
+    // Immutable history must be appended alongside a business operation.
+    // Read-only access to a history store remains permitted.
+    if (mode === 'readwrite' && names.length === 1 && APPEND_ONLY_STORES.has(names[0])) {
+      throw new Error('ثبت سابقه ممیزی یا اصلاح بدون تراکنش تجاری مجاز نیست');
+    }
+
 
     return new Promise((resolve, reject) => {
       let tx;
