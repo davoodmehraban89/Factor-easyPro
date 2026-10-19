@@ -66,7 +66,7 @@ class AuditServiceImpl {
 
   async restoreHistorical(tx, row) {
     const authorization = authorizedRestoreTransactions.get(tx)?.get(row?.companyId);
-    if (!authorization || !authorization.rows.has(row) ||
+    if (!authorization || !authorization.has(row) ||
         !validId(row.companyId)) {
       throw new Error('بازیابی مستقیم ممیزی خارج از جریان مجاز است');
     }
@@ -78,7 +78,7 @@ class AuditServiceImpl {
         (row.occurredAtUtc !== undefined && !validUtc(row.occurredAtUtc))) {
       throw new Error('رکورد تاریخچه ممیزی نامعتبر است');
     }
-    authorization.rows.delete(row);
+    authorization.delete(row);
     const copy = { ...row };
     trustedAuditRows.add(copy);
     await tx.add('audit_events', copy);
