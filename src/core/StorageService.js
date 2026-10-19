@@ -436,9 +436,11 @@ class StorageServiceImpl {
 
     await this.transaction(STORES, async tx => {
       const auditRows = (json.data.audit_events || []).filter(item => !!item);
-      if (auditRows.length) AuditService.authorizeRestore(tx, {
-        companyId: auditRows[0].companyId, rows: auditRows
-      });
+      for (const companyId of new Set(auditRows.map(row => row.companyId))) {
+        AuditService.authorizeRestore(tx, {
+          companyId, rows: auditRows.filter(row => row.companyId === companyId)
+        });
+      }
       for (const store of STORES) {
         const items = json.data[store];
         if (!items) continue;
