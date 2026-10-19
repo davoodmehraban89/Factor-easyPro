@@ -245,3 +245,19 @@ test('A03 guard: full backup replay of identical audit is accepted', async () =>
   await StorageService.importAll(snapshot);
   assert.ok((await AuditService.list()).length >= 1);
 });
+
+test('A03: direct audit mutation APIs reject forged records and roll back writes', async () => {
+  await setup();
+  for (const method of ['add', 'put', 'putRaw']) {
+    const id = StorageService.uid('forged_');
+    await assert.rejects(StorageService.transaction(['audit_events', 'products'], async tx => {
+      await tx.put('products', { id, companyId: company, name: 'rollback' });
+      await tx[method]('audit_events', {
+        id, companyId: company, actorId: 'forged', eventType: 'journal_posted',
+        sourceId: id, commandKey: id, createdByService: true
+      });
+    }), /ثبت مستقیم رویداد ممیزی/);
+    assert.equal(await StorageService.get('products', id), undefined);
+    assert.equal(await StorageService.get('audit_events', id), undefined);
+  }
+});
