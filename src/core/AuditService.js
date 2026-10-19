@@ -59,13 +59,15 @@ class AuditServiceImpl {
         rows.some(row => !row || row.companyId !== companyId)) {
       throw new Error('مجوز بازیابی ممیزی نامعتبر است');
     }
-    authorizedRestoreTransactions.set(tx, { companyId, rows: new WeakSet(rows) });
+    const permissions = authorizedRestoreTransactions.get(tx) || new Map();
+    permissions.set(companyId, new WeakSet(rows));
+    authorizedRestoreTransactions.set(tx, permissions);
   }
 
   async restoreHistorical(tx, row) {
-    const authorization = authorizedRestoreTransactions.get(tx);
+    const authorization = authorizedRestoreTransactions.get(tx)?.get(row?.companyId);
     if (!authorization || !authorization.rows.has(row) ||
-        authorization.companyId !== row?.companyId) {
+        !validId(row.companyId)) {
       throw new Error('بازیابی مستقیم ممیزی خارج از جریان مجاز است');
     }
     if (!row || typeof row !== 'object' || Array.isArray(row) ||
