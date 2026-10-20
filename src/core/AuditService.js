@@ -1,7 +1,7 @@
 import { Auth } from './Auth.js';
 import { DataScope } from './DataScope.js';
 import { StorageService } from './StorageService.js';
-import { auditHash, verifyChain as checkAuditChain } from './AuditChain.js';
+import { auditHash, normalizeLegacyAudit, verifyChain as checkAuditChain } from './AuditChain.js';
 
 const trustedAuditRows = new WeakSet();
 const authorizedRestoreTransactions = new WeakMap();
