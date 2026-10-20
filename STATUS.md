@@ -49,3 +49,10 @@ Review CI on latest A03 PR head, fix failing fixtures and ensure restore authori
 - Attempts to integrate hash code into AuditService and add chain regression tests were blocked by tool safety checks. No tests were run locally.
 - Legacy audit migration, full company restore compatibility and trusted backup anchor remain unfinished.
 - Client-side security boundary: the StorageService/AuditService checks defend normal application code paths, not a malicious user with IndexedDB/devtools or local file access. A backup-contained hash anchor is not independently trusted: an attacker who can rewrite the backup can rewrite its anchor. Signed or externally anchored checkpoints are needed for adversarial tamper evidence. A bare hash chain cannot detect tail deletion without an independently retained head.
+
+## Independent A03 validation branch (2026-10-20)
+- Branch: fix/a03-chain-validation-20261020; draft PR #116; not accepted or merged.
+- Actual GitHub Actions npm test run 39373562237, commit 1d986c1b23f01eff562c2819a7f34153e7fc1fe6: 253 tests, 248 passed, 5 failed, exit code 1. Failures: A02 audit rollback, A03 company scope, A03 append-only protection (2), accounting backup round trip. This run predates current branch and does not verify current changes.
+- No local npm test was executed: local repository absent in this runtime, GitHub DNS unavailable, remote desktop offline/quota exhausted. Later PR runs have been cancelled by subsequent pushes or are pending.
+- Fixed missing Auth import in tests/a03-company-scope-immutable-stores.test.mjs on this branch; no passing run verified yet.
+- No independent reviewer agents were launched; no three-agent approval claimed.
