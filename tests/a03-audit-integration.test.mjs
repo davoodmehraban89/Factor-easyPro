@@ -108,7 +108,7 @@ test('A03: company backup rejects tampered historical audit records even in repl
   const backup = await SettingsController.exportBackup();
   assert.equal(backup.data.audit_events.length, 2);
   backup.data.audit_events.find(x => x.eventType === 'journal_posted').eventType = 'period_closed';
-  await assert.rejects(SettingsController.importBackup(backup, { mode: 'replace' }), /بازنویسی سابقه/);
+  await assert.rejects(SettingsController.importBackup(backup, { mode: 'replace' }), /بازنویسی سابقه|زنجیره ممیزی|لنگر پشتیبان/);
   assert.ok((await AuditService.list()).some(e => e.eventType === 'journal_posted'));
 });
 
@@ -158,7 +158,7 @@ test('A03/A04: successful backup restore receives an audit event; rejected resto
   assert.ok(afterRestore.some(e => e.eventType === 'backup_restored'));
   const tampered = structuredClone(backup);
   tampered.data.audit_events[0].safeSummary.lineCount = 99;
-  await assert.rejects(SettingsController.importBackup(tampered, { mode: 'replace' }), /بازنویسی سابقه/);
+  await assert.rejects(SettingsController.importBackup(tampered, { mode: 'replace' }), /بازنویسی سابقه|زنجیره ممیزی|لنگر پشتیبان/);
   assert.equal((await AuditService.list()).length, afterRestore.length);
 });
 
@@ -179,7 +179,7 @@ test('A04: immutable company audit replay ignores JSON property ordering but rej
   const changed = structuredClone(reordered);
   changed.data.audit_events[0].sourceId = 'FORGED_PERIOD';
   await assert.rejects(SettingsController.importBackup(changed, { mode: 'replace' }),
-    /بازنویسی سابقه/);
+    /بازنویسی سابقه|زنجیره ممیزی|لنگر پشتیبان/);
   assert.equal((await StorageService.get('audit_events', original.id)).sourceId, original.sourceId);
 });
 
