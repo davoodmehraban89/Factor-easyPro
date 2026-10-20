@@ -272,3 +272,23 @@ test('A03: direct historical restore without authorization is rejected', async (
     })), /بازیابی مستقیم ممیزی/);
   assert.equal(await StorageService.get('audit_events', 'forged-restore'), undefined);
 });
+
+
+test('A03: legacy v6 company backup without audit hashes is migrated', async () => {
+  await StorageService.clearAll();
+  Auth.currentUser = { id: 'audit-admin', role: 'admin', username: 'manager' };
+  await StorageService.put('companies', { id: company, name: 'Legacy company' });
+  CompanyService.activeCompanyId = company;
+  const legacy = {
+    app: 'Factor-easyPro', version: '2.0.0', scope: 'company',
+    companyId: company, schemaVersion: 6,
+    data: { audit_events: [{ id: 'legacy-audit', companyId: company,
+      eventType: 'journal_posted', commandKey: company + ':legacy-journal' }] }
+  };
+  await SettingsController.importBackup(legacy);
+  const restored = await StorageService.get('audit_events', 'legacy-audit');
+  assert.equal(restored.actorId, 'legacy-unknown');
+  assert.equal(restored.sourceType, 'legacy');
+  assert.match(restored.eventHash, /^[0-9a-f]{64}$/);
+  assert.equal((await AuditService.verifyChain()).valid, true);
+});
