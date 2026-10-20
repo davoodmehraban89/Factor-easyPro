@@ -48,6 +48,12 @@ class AuditServiceImpl {
     };
     // add() cannot overwrite an earlier event and a unique commandKey makes
     // replay fail atomically. No externally mutable audit status is stored.
+    const history = await tx.getAllByIndex('audit_events', 'companyId', companyId);
+    const ordered = history.sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0));
+    const previous = ordered.at(-1);
+    event.chainIndex = ordered.length;
+    event.prevHash = previous?.eventHash ?? null;
+    event.eventHash = auditHash(event);
     trustedAuditRows.add(event);
     await tx.add('audit_events', event);
     return event;
