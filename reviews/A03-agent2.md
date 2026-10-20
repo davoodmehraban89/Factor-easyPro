@@ -9,3 +9,10 @@ Review method: sequential pass; no independent agent claim. No final approval wh
 CI review finding: eager legacy-only migration pre-hashes with chainIndex 0 and violates existing append sequence. Fixed by deferring legacy-only hashing to transactional restore. This is a correctness fix, not a relaxation of hash validation.
 
 Follow-up security finding: AuditService.authorizeRestore was public, allowing an admin caller to mint permission outside backup restore. Refactored into restoreFromBackup which performs ownership/admin checks and internally manages one-use transaction authorization. Direct restoreHistorical without that scoped context still rejects. Client-side malicious admin/raw IndexedDB remains outside security boundary. CI pending.
+
+## Final sequential re-review — APPROVED (defined client threat model; zero open A03 issues)
+- Fresh read: AuditChain.js lines 28-83 (canonical serialization, SHA-256, genesis, sequence and anchor), AuditService.js lines 49-113 (transactional append, private authorization state, restoreFromBackup and rejection of direct restore), StorageService.js full/company restore integration.
+- Evidence: CI 39377639299 on 59dbc4beba2172cafdfd6c380adfa6c0aba6b445 passed all 263 Linux and 263 Windows tests. No public authorizeRestore method remains.
+- Constant-time comparison is not required for public hash values (no secret comparison). Hashes detect tampering but do not authenticate a hostile local database or a rewritten backup anchor; a trusted external signature/head is required for that stronger threat model.
+- Large-log append reads all prior company audit events; performance scaling belongs to later A08 gate and is documented, not asserted as measured. No unresolved correctness or security issue within the declared client-side A03 threat model.
+- This was a sequential assistant review pass, NOT an independent subagent.
