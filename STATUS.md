@@ -82,3 +82,6 @@ Review CI on latest A03 PR head, fix failing fixtures and ensure restore authori
 - GitHub Actions run 39376283188 on SHA 894e1f54409a7f12455ee27b6e3d8b80f4899a55: completed FAILURE, npm test 262 total / 260 passed / 2 failed. Failures A02 rollback and A03 direct append-only protection; root cause: eager genesis-based normalization of a legacy-only snapshot intended to append after existing audit history. Changed legacy-only imports to defer chain index/hash to the active restore transaction. Mixed legacy+hashed chains remain prevalidated. Await rerun.
 
 - Security review found public AuditService.authorizeRestore permission mint. Replaced with scoped restoreFromBackup workflow, removed public mint and added negative regression test. CI pending; no pass claim for new code.
+
+- Completed PR quality CI 39376822354, SHA f83b8e6c9dd55cd62ecf4a2441463af0e6048956: SUCCESS, Linux npm test 263/263, Windows npm test 263/263, frontend and Windows installer succeeded.
+- Native installed-WebView2 lab 39376822375 on same SHA: FAILED, smoke fixture tests/windows-vm-installed-tauri-cdp.cjs:276 used prohibited tx.put('audit_events'). Root cause is outdated test fixture, not product restore. Updated fixture to seed through version-6 backup import, preserving the immutable restore rollback assertion; rerun pending.
