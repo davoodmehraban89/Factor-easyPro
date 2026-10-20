@@ -66,6 +66,41 @@ test('A04: cross-company restore requires explicit opt-in', async () => {
   assert.equal((await StorageService.get('contacts', 'from-c2')).companyId, 'c1');
 });
 
+test('A04: mixed-company or ownerless rows are rejected before any restore writes', async () => {
+  await setup();
+  await StorageService.put('contacts', { id: 'source-c2', companyId: 'c2', name: 'Existing foreign' });
+  const beforeAudit = (await StorageService.getAll('audit_events')).length;
+  const base = await SettingsController.exportBackup();
+  for (const invalidRow of [
+    { id: 'mixed-foreign', companyId: 'c2', name: 'Do not reassign' },
+    { id: 'missing-owner', name: 'Do not guess source company' },
+    null,
+    ['bad-array-row']
+  ]) {
+    const backup = structuredClone(base);
+    backup.data.contacts = [
+      { id: 'valid-first', companyId: 'c1', name: 'Must not persist' },
+      invalidRow
+    ];
+    await assert.rejects(SettingsController.importBackup(backup), /شرکت دیگری/);
+    assert.equal(await StorageService.get('contacts', 'valid-first'), undefined);
+    assert.equal((await StorageService.get('contacts', 'source-c2')).name, 'Existing foreign');
+    assert.equal((await StorageService.getAll('audit_events')).length, beforeAudit);
+  }
+});
+
+test('A04: explicit cross-company restore cannot launder mixed-origin journal records', async () => {
+  await setup();
+  const backup = await SettingsController.exportBackup();
+  backup.companyId = 'c2';
+  backup.data.contacts = [{ id: 'valid-source', companyId: 'c2', name: 'Source company' }];
+  backup.data.journal_entries = [{ id: 'mixed-journal', companyId: 'c1', status: 'draft' }];
+  await assert.rejects(SettingsController.importBackup(backup, { allowCrossCompany: true }), /شرکت دیگری/);
+  assert.equal(await StorageService.get('contacts', 'valid-source'), undefined);
+  assert.equal(await StorageService.get('journal_entries', 'mixed-journal'), undefined);
+  assert.equal((await StorageService.getAll('audit_events')).length, 0);
+});
+
 test('A04: company backup rejects duplicate IDs before any database writes', async () => {
   await setup();
   const backup = await SettingsController.exportBackup();
