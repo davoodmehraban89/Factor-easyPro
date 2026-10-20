@@ -85,8 +85,13 @@ class AuditServiceImpl {
         (row.occurredAtUtc !== undefined && !validUtc(row.occurredAtUtc))) {
       throw new Error('رکورد تاریخچه ممیزی نامعتبر است');
     }
+    const existing = await tx.getAllByIndex('audit_events', 'companyId', row.companyId);
+    const history = existing.sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0));
+    const copy = normalizeLegacyAudit(row, history.length, history.at(-1)?.eventHash ?? null);
+    if (copy.chainIndex !== history.length || copy.prevHash !== (history.at(-1)?.eventHash ?? null) || copy.eventHash !== auditHash(copy)) {
+      throw new Error('زنجیره ممیزی فایل پشتیبان نامعتبر است');
+    }
     authorization.delete(row);
-    const copy = { ...row };
     trustedAuditRows.add(copy);
     await tx.add('audit_events', copy);
   }
