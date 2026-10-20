@@ -273,7 +273,7 @@ async function connect(url) {
         'const audit={id:"vm-audit-immutable",companyId:"company_default",' +
         'commandKey:"company_default:vm-native-test",eventType:"journal_posted",' +
         'actorId:"user_admin",sourceId:"vm-upgrade-draft",safeSummary:{lineCount:2}};' +
-        'await S.transaction("audit_events",tx=>tx.put("audit_events",audit));' +
+        'await S.importAll({app:"Factor-easyPro",version:6,data:{audit_events:[audit]}});' +
         'const stored=await S.get("audit_events",audit.id);' +
         'let refused=false;' +
         'try {await S.importAll({app:"Factor-easyPro",version:7,data:{' +

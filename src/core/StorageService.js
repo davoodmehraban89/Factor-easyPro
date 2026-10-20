@@ -1,3 +1,6 @@
+import { isAuditServiceRow, AuditService } from './AuditService.js';
+import { verifyChain, normalizeLegacyAudit, prepareAuditRows } from './AuditChain.js';
+
 // ============================================================
 // StorageService — IndexedDB wrapper
 // v5: جدول‌های حسابداری دوبل و مهاجرت سازگار با نسخه‌های قبلی
@@ -177,6 +180,9 @@ class StorageServiceImpl {
    * اجرای یک عملیات روی یک جدول. نتیجه فقط بعد از commit شدن تراکنش برمی‌گردد.
    */
   _exec(store, mode, op) {
+    if (store === 'audit_events' && mode !== 'readonly') {
+      return Promise.reject(new Error('ثبت مستقیم رویداد ممیزی مجاز نیست'));
+    }
     return this.init().then(db => new Promise((resolve, reject) => {
       let tx, req;
       try {
@@ -196,6 +202,9 @@ class StorageServiceImpl {
 
   // سازگاری با کدهای قدیمی (منسوخ): مستقیماً objectStore برمی‌گرداند
   async _tx(store, mode = 'readonly') {
+    if (store === 'audit_events' && mode !== 'readonly') {
+      throw new Error('ثبت مستقیم رویداد ممیزی مجاز نیست');
+    }
     const db = await this.init();
     return db.transaction(store, mode).objectStore(store);
   }
@@ -234,6 +243,11 @@ class StorageServiceImpl {
         req.onerror = () => rej(req.error);
       });
       const os = (name) => tx.objectStore(name);
+      const guardAudit = (store, row) => {
+        if (store === 'audit_events' && !isAuditServiceRow(row)) {
+          throw new Error('ثبت مستقیم رویداد ممیزی مجاز نیست؛ از AuditService استفاده کنید');
+        }
+      };
 
       const api = {
         get: (s, id) => wrap(os(s).get(id)),
@@ -241,13 +255,13 @@ class StorageServiceImpl {
         getAllByIndex: (s, index, key) => wrap(os(s).index(index).getAll(key)).then(r => r || []),
         count: (s) => wrap(os(s).count()),
         // Audit/correction history may be appended, never overwritten.
-        put: (s, obj) => { this._touch(obj); return wrap(
+        put: (s, obj) => { guardAudit(s, obj); this._touch(obj); return wrap(
           APPEND_ONLY_STORES.has(s) ? os(s).add(obj) : os(s).put(obj)
         ).then(() => obj); },
-        putRaw: (s, obj) => { if (!obj.id) obj.id = this.uid(); return wrap(
+        putRaw: (s, obj) => { guardAudit(s, obj); if (!obj.id) obj.id = this.uid(); return wrap(
           APPEND_ONLY_STORES.has(s) ? os(s).add(obj) : os(s).put(obj)
         ).then(() => obj); },
-        add: (s, obj) => { if (!obj.id) obj.id = this.uid(); return wrap(os(s).add(obj)).then(() => obj); },
+        add: (s, obj) => { guardAudit(s, obj); if (!obj.id) obj.id = this.uid(); return wrap(os(s).add(obj)).then(() => obj); },
         delete: (s, id) => APPEND_ONLY_STORES.has(s)
           ? Promise.reject(new Error('حذف مستقیم سابقه ممیزی یا اصلاح سند مجاز نیست'))
           : wrap(os(s).delete(id)).then(() => undefined),
@@ -315,6 +329,7 @@ class StorageServiceImpl {
 
   // ثبت گروهی در یک تراکنش (زمان‌ها دست‌نخورده می‌مانند؛ مناسب بازیابی پشتیبان)
   bulkPut(store, items) {
+    if (store === 'audit_events') return Promise.reject(new Error('ثبت مستقیم رویداد ممیزی مجاز نیست'));
     return this.transaction(store, async tx => {
       await Promise.all(items.map(item => tx.putRaw(store, item)));
       return items.length;
@@ -373,9 +388,20 @@ class StorageServiceImpl {
       data.users = data.users.map(stripCredentials);
     }
 
+    const auditAnchors = {};
+    const companies = [...new Set((data.audit_events || []).map(row => row.companyId))].sort();
+    data.audit_events = companies.flatMap(companyId =>
+      data.audit_events.filter(row => row.companyId === companyId)
+        .sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0)));
+    for (const companyId of companies) {
+      const result = verifyChain(data.audit_events.filter(row => row.companyId === companyId));
+      if (!result.valid) throw new Error('زنجیره ممیزی در پشتیبان کامل نامعتبر است');
+      auditAnchors[companyId] = { count: result.count, headHash: result.headHash };
+    }
     return {
       app: 'Factor-easyPro',
       version: DB_VERSION,
+      auditAnchors,
       exportedAt: new Date().toISOString(),
       data
     };
@@ -420,6 +446,28 @@ class StorageServiceImpl {
       }
     }
 
+    const incomingAudit = json.data.audit_events || [];
+    // Legacy-only snapshots have no genesis chain; their rows must be linked
+    // to existing history inside the write transaction, not pre-hashed at index zero.
+    const needsChainValidation = json.auditAnchors !== undefined ||
+      incomingAudit.some(row => row?.eventHash !== undefined || row?.chainIndex !== undefined || row?.prevHash !== undefined);
+    const auditRowsForValidation = needsChainValidation
+      ? [...new Set(incomingAudit.map(row => row?.companyId))].flatMap(companyId =>
+          prepareAuditRows(incomingAudit.filter(row => row?.companyId === companyId)))
+      : incomingAudit;
+    if (json.auditAnchors !== undefined) {
+      if (!json.auditAnchors || typeof json.auditAnchors !== 'object' || Array.isArray(json.auditAnchors))
+        throw new Error('لنگر پشتیبان نامعتبر است');
+      const companies = new Set(auditRowsForValidation.map(row => row.companyId));
+      if (Object.keys(json.auditAnchors).length !== companies.size ||
+          [...companies].some(companyId => !Object.hasOwn(json.auditAnchors, companyId)))
+        throw new Error('لنگر پشتیبان ناقص است');
+      for (const companyId of companies) {
+        const rows = auditRowsForValidation.filter(row => row.companyId === companyId);
+        if (!verifyChain(rows, json.auditAnchors[companyId]).valid)
+          throw new Error('زنجیره ممیزی یا لنگر پشتیبان نامعتبر است');
+      }
+    }
     await this.transaction(STORES, async tx => {
       for (const store of STORES) {
         const items = json.data[store];
@@ -429,18 +477,22 @@ class StorageServiceImpl {
         } else if (APPEND_ONLY_STORES.has(store)) {
           // Backup replay may re-add history but can never rewrite it.
           // A conflicting record aborts the WHOLE multi-store restore.
-          for (const item of items) {
+          const historical = store === 'audit_events' ? auditRowsForValidation : items;
+          for (const item of historical) {
             if (!item.id || typeof item.id !== 'string' ||
                 !item.companyId || typeof item.companyId !== 'string') {
               throw new Error('رکورد تاریخچه ممیزی یا اصلاح سند نامعتبر است');
             }
             const old = await tx.get(store, item.id);
             if (old) {
-              if (!sameSnapshotRecord(old, item)) {
+              const comparable = store === 'audit_events' && item.eventHash === undefined
+                ? normalizeLegacyAudit(item, old.chainIndex, old.prevHash) : item;
+              if (!sameSnapshotRecord(old, comparable)) {
                 throw new Error('بازنویسی سابقه ممیزی یا اصلاح سند از پشتیبان مجاز نیست');
               }
             } else {
-              await tx.add(store, { ...item });
+              if (store === 'audit_events') await AuditService.restoreFromBackup(tx, { companyId: item.companyId, rows: [item] });
+              else await tx.add(store, { ...item });
             }
           }
         } else {

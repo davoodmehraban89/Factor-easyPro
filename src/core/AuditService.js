@@ -1,6 +1,14 @@
 import { Auth } from './Auth.js';
 import { DataScope } from './DataScope.js';
 import { StorageService } from './StorageService.js';
+import { auditHash, normalizeLegacyAudit, verifyChain as checkAuditChain } from './AuditChain.js';
+
+const trustedAuditRows = new WeakSet();
+const authorizedRestoreTransactions = new WeakMap();
+const validUtc = value => typeof value === 'string' &&
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) &&
+  !Number.isNaN(Date.parse(value));
+export const isAuditServiceRow = row => !!row && trustedAuditRows.has(row);
 
 const VALID_TYPES = new Set([
   'journal_posted', 'journal_reversed', 'period_closed',
@@ -8,7 +16,9 @@ const VALID_TYPES = new Set([
   'draft_discarded', 'draft_created', 'period_opened', 'backup_restored',
   'opening_posted'
 ]);
-const validId = value => typeof value === 'string' && value.trim().length > 0;
+const validId = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 256;
+const validBusinessDate = value => value === null ||
+  (typeof value === 'string' && /^\d{4}\/\d{2}\/\d{2}$/.test(value));
 
 class AuditServiceImpl {
   /**
@@ -21,6 +31,7 @@ class AuditServiceImpl {
     if (!validId(companyId) || !validId(actorId) ||
         !VALID_TYPES.has(eventType) || !validId(sourceType) ||
         !validId(sourceId) || !validId(commandKey) ||
+        !validBusinessDate(businessDate) ||
         !Number.isSafeInteger(lineCount) || lineCount < 0) {
       throw new Error('داده رویداد ممیزی نامعتبر است');
     }
@@ -37,8 +48,68 @@ class AuditServiceImpl {
     };
     // add() cannot overwrite an earlier event and a unique commandKey makes
     // replay fail atomically. No externally mutable audit status is stored.
+    const history = await tx.getAllByIndex('audit_events', 'companyId', companyId);
+    const ordered = history.sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0));
+    const previous = ordered.at(-1);
+    event.chainIndex = ordered.length;
+    event.prevHash = previous?.eventHash ?? null;
+    event.eventHash = auditHash(event);
+    trustedAuditRows.add(event);
     await tx.add('audit_events', event);
     return event;
+  }
+
+  // Only the validated backup restoration entry point may mint a transient
+  // transaction-scoped permission. Direct historical restoration remains denied.
+  async restoreFromBackup(tx, { companyId, rows }) {
+    if (!Auth.isAdmin() || !validId(companyId) || !Array.isArray(rows) ||
+        rows.some(row => !row || typeof row !== 'object' || Array.isArray(row) ||
+          row.companyId !== companyId)) {
+      throw new Error('مجوز بازیابی ممیزی نامعتبر است');
+    }
+    const permissions = authorizedRestoreTransactions.get(tx) || new Map();
+    if (permissions.has(companyId)) throw new Error('بازیابی ممیزی هم‌زمان مجاز نیست');
+    permissions.set(companyId, new WeakSet(rows));
+    authorizedRestoreTransactions.set(tx, permissions);
+    try {
+      for (const row of rows) await this.restoreHistorical(tx, row);
+    } finally {
+      permissions.delete(companyId);
+    }
+  }
+
+  async restoreHistorical(tx, row) {
+    const authorization = authorizedRestoreTransactions.get(tx)?.get(row?.companyId);
+    if (!authorization || !authorization.has(row) ||
+        !validId(row.companyId)) {
+      throw new Error('بازیابی مستقیم ممیزی خارج از جریان مجاز است');
+    }
+    if (!row || typeof row !== 'object' || Array.isArray(row) ||
+        !validId(row.id) || !validId(row.companyId) ||
+        !VALID_TYPES.has(row.eventType) ||
+        (row.actorId !== undefined && !validId(row.actorId)) ||
+        (row.commandKey !== undefined && !validId(row.commandKey)) ||
+        (row.sourceId !== undefined && !validId(row.sourceId)) ||
+        (row.businessDate !== undefined && !validBusinessDate(row.businessDate)) ||
+        (row.occurredAtUtc !== undefined && !validUtc(row.occurredAtUtc))) {
+      throw new Error('رکورد تاریخچه ممیزی نامعتبر است');
+    }
+    const existing = await tx.getAllByIndex('audit_events', 'companyId', row.companyId);
+    const history = existing.sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0));
+    const copy = normalizeLegacyAudit(row, history.length, history.at(-1)?.eventHash ?? null);
+    if (copy.chainIndex !== history.length || copy.prevHash !== (history.at(-1)?.eventHash ?? null) || copy.eventHash !== auditHash(copy)) {
+      throw new Error('زنجیره ممیزی فایل پشتیبان نامعتبر است');
+    }
+    authorization.delete(row);
+    trustedAuditRows.add(copy);
+    await tx.add('audit_events', copy);
+  }
+
+  async verifyChain({ companyId, anchor = null } = {}) {
+    if (!Auth.isAdmin()) throw new Error('بررسی زنجیره ممیزی فقط برای مدیر مجاز است');
+    const target = companyId || await DataScope.companyId();
+    const rows = await StorageService.getAllByIndex('audit_events', 'companyId', target);
+    return checkAuditChain(rows.sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0)), anchor);
   }
 
   async list({ limit = 100 } = {}) {

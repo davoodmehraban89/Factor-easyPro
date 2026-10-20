@@ -3,6 +3,7 @@
 import { StorageService } from './StorageService.js';
 import { Auth } from './Auth.js';
 import { AuditService } from './AuditService.js';
+import { normalizeLegacyAudit, prepareAuditRows } from './AuditChain.js';
 import { assertJalaliDate, validateAccount, validateFiscalPeriod, validateJournalLines, journalSourceKey } from './AccountingCore.mjs';
 
 export const COMPANY_BACKUP_STORES = Object.freeze([
@@ -53,11 +54,16 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
     }
   }
 
+  const sourceAudit = data.audit_events || [];
+  const auditRows = sourceAudit.some(row =>
+    row?.eventHash !== undefined || row?.chainIndex !== undefined || row?.prevHash !== undefined)
+    ? prepareAuditRows(sourceAudit) : sourceAudit;
   const counts = { added: 0, updated: 0, skipped: 0 };
   // Reads, ownership validation, foreign-key validation and writes share one IndexedDB transaction.
   return StorageService.transaction([...COMPANY_BACKUP_STORES, 'settings'], async tx => {
     for (const store of COMPANY_BACKUP_STORES) {
-      for (const incoming of data[store] || []) {
+      const incomingRows = store === 'audit_events' ? auditRows : data[store] || [];
+      for (const incoming of incomingRows) {
         const immutable = store === 'audit_events' || store === 'document_corrections';
         // Historical audit/correction events cannot be reassigned to a new company.
         if (immutable && incoming.companyId !== companyId) {
@@ -77,7 +83,9 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
           throw new Error(`شناسه رکورد ${store}/${row.id} متعلق به شرکت دیگر است؛ بازیابی متوقف شد`);
         }
         if (existing && immutable) {
-          if (!sameImmutableRecord(existing, row)) {
+          const comparable = store === 'audit_events' && row.eventHash === undefined
+            ? normalizeLegacyAudit(row, existing.chainIndex, existing.prevHash) : row;
+          if (!sameImmutableRecord(existing, comparable)) {
             throw new Error('بازنویسی سابقه ممیزی یا اصلاح سند مجاز نیست');
           }
           counts.skipped++;
@@ -120,7 +128,9 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
         }
         if (existing) counts.updated++;
         else counts.added++;
-        await tx.putRaw(store, row);
+        if (store === 'audit_events') {
+          await AuditService.restoreFromBackup(tx, { companyId, rows: [row] });
+        } else await tx.putRaw(store, row);
       }
     }
 

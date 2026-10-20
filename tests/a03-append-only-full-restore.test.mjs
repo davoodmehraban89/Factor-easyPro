@@ -2,12 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import { StorageService } from '../src/core/StorageService.js';
+import { Auth } from '../src/core/Auth.js';
 
 // Seed historical fixtures atomically; standalone history writes are forbidden.
-const seedHistory = (store, row) => StorageService.transaction(store, tx => tx.put(store, row));
+const seedHistory = (store, row) => store === 'audit_events'
+  ? StorageService.importAll({ app: 'Factor-easyPro', version: 6, data: { audit_events: [row] } })
+  : StorageService.transaction(store, tx => tx.put(store, row));
 
 test('A03: full restore refuses to mutate prior audit events and rolls back earlier writes', async () => {
   await StorageService.clearAll();
+  Auth.currentUser = { id: 'manager', role: 'admin', username: 'manager' };
   const audit = {
     id: 'audit-history-1', companyId: 'c1',
     commandKey: 'c1:historic', eventType: 'journal_posted',
@@ -22,15 +26,12 @@ test('A03: full restore refuses to mutate prior audit events and rolls back earl
       products: [{ id: 'new-product', companyId: 'c1', name: 'must roll back' }],
       audit_events: [{ ...before, eventType: 'period_closed' }]
     }
-  }), /بازنویسی سابقه/);
+  }), /بازنویسی سابقه|زنجیره ممیزی/);
   assert.equal(await StorageService.get('products', 'new-product'), undefined);
   assert.deepEqual(await StorageService.get('audit_events', audit.id), before);
 
   // Identical replay with shuffled object keys is safe and idempotent.
-  const replay = { companyId: 'c1', id: before.id, result: before.result,
-    safeSummary: { lineCount: 2 }, commandKey: before.commandKey,
-    eventType: before.eventType, actorId: before.actorId, sourceId: before.sourceId,
-    createdAt: before.createdAt, updatedAt: before.updatedAt };
+  const replay = Object.fromEntries(Object.entries(before).reverse());
   await StorageService.importAll({
     app: 'Factor-easyPro', version: 7, data: { audit_events: [replay] }
   });

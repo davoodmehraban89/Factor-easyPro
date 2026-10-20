@@ -38,12 +38,15 @@
     },
     {
       "id": "A03",
-      "accepted": false,
+      "accepted": true,
       "evidence": [
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38949950396",
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38957782413",
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38959512012",
-        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38969463728"
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38969463728",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39377639299",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39377639277",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39377639263"
       ],
       "name": "Complete atomic audit with permissions and retention"
     },

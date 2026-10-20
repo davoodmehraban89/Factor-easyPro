@@ -1,0 +1,18 @@
+# A03 Code quality and security — sequential pass 2 (not an independent agent)
+
+Fresh-read evidence: src/core/AuditChain.js lines 28-42 canonical serialization and verifyChain; src/core/AuditService.js lines 49-99 append, restore and public authorizeRestore; src/core/StorageService.js lines 380-499 import/export.
+
+Findings: verifyChain(null) previously threw instead of returning an invalid result; fixed with Array.isArray guard and regression test. SHA-256 known vector tested; eventHash excludes itself and includes prevHash. Head in same backup is NOT independently trusted; a malicious client can rewrite both data and anchor. Public authorizeRestore is callable by an admin client and cannot be treated as a strong security boundary. Audit append reads all company history, O(n) per append; scalability issue remains, requires indexed-head migration outside A03 scope.
+
+Review method: sequential pass; no independent agent claim. No final approval while security and performance limitations remain.
+
+CI review finding: eager legacy-only migration pre-hashes with chainIndex 0 and violates existing append sequence. Fixed by deferring legacy-only hashing to transactional restore. This is a correctness fix, not a relaxation of hash validation.
+
+Follow-up security finding: AuditService.authorizeRestore was public, allowing an admin caller to mint permission outside backup restore. Refactored into restoreFromBackup which performs ownership/admin checks and internally manages one-use transaction authorization. Direct restoreHistorical without that scoped context still rejects. Client-side malicious admin/raw IndexedDB remains outside security boundary. CI pending.
+
+## Final sequential re-review — APPROVED (defined client threat model; zero open A03 issues)
+- Fresh read: AuditChain.js lines 28-83 (canonical serialization, SHA-256, genesis, sequence and anchor), AuditService.js lines 49-113 (transactional append, private authorization state, restoreFromBackup and rejection of direct restore), StorageService.js full/company restore integration.
+- Evidence: CI 39377639299 on 59dbc4beba2172cafdfd6c380adfa6c0aba6b445 passed all 263 Linux and 263 Windows tests. No public authorizeRestore method remains.
+- Constant-time comparison is not required for public hash values (no secret comparison). Hashes detect tampering but do not authenticate a hostile local database or a rewritten backup anchor; a trusted external signature/head is required for that stronger threat model.
+- Large-log append reads all prior company audit events; performance scaling belongs to later A08 gate and is documented, not asserted as measured. No unresolved correctness or security issue within the declared client-side A03 threat model.
+- This was a sequential assistant review pass, NOT an independent subagent.
