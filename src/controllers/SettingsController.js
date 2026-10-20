@@ -193,6 +193,22 @@ class SettingsControllerImpl {
       backup.data.audit_events = prepareAuditRows(history, backup.auditAnchor ?? null);
     }
 
+    // Validate the source ownership of every company-scoped row before
+    // restoreCompanyBackup reassigns rows to the selected target company.
+    // Cross-company migration may deliberately change the *target* company;
+    // it must never import a mixed or unowned source snapshot.
+    for (const store of COMPANY_BACKUP_STORES) {
+      const rows = backup.data[store];
+      if (rows === undefined) continue;
+      if (!Array.isArray(rows)) throw new Error(`جدول ${store} در فایل پشتیبان نامعتبر است`);
+      for (const row of rows) {
+        if (!row || typeof row !== 'object' || Array.isArray(row) ||
+            row.companyId !== backup.companyId) {
+          throw new Error('فایل پشتیبان حاوی رکورد متعلق به شرکت دیگری است');
+        }
+      }
+    }
+
     const companyId = await DataScope.companyId();
     // Prevent an accidental merge of one company's books into another.
     // Explicit cross-company migration is a separate, intentional operation.
