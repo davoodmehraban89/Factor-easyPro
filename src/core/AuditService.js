@@ -96,6 +96,13 @@ class AuditServiceImpl {
     await tx.add('audit_events', copy);
   }
 
+  async verifyChain({ companyId, anchor = null } = {}) {
+    if (!Auth.isAdmin()) throw new Error('بررسی زنجیره ممیزی فقط برای مدیر مجاز است');
+    const target = companyId || await DataScope.companyId();
+    const rows = await StorageService.getAllByIndex('audit_events', 'companyId', target);
+    return checkAuditChain(rows.sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0)), anchor);
+  }
+
   async list({ limit = 100 } = {}) {
     if (!Auth.isAdmin()) throw new Error('مشاهده ردپای حسابرسی فقط برای مدیر مجاز است');
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) {
