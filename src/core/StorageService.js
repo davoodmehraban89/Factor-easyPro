@@ -1,4 +1,5 @@
 import { isAuditServiceRow, AuditService } from './AuditService.js';
+import { verifyChain } from './AuditChain.js';
 
 // ============================================================
 // StorageService — IndexedDB wrapper
@@ -387,9 +388,18 @@ class StorageServiceImpl {
       data.users = data.users.map(stripCredentials);
     }
 
+    const auditAnchors = {};
+    for (const companyId of new Set((data.audit_events || []).map(row => row.companyId))) {
+      const rows = data.audit_events.filter(row => row.companyId === companyId)
+        .sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0));
+      const result = verifyChain(rows);
+      if (!result.valid) throw new Error('زنجیره ممیزی در پشتیبان کامل نامعتبر است');
+      auditAnchors[companyId] = { count: result.count, headHash: result.headHash };
+    }
     return {
       app: 'Factor-easyPro',
       version: DB_VERSION,
+      auditAnchors,
       exportedAt: new Date().toISOString(),
       data
     };
