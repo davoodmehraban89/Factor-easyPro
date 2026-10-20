@@ -650,3 +650,71 @@ test('A01: supplier cash recovery cannot exceed previously paid credit after pur
  const trial=await accounts.trialBalance();
  assert.equal(trial.totals.debit,trial.totals.credit);
 });
+
+test('A01: authorized customer credit refund creates one linked correction, settlement and audit atomically',async()=>{
+ await setup();await purchase10();
+ const sold=await retail.issueInvoice(invoice('sale',3,200,{paidAmount:500}));
+ const returned=await retail.issueInvoice(invoice('sale_return',1,200,{
+   originalInvoiceId:sold.id
+ }));
+ const before=(await db.getAll('document_corrections')).length;
+ const refund=await retail.postTransaction({
+   id:'a01-refund-trace',type:'payment',date,amount:100,
+   refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1'
+ });
+ const records=(await db.getAll('document_corrections')).filter(c=>
+   c.correctionType==='settlement_refund');
+ assert.equal((await db.getAll('document_corrections')).length,before+1);
+ assert.equal(records.length,1);
+ assert.equal(records[0].sourceId,returned.id);
+ assert.equal(records[0].resultType,'treasury');
+ assert.equal(records[0].resultId,refund.id);
+ assert.equal(records[0].correlationId,refund.journalId);
+ assert.equal(records[0].reasonCode,'customer_credit_refund');
+ assert.equal(records[0].amount,100);
+ assert.equal(records[0].actorId,'phase2-admin');
+ assert.equal((await db.getAll('settlements')).filter(s=>
+   s.transactionId===refund.id&&s.invoiceId===returned.id).length,1);
+ const audit=(await db.getAll('audit_events')).find(a=>
+   a.sourceId===refund.journalId&&a.correlationId===records[0].correlationId);
+ assert.ok(audit);
+ await assert.rejects(retail.postTransaction({
+   id:refund.id,type:'payment',date,amount:100,
+   refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1'
+ }),/تکراری/);
+ assert.equal((await db.getAll('document_corrections')).length,before+1);
+ assert.equal((await db.get('invoices',sold.id)).paidAmount,500);
+ assert.equal((await db.get('invoices',returned.id)).paidAmount,100);
+ const trial=await accounts.trialBalance();
+ assert.equal(trial.totals.debit,trial.totals.credit);
+});
+
+test('A01: supplier recovery trace is linked; rejected over-recovery adds no correction',async()=>{
+ await setup();
+ const purchased=await retail.issueInvoice(invoice('purchase',10,100,{paidAmount:700}));
+ const returned=await retail.issueInvoice(invoice('purchase_return',4,100,{
+   originalInvoiceId:purchased.id
+ }));
+ const base=(await db.getAll('document_corrections')).length;
+ await assert.rejects(retail.postTransaction({
+   id:'a01-supplier-over',type:'receipt',date,amount:101,
+   refInvoiceId:returned.id,contactId:'contact-1',toAccountId:'cash-1'
+ }),/بازپرداخت مجاز/);
+ assert.equal((await db.getAll('document_corrections')).length,base);
+ assert.equal(await db.get('treasury','a01-supplier-over'),undefined);
+ const recovered=await retail.postTransaction({
+   id:'a01-supplier-trace',type:'receipt',date,amount:100,
+   refInvoiceId:returned.id,contactId:'contact-1',toAccountId:'cash-1'
+ });
+ const records=(await db.getAll('document_corrections')).filter(c=>
+   c.correctionType==='settlement_refund');
+ assert.equal(records.length,1);
+ assert.equal(records[0].sourceId,returned.id);
+ assert.equal(records[0].resultId,recovered.id);
+ assert.equal(records[0].correlationId,recovered.journalId);
+ assert.equal(records[0].reasonCode,'supplier_credit_recovery');
+ assert.equal(records[0].amount,100);
+ assert.equal((await db.get('invoices',purchased.id)).paidAmount,700);
+ const trial=await accounts.trialBalance();
+ assert.equal(trial.totals.debit,trial.totals.credit);
+});
