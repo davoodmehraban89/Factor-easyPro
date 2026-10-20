@@ -57,7 +57,10 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
   // Reads, ownership validation, foreign-key validation and writes share one IndexedDB transaction.
   return StorageService.transaction([...COMPANY_BACKUP_STORES, 'settings'], async tx => {
     for (const store of COMPANY_BACKUP_STORES) {
-      for (const incoming of data[store] || []) {
+      const incomingRows = store === 'audit_events'
+        ? [...(data[store] || [])].sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0))
+        : data[store] || [];
+      for (const incoming of incomingRows) {
         const immutable = store === 'audit_events' || store === 'document_corrections';
         // Historical audit/correction events cannot be reassigned to a new company.
         if (immutable && incoming.companyId !== companyId) {
@@ -120,7 +123,10 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
         }
         if (existing) counts.updated++;
         else counts.added++;
-        await tx.putRaw(store, row);
+        if (store === 'audit_events') {
+          AuditService.authorizeRestore(tx, { companyId, rows: [row] });
+          await AuditService.restoreHistorical(tx, row);
+        } else await tx.putRaw(store, row);
       }
     }
 

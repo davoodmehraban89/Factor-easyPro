@@ -7,6 +7,7 @@ import { StorageService, STORES } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
 import { DataScope } from '../core/DataScope.js';
 import { restoreCompanyBackup, COMPANY_BACKUP_STORES } from '../core/CompanyBackupService.js';
+import { verifyChain } from '../core/AuditChain.js';
 
 class SettingsControllerImpl {
   async getInvoiceSettings() {
@@ -77,6 +78,10 @@ class SettingsControllerImpl {
       }
     }
 
+    const events = [...backup.data.audit_events].sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0));
+    const result = verifyChain(events);
+    if (!result.valid) throw new Error('زنجیره ممیزی هنگام تهیه پشتیبان نامعتبر است');
+    backup.auditAnchor = { count: result.count, headHash: result.headHash };
     return backup;
   }
 
@@ -178,6 +183,14 @@ class SettingsControllerImpl {
       if (actual !== integrity.digest) {
         throw new Error('داده‌های پشتیبان تغییر کرده یا آسیب دیده‌اند؛ بازیابی متوقف شد');
       }
+    }
+
+    const history = backup.data.audit_events || [];
+    if (!Array.isArray(history)) throw new Error('سوابق ممیزی پشتیبان نامعتبر است');
+    if (backup.auditAnchor !== undefined || history.some(row => row.eventHash !== undefined)) {
+      const ordered = [...history].sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0));
+      const result = verifyChain(ordered, backup.auditAnchor ?? null);
+      if (!result.valid) throw new Error('زنجیره ممیزی یا لنگر پشتیبان نامعتبر است');
     }
 
     const companyId = await DataScope.companyId();

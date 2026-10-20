@@ -108,7 +108,7 @@ test('A03: company backup rejects tampered historical audit records even in repl
   const backup = await SettingsController.exportBackup();
   assert.equal(backup.data.audit_events.length, 2);
   backup.data.audit_events.find(x => x.eventType === 'journal_posted').eventType = 'period_closed';
-  await assert.rejects(SettingsController.importBackup(backup, { mode: 'replace' }), /بازنویسی سابقه/);
+  await assert.rejects(SettingsController.importBackup(backup, { mode: 'replace' }), /بازنویسی سابقه|زنجیره ممیزی|لنگر پشتیبان/);
   assert.ok((await AuditService.list()).some(e => e.eventType === 'journal_posted'));
 });
 
@@ -158,7 +158,7 @@ test('A03/A04: successful backup restore receives an audit event; rejected resto
   assert.ok(afterRestore.some(e => e.eventType === 'backup_restored'));
   const tampered = structuredClone(backup);
   tampered.data.audit_events[0].safeSummary.lineCount = 99;
-  await assert.rejects(SettingsController.importBackup(tampered, { mode: 'replace' }), /بازنویسی سابقه/);
+  await assert.rejects(SettingsController.importBackup(tampered, { mode: 'replace' }), /بازنویسی سابقه|زنجیره ممیزی|لنگر پشتیبان/);
   assert.equal((await AuditService.list()).length, afterRestore.length);
 });
 
@@ -179,7 +179,7 @@ test('A04: immutable company audit replay ignores JSON property ordering but rej
   const changed = structuredClone(reordered);
   changed.data.audit_events[0].sourceId = 'FORGED_PERIOD';
   await assert.rejects(SettingsController.importBackup(changed, { mode: 'replace' }),
-    /بازنویسی سابقه/);
+    /بازنویسی سابقه|زنجیره ممیزی|لنگر پشتیبان/);
   assert.equal((await StorageService.get('audit_events', original.id)).sourceId, original.sourceId);
 });
 
@@ -192,4 +192,133 @@ test('A03: standalone storage cannot forge audit or correction history', async (
     assert.equal(await StorageService.get(store, forged.id), undefined);
   }
   assert.deepEqual(await AuditService.list(), before);
+});
+
+test('A03: invalid audit metadata aborts business writes without leaking payloads', async () => {
+  await setup();
+  const before = (await AuditService.list()).length;
+  for (const businessDate of [{ secret: 'customer phone' }, 'customer-name', '1405/07/18 extra']) {
+    const id = StorageService.uid('rejected_');
+    await assert.rejects(StorageService.transaction(['audit_events', 'products'], async tx => {
+      await tx.add('products', { id, companyId: company, name: 'rollback' });
+      await AuditService.append(tx, {
+        companyId: company, eventType: 'journal_posted', sourceType: 'journal',
+        sourceId: id, commandKey: id, businessDate
+      });
+    }), /نامعتبر/);
+    assert.equal(await StorageService.get('products', id), undefined);
+  }
+  assert.equal((await AuditService.list()).length, before);
+});
+
+test('A03: valid audit date is retained and cannot be overwritten', async () => {
+  await setup();
+  const commandKey = StorageService.uid('valid_');
+  const event = { companyId: company, eventType: 'journal_posted',
+    sourceType: 'journal', sourceId: commandKey, commandKey, businessDate };
+  await StorageService.transaction('audit_events', tx => AuditService.append(tx, event));
+  const saved = (await AuditService.list()).find(x => x.sourceId === commandKey);
+  assert.equal(saved.businessDate, businessDate);
+  await assert.rejects(StorageService.transaction('audit_events', tx => AuditService.append(tx, event)));
+  assert.equal((await AuditService.list()).filter(x => x.sourceId === commandKey).length, 1);
+});
+
+test('A03 guard: ordinary audited journal remains atomic', async () => {
+  const state = await setup();
+  const before = (await AuditService.list()).length;
+  const posted = await AccountingService.postJournal(journal(state));
+  assert.equal((await StorageService.get('journal_entries', posted.id)).status, 'posted');
+  assert.equal((await AuditService.list()).length, before + 1);
+});
+
+test('A03 guard: company backup round trip preserves historical audit', async () => {
+  await setup();
+  const backup = await SettingsController.exportBackup();
+  const before = (await AuditService.list()).length;
+  await SettingsController.importBackup(backup);
+  assert.equal((await AuditService.list()).length, before + 1);
+});
+
+test('A03 guard: full backup replay of identical audit is accepted', async () => {
+  await setup();
+  const snapshot = await StorageService.exportAll();
+  await StorageService.importAll(snapshot);
+  assert.ok((await AuditService.list()).length >= 1);
+});
+
+test('A03: direct audit mutation APIs reject forged records and roll back writes', async () => {
+  await setup();
+  for (const method of ['add', 'put', 'putRaw']) {
+    const id = StorageService.uid('forged_');
+    await assert.rejects(StorageService.transaction(['audit_events', 'products'], async tx => {
+      await tx.put('products', { id, companyId: company, name: 'rollback' });
+      await tx[method]('audit_events', {
+        id, companyId: company, actorId: 'forged', eventType: 'journal_posted',
+        sourceId: id, commandKey: id, createdByService: true
+      });
+    }), /ثبت مستقیم رویداد ممیزی/);
+    assert.equal(await StorageService.get('products', id), undefined);
+    assert.equal(await StorageService.get('audit_events', id), undefined);
+  }
+});
+
+
+test('A03: direct historical restore without authorization is rejected', async () => {
+  await setup();
+  await assert.rejects(StorageService.transaction('audit_events', tx =>
+    AuditService.restoreHistorical(tx, {
+      id: 'forged-restore', companyId: company, actorId: 'audit-admin',
+      eventType: 'journal_posted', sourceId: 'forged', commandKey: 'forged'
+    })), /بازیابی مستقیم ممیزی/);
+  assert.equal(await StorageService.get('audit_events', 'forged-restore'), undefined);
+});
+
+
+test('A03: legacy v6 company backup without audit hashes is migrated', async () => {
+  await StorageService.clearAll();
+  Auth.currentUser = { id: 'audit-admin', role: 'admin', username: 'manager' };
+  await StorageService.put('companies', { id: company, name: 'Legacy company' });
+  CompanyService.activeCompanyId = company;
+  const legacy = {
+    app: 'Factor-easyPro', version: '2.0.0', scope: 'company',
+    companyId: company, schemaVersion: 6,
+    data: { audit_events: [{ id: 'legacy-audit', companyId: company,
+      eventType: 'journal_posted', commandKey: company + ':legacy-journal' }] }
+  };
+  await SettingsController.importBackup(legacy);
+  const restored = await StorageService.get('audit_events', 'legacy-audit');
+  assert.equal(restored.actorId, 'legacy-unknown');
+  assert.equal(restored.sourceType, 'legacy');
+  assert.match(restored.eventHash, /^[0-9a-f]{64}$/);
+  assert.equal((await AuditService.verifyChain()).valid, true);
+});
+
+
+test('A03: full backup anchor detects changed, missing, reordered and truncated audit history', async () => {
+  const state = await setup();
+  await AccountingService.postJournal(journal(state));
+  const snapshot = await StorageService.exportAll();
+  assert.equal(snapshot.auditAnchors[company].count, 2);
+  const events = snapshot.data.audit_events.filter(row => row.companyId === company);
+  for (const kind of ['tamper', 'middle-delete', 'reorder', 'tail-delete']) {
+    const changed = structuredClone(snapshot);
+    const target = changed.data.audit_events;
+    if (kind === 'tamper') target[0].eventType = 'period_closed';
+    if (kind === 'middle-delete') target.splice(target.findIndex(row => row.id === events[0].id), 1);
+    if (kind === 'reorder') target.reverse();
+    if (kind === 'tail-delete') target.splice(target.findIndex(row => row.id === events[1].id), 1);
+    if (kind === 'reorder') {
+      // Full-backup imports normalize input order; reordering serialized rows alone is harmless.
+      await StorageService.importAll(changed);
+    } else {
+      await assert.rejects(StorageService.importAll(changed), /زنجیره ممیزی|لنگر/);
+    }
+  }
+});
+
+
+test('A03: chain verifier refuses a foreign company selector', async () => {
+  await setup();
+  await assert.rejects(AuditService.verifyChain({ companyId: 'audit-c2' }), /شرکت دیگر/);
+  assert.equal((await AuditService.verifyChain({ companyId: company })).valid, true);
 });

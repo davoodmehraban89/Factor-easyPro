@@ -2,12 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import { StorageService } from '../src/core/StorageService.js';
+import { Auth } from '../src/core/Auth.js';
 
 // Seed historical fixtures atomically; standalone history writes are forbidden.
-const seedHistory = (store, row) => StorageService.transaction(store, tx => tx.put(store, row));
+const seedHistory = (store, row) => store === 'audit_events'
+  ? StorageService.importAll({ app: 'Factor-easyPro', version: 6, data: { audit_events: [row] } })
+  : StorageService.transaction(store, tx => tx.put(store, row));
 
 test('A03: public and transaction writes cannot replace or delete persisted audit events', async () => {
   await StorageService.clearAll();
+  Auth.currentUser = { id: 'manager', role: 'admin', username: 'manager' };
   const event = {
     id: 'history-native-1', companyId: 'c1', commandKey: 'c1:posted-1',
     eventType: 'journal_posted', actorId: 'manager', sourceId: 'j1'
@@ -29,11 +33,9 @@ test('A03: public and transaction writes cannot replace or delete persisted audi
   }), /حذف مستقیم/);
   assert.deepEqual(await StorageService.get('audit_events', event.id), original);
   assert.equal((await StorageService.getAll('audit_events')).length, 1);
-  await StorageService.transaction('audit_events', async tx => {
-    await tx.putRaw('audit_events', {
-      id: 'history-native-2', companyId: 'c1',
-      commandKey: 'c1:posted-2', eventType: 'journal_posted'
-    });
+  await seedHistory('audit_events', {
+    id: 'history-native-2', companyId: 'c1',
+    commandKey: 'c1:posted-2', eventType: 'journal_posted'
   });
   assert.equal((await StorageService.getAll('audit_events')).length, 2);
 });

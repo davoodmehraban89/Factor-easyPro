@@ -4,14 +4,16 @@ import 'fake-indexeddb/auto';
 import { StorageService } from '../src/core/StorageService.js';
 
 // Seed historical fixtures atomically; standalone history writes are forbidden.
-const seedHistory = (store, row) => StorageService.transaction(store, tx => tx.put(store, row));
+const seedHistory = (store, row) => store === 'audit_events'
+  ? StorageService.importAll({ app: 'Factor-easyPro', version: 6, data: { audit_events: [row] } })
+  : StorageService.transaction(store, tx => tx.put(store, row));
 import { DataScope } from '../src/core/DataScope.js';
 import { Auth } from '../src/core/Auth.js';
 import { CompanyService } from '../src/core/CompanyService.js';
 
 test('A03: common scoped reads do not leak another company audit history or corrections', async () => {
   await StorageService.clearAll();
-  Auth.currentUser = { id: 'staff-one', username: 'one', role: 'user', companyIds: ['c1'] };
+  Auth.currentUser = { id: 'manager', username: 'manager', role: 'admin', companyIds: ['c1','c2'] };
   await StorageService.put('companies', { id: 'c1', name: 'Company One' });
   await StorageService.put('companies', { id: 'c2', name: 'Company Two' });
   CompanyService.activeCompanyId = 'c1';
@@ -28,6 +30,7 @@ test('A03: common scoped reads do not leak another company audit history or corr
   await seedHistory('document_corrections', {
     id: 'cor-c2', companyId: 'c2', idempotencyKey: 'c2:cor'
   });
+  Auth.currentUser = { id: 'staff-one', username: 'one', role: 'user', companyIds: ['c1'] };
   assert.deepEqual((await DataScope.list('audit_events')).map(row => row.id), ['event-c1']);
   assert.deepEqual((await DataScope.list('document_corrections')).map(row => row.id), ['cor-c1']);
   assert.equal((await DataScope.stamp('audit_events', { eventType: 'journal_posted' })).companyId, 'c1');
