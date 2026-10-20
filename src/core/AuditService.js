@@ -79,8 +79,10 @@ class AuditServiceImpl {
     }
     if (!row || typeof row !== 'object' || Array.isArray(row) ||
         !validId(row.id) || !validId(row.companyId) ||
-        !validId(row.actorId) || !VALID_TYPES.has(row.eventType) ||
-        !validId(row.commandKey) || !validId(row.sourceId) ||
+        !VALID_TYPES.has(row.eventType) ||
+        (row.actorId !== undefined && !validId(row.actorId)) ||
+        (row.commandKey !== undefined && !validId(row.commandKey)) ||
+        (row.sourceId !== undefined && !validId(row.sourceId)) ||
         (row.businessDate !== undefined && !validBusinessDate(row.businessDate)) ||
         (row.occurredAtUtc !== undefined && !validUtc(row.occurredAtUtc))) {
       throw new Error('رکورد تاریخچه ممیزی نامعتبر است');
