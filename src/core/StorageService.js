@@ -444,6 +444,23 @@ class StorageServiceImpl {
       }
     }
 
+    if (json.auditAnchors !== undefined) {
+      if (!json.auditAnchors || typeof json.auditAnchors !== 'object' || Array.isArray(json.auditAnchors)) {
+        throw new Error('لنگرهای ممیزی پشتیبان نامعتبر است');
+      }
+      const companyIds = new Set((json.data.audit_events || []).map(row => row.companyId));
+      if (Object.keys(json.auditAnchors).length !== companyIds.size) {
+        throw new Error('لنگرهای ممیزی پشتیبان ناقص است');
+      }
+      for (const companyId of companyIds) {
+        const rows = json.data.audit_events.filter(row => row.companyId === companyId)
+          .sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0));
+        if (!verifyChain(rows, json.auditAnchors[companyId]).valid) {
+          throw new Error('زنجیره ممیزی یا لنگر پشتیبان کامل نامعتبر است');
+        }
+      }
+    }
+
     await this.transaction(STORES, async tx => {
       const auditRows = (json.data.audit_events || []).filter(item => !!item);
       for (const companyId of new Set(auditRows.map(row => row.companyId))) {
