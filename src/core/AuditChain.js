@@ -40,3 +40,24 @@ export function verifyChain(rows, anchor = null) {
     return {valid:false,index:ordered.length,reason:'anchor mismatch'};
   return {valid:true,count:ordered.length,headHash:previous,anchored:anchor!==null};
 }
+
+export function normalizeLegacyAudit(row, index, prevHash) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error('Invalid audit record');
+  const copy = { ...row };
+  copy.actorId ??= 'legacy-unknown';
+  copy.sourceType ??= 'legacy';
+  copy.occurredAtUtc ??= '1970-01-01T00:00:00.000Z';
+  copy.businessDate ??= null;
+  copy.correlationId ??= `legacy:${copy.id}`;
+  copy.schemaVersion ??= 1;
+  copy.documentVersion ??= 1;
+  copy.result ??= 'committed';
+  copy.createdByService ??= false;
+  copy.safeSummary ??= { lineCount: 0 };
+  if (copy.chainIndex === undefined && copy.prevHash === undefined && copy.eventHash === undefined) {
+    copy.chainIndex = index;
+    copy.prevHash = prevHash;
+    copy.eventHash = auditHash(copy);
+  }
+  return copy;
+}
