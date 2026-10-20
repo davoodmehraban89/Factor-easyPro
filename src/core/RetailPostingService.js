@@ -392,6 +392,10 @@ class RetailPostingServiceImpl {
     let otherCode=isReceipt?LEDGER_CODES.receivable:LEDGER_CODES.payable;
     if(related){
       const kind=related.kind;
+      // Refund authorization must be enforced at the transaction service layer.
+      if (kind==='sale_return' && info.type==='payment' && !Auth.isAdmin()) {
+        throw Error('استرداد وجه مرجوعی فروش فقط توسط مدیر مجاز است');
+      }
       const expected=isReceipt?['sale','non_formal','purchase_return']:['purchase','sale_return'];
       if(!expected.includes(kind))throw Error('جهت دریافت/پرداخت با فاکتور مطابقت ندارد');
       if(kind==='purchase_return')otherCode=LEDGER_CODES.payable;
