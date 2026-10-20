@@ -52,7 +52,7 @@
     },
     {
       "id": "A04",
-      "accepted": false,
+      "accepted": true,
       "evidence": [
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38922551919",
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38939141475",
@@ -60,7 +60,13 @@
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38945374347",
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38956382667",
         "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38957782413",
-        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38969463728"
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/38969463728",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39380965617",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39380965551",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39381883748",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39381883781",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39383484055",
+        "https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39383483978"
       ],
       "name": "Versioned restore, v6 migration and real backup recovery"
     },
