@@ -185,6 +185,13 @@ class SettingsControllerImpl {
       }
     }
 
+    const history = backup.data.audit_events || [];
+    if (!Array.isArray(history)) throw new Error('سوابق ممیزی پشتیبان نامعتبر است');
+    if (backup.auditAnchor !== undefined || history.some(row => row.eventHash !== undefined)) {
+      const result = verifyChain(history, backup.auditAnchor ?? null);
+      if (!result.valid) throw new Error('زنجیره ممیزی یا لنگر پشتیبان نامعتبر است');
+    }
+
     const companyId = await DataScope.companyId();
     // Prevent an accidental merge of one company's books into another.
     // Explicit cross-company migration is a separate, intentional operation.
