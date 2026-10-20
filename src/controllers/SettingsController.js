@@ -188,7 +188,8 @@ class SettingsControllerImpl {
     const history = backup.data.audit_events || [];
     if (!Array.isArray(history)) throw new Error('سوابق ممیزی پشتیبان نامعتبر است');
     if (backup.auditAnchor !== undefined || history.some(row => row.eventHash !== undefined)) {
-      const result = verifyChain(history, backup.auditAnchor ?? null);
+      const ordered = [...history].sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0));
+      const result = verifyChain(ordered, backup.auditAnchor ?? null);
       if (!result.valid) throw new Error('زنجیره ممیزی یا لنگر پشتیبان نامعتبر است');
     }
 
