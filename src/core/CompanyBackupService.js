@@ -120,9 +120,10 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
         }
         if (existing) counts.updated++;
         else counts.added++;
-        if (store === 'audit_events') AuditService.authorizeRestore(tx, { companyId, rows: [row] });
+        if (store === 'audit_events') {
+          AuditService.authorizeRestore(tx, { companyId, rows: [row] });
           await AuditService.restoreHistorical(tx, row);
-        else await tx.putRaw(store, row);
+        } else await tx.putRaw(store, row);
       }
     }
 
