@@ -56,3 +56,7 @@ Review CI on latest A03 PR head, fix failing fixtures and ensure restore authori
 - No local npm test was executed: local repository absent in this runtime, GitHub DNS unavailable, remote desktop offline/quota exhausted. Later PR runs have been cancelled by subsequent pushes or are pending.
 - Fixed missing Auth import in tests/a03-company-scope-immutable-stores.test.mjs on this branch; no passing run verified yet.
 - No independent reviewer agents were launched; no three-agent approval claimed.
+
+## A03 CI request 2026-10-20
+- Implementation commit 293239951b6c15df766e891fd386b54c6f99ec51 adds anchored full backups, strict company backup order verification, deterministic v6 replay compatibility, and end-to-end tampering tests. No pass claim before CI.
+- PR #116 temporarily targets main to activate the existing pull_request quality workflow; remains draft and unmerged. Remote Desktop excluded.
