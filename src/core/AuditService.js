@@ -18,8 +18,10 @@ const VALID_TYPES = new Set([
   'opening_posted'
 ]);
 const validId = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 256;
-const validBusinessDate = value => value === null ||
-  (typeof value === 'string' && /^\d{4}\/\d{2}\/\d{2}$/.test(value));
+const validBusinessDate = value => {
+  if (value === null) return true;
+  try { assertJalaliDate(value); return true; } catch { return false; }
+};
 
 class AuditServiceImpl {
   /**
