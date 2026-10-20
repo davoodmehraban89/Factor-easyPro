@@ -449,7 +449,9 @@ class StorageServiceImpl {
         } else if (APPEND_ONLY_STORES.has(store)) {
           // Backup replay may re-add history but can never rewrite it.
           // A conflicting record aborts the WHOLE multi-store restore.
-          for (const item of items) {
+          const historical = store === 'audit_events'
+            ? [...items].sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0)) : items;
+          for (const item of historical) {
             if (!item.id || typeof item.id !== 'string' ||
                 !item.companyId || typeof item.companyId !== 'string') {
               throw new Error('رکورد تاریخچه ممیزی یا اصلاح سند نامعتبر است');
