@@ -718,3 +718,40 @@ test('A01: supplier recovery trace is linked; rejected over-recovery adds no cor
  const trial=await accounts.trialBalance();
  assert.equal(trial.totals.debit,trial.totals.credit);
 });
+
+test('A01: late correction idempotency collision rolls back cash, journal, settlement and audit',async()=>{
+ await setup();await purchase10();
+ const sold=await retail.issueInvoice(invoice('sale',3,200,{paidAmount:500}));
+ const returned=await retail.issueInvoice(invoice('sale_return',1,200,{
+   originalInvoiceId:sold.id
+ }));
+ const id='a01-late-correction-conflict';
+ // Fixture simulates an existing append-only correction key independently of
+ // the treasury ID; the UNIQUE constraint must abort the entire later write.
+ await db.transaction('document_corrections',async tx=>{
+   await tx.add('document_corrections',{
+     id:'a01-existing-conflict',companyId:company,
+     sourceType:'invoice',sourceId:returned.id,
+     correctionType:'settlement_refund',resultType:'treasury',resultId:'historical',
+     idempotencyKey:JSON.stringify([company,'settlement_refund',id])
+   });
+ });
+ const before={
+   journals:(await db.getAll('journal_entries')).length,
+   audits:(await db.getAll('audit_events')).length,
+   settlements:(await db.getAll('settlements')).length,
+   corrections:(await db.getAll('document_corrections')).length
+ };
+ await assert.rejects(retail.postTransaction({
+   id,type:'payment',date,amount:100,refInvoiceId:returned.id,
+   contactId:'contact-1',fromAccountId:'cash-1'
+ }));
+ assert.equal(await db.get('treasury',id),undefined);
+ assert.equal((await db.get('invoices',returned.id)).paidAmount,0);
+ assert.equal((await db.getAll('journal_entries')).length,before.journals);
+ assert.equal((await db.getAll('audit_events')).length,before.audits);
+ assert.equal((await db.getAll('settlements')).length,before.settlements);
+ assert.equal((await db.getAll('document_corrections')).length,before.corrections);
+ const trial=await accounts.trialBalance();
+ assert.equal(trial.totals.debit,trial.totals.credit);
+});
