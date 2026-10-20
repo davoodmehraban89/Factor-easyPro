@@ -8,7 +8,6 @@ const seedHistory = (store, row) => store === 'audit_events'
   ? StorageService.importAll({ app: 'Factor-easyPro', version: 6, data: { audit_events: [row] } })
   : StorageService.transaction(store, tx => tx.put(store, row));
 import { DataScope } from '../src/core/DataScope.js';
-import { Auth } from '../src/core/Auth.js';
 import { CompanyService } from '../src/core/CompanyService.js';
 
 test('A03: common scoped reads do not leak another company audit history or corrections', async () => {
