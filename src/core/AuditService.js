@@ -2,6 +2,7 @@ import { Auth } from './Auth.js';
 import { DataScope } from './DataScope.js';
 import { StorageService } from './StorageService.js';
 import { auditHash, normalizeLegacyAudit, verifyChain as checkAuditChain } from './AuditChain.js';
+import { assertJalaliDate } from './AccountingCore.mjs';
 
 const trustedAuditRows = new WeakSet();
 const authorizedRestoreTransactions = new WeakMap();
