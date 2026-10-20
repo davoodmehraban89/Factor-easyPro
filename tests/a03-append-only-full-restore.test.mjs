@@ -26,7 +26,7 @@ test('A03: full restore refuses to mutate prior audit events and rolls back earl
       products: [{ id: 'new-product', companyId: 'c1', name: 'must roll back' }],
       audit_events: [{ ...before, eventType: 'period_closed' }]
     }
-  }), /بازنویسی سابقه/);
+  }), /بازنویسی سابقه|زنجیره ممیزی/);
   assert.equal(await StorageService.get('products', 'new-product'), undefined);
   assert.deepEqual(await StorageService.get('audit_events', audit.id), before);
 

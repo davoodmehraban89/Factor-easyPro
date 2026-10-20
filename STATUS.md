@@ -60,3 +60,8 @@ Review CI on latest A03 PR head, fix failing fixtures and ensure restore authori
 ## A03 CI request 2026-10-20
 - Implementation commit 293239951b6c15df766e891fd386b54c6f99ec51 adds anchored full backups, strict company backup order verification, deterministic v6 replay compatibility, and end-to-end tampering tests. No pass claim before CI.
 - PR #116 temporarily targets main to activate the existing pull_request quality workflow; remains draft and unmerged. Remote Desktop excluded.
+
+## A03 CI evidence: 2026-10-20, run 39374384074
+- SHA 46f5dd613b543778e27c498a54c664f9edf01845; completed failure, npm test: 257 tests, 251 passed, 6 failed, exit 1.
+- Failures: A02 audit rollback; A03 full restore rejects modified event (error message mismatch, integrity rejection correctly occurs); A03 v6 migration; A03 company scope; A03 append-only direct protection; A03 clear rollback.
+- Root cause of five fixture failures: restoreHistorical validated legacy actorId/sourceId/commandKey before deterministic migration defaults were applied. Fix permits missing legacy metadata but rejects present invalid values. Sixth test now accepts earlier chain integrity rejection rather than requiring a later immutable-overwrite error. The rejection and rollback assertion remain mandatory.
