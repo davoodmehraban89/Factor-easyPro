@@ -1,5 +1,5 @@
 import { isAuditServiceRow, AuditService } from './AuditService.js';
-import { verifyChain, normalizeLegacyAudit } from './AuditChain.js';
+import { verifyChain, normalizeLegacyAudit, prepareAuditRows } from './AuditChain.js';
 
 // ============================================================
 // StorageService — IndexedDB wrapper
@@ -446,7 +446,8 @@ class StorageServiceImpl {
       }
     }
 
-    const auditRowsForValidation = json.data.audit_events || [];
+    const incomingAudit = json.data.audit_events || [];
+    const auditRowsForValidation = prepareAuditRows(incomingAudit);
     if (json.auditAnchors !== undefined) {
       if (!json.auditAnchors || typeof json.auditAnchors !== 'object' || Array.isArray(json.auditAnchors))
         throw new Error('لنگر پشتیبان نامعتبر است');
@@ -459,14 +460,9 @@ class StorageServiceImpl {
         if (!verifyChain(rows, json.auditAnchors[companyId]).valid)
           throw new Error('زنجیره ممیزی یا لنگر پشتیبان نامعتبر است');
       }
-    } else if (auditRowsForValidation.some(row => row.eventHash !== undefined)) {
-      for (const companyId of new Set(auditRowsForValidation.map(row => row.companyId))) {
-        if (!verifyChain(auditRowsForValidation.filter(row => row.companyId === companyId)).valid)
-          throw new Error('زنجیره ممیزی فایل پشتیبان نامعتبر است');
-      }
     }
     await this.transaction(STORES, async tx => {
-      const auditRows = (json.data.audit_events || []).filter(item => !!item);
+      const auditRows = auditRowsForValidation;
       for (const companyId of new Set(auditRows.map(row => row.companyId))) {
         AuditService.authorizeRestore(tx, {
           companyId, rows: auditRows.filter(row => row.companyId === companyId)
@@ -480,8 +476,7 @@ class StorageServiceImpl {
         } else if (APPEND_ONLY_STORES.has(store)) {
           // Backup replay may re-add history but can never rewrite it.
           // A conflicting record aborts the WHOLE multi-store restore.
-          const historical = store === 'audit_events'
-            ? [...items].sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0)) : items;
+          const historical = store === 'audit_events' ? auditRowsForValidation : items;
           for (const item of historical) {
             if (!item.id || typeof item.id !== 'string' ||
                 !item.companyId || typeof item.companyId !== 'string') {

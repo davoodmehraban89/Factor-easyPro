@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sha256, auditHash, verifyChain, normalizeLegacyAudit } from '../src/core/AuditChain.js';
+import { sha256, auditHash, verifyChain, normalizeLegacyAudit, prepareAuditRows } from '../src/core/AuditChain.js';
 
 function sample() {
   let previous = null;
@@ -60,4 +60,28 @@ test('A03: foreign-company event cannot join an otherwise valid hash chain', () 
 });
 test('A03: invalid anchor metadata is rejected', () => {
   assert.equal(verifyChain(sample(), { count: -1, headHash: null }).valid, false);
+});
+
+test('A03: empty chain and single event are valid with matching anchors', () => {
+  assert.equal(verifyChain([], { count: 0, headHash: null }).valid, true);
+  const one = sample().slice(0, 1);
+  assert.equal(verifyChain(one, { count: 1, headHash: one[0].eventHash }).valid, true);
+});
+test('A03: malformed rows, partial hash metadata and wrong anchor are rejected', () => {
+  assert.equal(verifyChain(null).valid, false);
+  assert.equal(verifyChain([null]).valid, false);
+  assert.throws(() => prepareAuditRows([null]), /زنجیره ممیزی/);
+  assert.throws(() => prepareAuditRows([{ id: 'x', companyId: 'c1', eventHash: 'bad' }]), /زنجیره ممیزی/);
+  assert.throws(() => prepareAuditRows(sample(), { count: 3, headHash: '0'.repeat(64) }), /لنگر/);
+});
+test('A03: mixed legacy prefix and already-hashed suffix are accepted only when linked', () => {
+  const old = { id: 'old', companyId: 'company-1', eventType: 'journal_posted' };
+  const migrated = normalizeLegacyAudit(old, 0, null);
+  const newer = { id: 'new', companyId: 'company-1', chainIndex: 1,
+    prevHash: migrated.eventHash, eventType: 'journal_posted' };
+  newer.eventHash = auditHash(newer);
+  const result = prepareAuditRows([old, newer], { count: 2, headHash: newer.eventHash });
+  assert.equal(verifyChain(result).valid, true);
+  assert.deepEqual(result[0], migrated);
+  assert.throws(() => prepareAuditRows([old, { ...newer, prevHash: null }]), /زنجیره/);
 });

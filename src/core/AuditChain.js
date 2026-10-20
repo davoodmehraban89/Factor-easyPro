@@ -29,6 +29,7 @@ export const canonical = value => JSON.stringify(sort(value));
 function sort(value){if(Array.isArray(value))return value.map(sort);if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).sort().map(k=>[k,sort(value[k])]));return value;}
 export const auditHash = row => sha256(canonical(Object.fromEntries(Object.entries(row).filter(([k])=>k!=='eventHash'))));
 export function verifyChain(rows, anchor = null) {
+  if (!Array.isArray(rows)) return { valid: false, index: 0, reason: 'invalid rows' };
   const ordered=[...rows];
   let previous=null;
   const companyId = ordered[0]?.companyId;
@@ -63,4 +64,19 @@ export function normalizeLegacyAudit(row, index, prevHash) {
     copy.eventHash = auditHash(copy);
   }
   return copy;
+}
+
+/** Normalize unhashed legacy rows in input order, then verify the complete chain. */
+export function prepareAuditRows(rows, anchor = null) {
+  if (!Array.isArray(rows)) throw new Error('زنجیره ممیزی پشتیبان نامعتبر است');
+  let previous = null;
+  const normalized = rows.map((row, index) => {
+    const legacy = row && typeof row === 'object' && !Array.isArray(row) &&
+      row.chainIndex === undefined && row.prevHash === undefined && row.eventHash === undefined;
+    const current = legacy ? normalizeLegacyAudit(row, index, previous) : row;
+    previous = current?.eventHash;
+    return current;
+  });
+  if (!verifyChain(normalized, anchor).valid) throw new Error('زنجیره ممیزی یا لنگر پشتیبان نامعتبر است');
+  return normalized;
 }

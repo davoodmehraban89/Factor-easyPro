@@ -321,3 +321,27 @@ test('A03: legacy v6 backup imports audit rows without new metadata and exports 
     data: { audit_events: [old] } });
   assert.equal((await StorageService.getAll('audit_events')).length, 1);
 });
+
+
+test('A03: concurrent audited transactions serialize their chain indexes', async () => {
+  await setup();
+  await Promise.all(['concurrent-a','concurrent-b'].map(id =>
+    StorageService.transaction('audit_events', tx => AuditService.append(tx, {
+      companyId: company, eventType: 'journal_posted', sourceType: 'journal',
+      sourceId: id, commandKey: id, businessDate
+    }))));
+  assert.equal((await AuditService.verifyChain({ companyId: company })).valid, true);
+  const events = await StorageService.getAllByIndex('audit_events', 'companyId', company);
+  assert.equal(new Set(events.map(event => event.chainIndex)).size, events.length);
+});
+
+test('A03: company import rejects corrupted JSON and incorrect hash anchor without mutation', async () => {
+  await setup();
+  const backup = await SettingsController.exportBackup();
+  const count = (await AuditService.list()).length;
+  await assert.rejects(SettingsController.importBackup('{corrupt'), /JSON/);
+  const wrong = structuredClone(backup);
+  wrong.auditAnchor.headHash = '0'.repeat(64);
+  await assert.rejects(SettingsController.importBackup(wrong), /لنگر پشتیبان|زنجیره ممیزی/);
+  assert.equal((await AuditService.list()).length, count);
+});

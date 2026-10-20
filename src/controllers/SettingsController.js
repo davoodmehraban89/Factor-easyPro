@@ -7,7 +7,7 @@ import { StorageService, STORES } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
 import { DataScope } from '../core/DataScope.js';
 import { restoreCompanyBackup, COMPANY_BACKUP_STORES } from '../core/CompanyBackupService.js';
-import { verifyChain } from '../core/AuditChain.js';
+import { verifyChain, prepareAuditRows } from '../core/AuditChain.js';
 
 class SettingsControllerImpl {
   async getInvoiceSettings() {
@@ -188,10 +188,7 @@ class SettingsControllerImpl {
 
     const history = backup.data.audit_events || [];
     if (!Array.isArray(history)) throw new Error('سوابق ممیزی پشتیبان نامعتبر است');
-    if (backup.auditAnchor !== undefined || history.some(row => row.eventHash !== undefined)) {
-      const result = verifyChain(history, backup.auditAnchor ?? null);
-      if (!result.valid) throw new Error('زنجیره ممیزی یا لنگر پشتیبان نامعتبر است');
-    }
+    backup.data.audit_events = prepareAuditRows(history, backup.auditAnchor ?? null);
 
     const companyId = await DataScope.companyId();
     // Prevent an accidental merge of one company's books into another.

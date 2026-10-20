@@ -3,7 +3,7 @@
 import { StorageService } from './StorageService.js';
 import { Auth } from './Auth.js';
 import { AuditService } from './AuditService.js';
-import { normalizeLegacyAudit, verifyChain } from './AuditChain.js';
+import { normalizeLegacyAudit, prepareAuditRows } from './AuditChain.js';
 import { assertJalaliDate, validateAccount, validateFiscalPeriod, validateJournalLines, journalSourceKey } from './AccountingCore.mjs';
 
 export const COMPANY_BACKUP_STORES = Object.freeze([
@@ -54,15 +54,12 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
     }
   }
 
-  if (Array.isArray(data.audit_events) && data.audit_events.some(row => row.eventHash !== undefined) &&
-      !verifyChain(data.audit_events).valid) throw new Error('زنجیره ممیزی پشتیبان نامعتبر است');
+  const auditRows = prepareAuditRows(data.audit_events || []);
   const counts = { added: 0, updated: 0, skipped: 0 };
   // Reads, ownership validation, foreign-key validation and writes share one IndexedDB transaction.
   return StorageService.transaction([...COMPANY_BACKUP_STORES, 'settings'], async tx => {
     for (const store of COMPANY_BACKUP_STORES) {
-      const incomingRows = store === 'audit_events'
-        ? [...(data[store] || [])].sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0))
-        : data[store] || [];
+      const incomingRows = store === 'audit_events' ? auditRows : data[store] || [];
       for (const incoming of incomingRows) {
         const immutable = store === 'audit_events' || store === 'document_corrections';
         // Historical audit/correction events cannot be reassigned to a new company.

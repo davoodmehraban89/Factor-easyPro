@@ -71,3 +71,10 @@ Review CI on latest A03 PR head, fix failing fixtures and ensure restore authori
 - This evidence verifies the application code at the stated SHA. A STATUS-only documentation commit will require its own final-head CI run before completion.
 - Independent three-agent review remains NOT VERIFIED: this execution environment does not expose a multi-agent reviewer launch capability. No approval or merge is claimed.
 - Local clone/npm test remains unavailable because container DNS cannot resolve github.com; GitHub Actions is the actual test runner.
+
+## A03 three-pass review initiated (2026-10-20)
+- Three sequential code-review passes were performed against PR #116 because no callable subagent/Task tool is exposed. These are NOT independent agents.
+- Functional pass: previous completed CI run 39374969382, SHA 95f6c976a04a72e2ddaf27f20773994e871e0250, Linux 257/257, Windows 257/257. Edge coverage gaps found; new tests added, pending new CI.
+- Security/quality pass: found malformed non-array input could throw from verifyChain; addressed with invalid result. Public authorizeRestore remains a client trust-boundary limitation, not a cryptographic authorization mechanism. O(n) audit-history read per append remains a scalability concern; no unverified performance claim.
+- Edge-case pass: missing explicit tests for empty/single chains, mixed legacy+hashed history, corrupted JSON, wrong anchors and concurrent writes. Added regression tests; results pending CI.
+- Final approval and merge remain withheld until CI and repeat review.
