@@ -315,3 +315,10 @@ test('A03: full backup anchor detects changed, missing, reordered and truncated 
     }
   }
 });
+
+
+test('A03: chain verifier refuses a foreign company selector', async () => {
+  await setup();
+  await assert.rejects(AuditService.verifyChain({ companyId: 'audit-c2' }), /شرکت دیگر/);
+  assert.equal((await AuditService.verifyChain({ companyId: company })).valid, true);
+});
