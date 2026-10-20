@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import { StorageService } from '../src/core/StorageService.js';
+import { Auth } from '../src/core/Auth.js';
 
 // Seed historical fixtures atomically; standalone history writes are forbidden.
 const seedHistory = (store, row) => store === 'audit_events'
