@@ -35,9 +35,9 @@ const stableRecord = value => {
 const sameImmutableRecord = (a, b) =>
   JSON.stringify(stableRecord(a)) === JSON.stringify(stableRecord(b));
 
-export async function restoreCompanyBackup(data, { companyId, userId, mode = 'merge' }) {
+export async function restoreCompanyBackup(data, { companyId, userId, mode = 'merge', sourceCompanyId = companyId }) {
   if (!Auth.isAdmin())throw Error('بازنشانی یا بازیابی اطلاعات حسابداری فقط با مدیر مجاز است');
-  if (!companyId || !userId || !['merge', 'replace'].includes(mode)) throw new Error('گزینه‌های بازیابی نامعتبر است');
+  if (!companyId || !userId || !['merge', 'replace'].includes(mode) || !isId(sourceCompanyId)) throw new Error('گزینه‌های بازیابی نامعتبر است');
   if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('داده فایل پشتیبان نامعتبر است');
 
   for (const store of COMPANY_BACKUP_STORES) {
@@ -48,6 +48,12 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
     for (const item of items) {
       if (!item || typeof item !== 'object' || Array.isArray(item) || !isId(item.id)) {
         throw new Error(`رکورد بدون شناسه معتبر در بخش ${store}`);
+      }
+      // This service also accepts direct in-process callers. Never silently
+      // relabel a foreign or ownerless source record to the target company.
+      // Explicit cross-company migrations pass a distinct sourceCompanyId.
+      if (item.companyId !== sourceCompanyId) {
+        throw new Error('فایل پشتیبان حاوی رکورد متعلق به شرکت دیگری است');
       }
       if (seenIds.has(item.id)) throw new Error(`شناسه تکراری در بخش ${store}`);
       seenIds.add(item.id);

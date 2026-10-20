@@ -216,7 +216,7 @@ class SettingsControllerImpl {
       throw new Error('پشتیبان متعلق به شرکت دیگری است؛ بازیابی در شرکت فعلی متوقف شد');
     }
 
-    return restoreCompanyBackup(backup.data, { companyId, userId: user.id, mode: options.mode || 'merge' });
+    return restoreCompanyBackup(backup.data, { companyId, userId: user.id, mode: options.mode || 'merge', sourceCompanyId: backup.companyId });
   }
 
   async readFileAsText(file) {

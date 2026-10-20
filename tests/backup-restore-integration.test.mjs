@@ -7,6 +7,7 @@ import { StorageService } from '../src/core/StorageService.js';
 import { CompanyService } from '../src/core/CompanyService.js';
 import { Auth } from '../src/core/Auth.js';
 import { SettingsController } from '../src/controllers/SettingsController.js';
+import { restoreCompanyBackup } from '../src/core/CompanyBackupService.js';
 
 async function setup() {
   await StorageService.clearAll();
@@ -99,6 +100,23 @@ test('A04: explicit cross-company restore cannot launder mixed-origin journal re
   assert.equal(await StorageService.get('contacts', 'valid-source'), undefined);
   assert.equal(await StorageService.get('journal_entries', 'mixed-journal'), undefined);
   assert.equal((await StorageService.getAll('audit_events')).length, 0);
+});
+
+test('A04: direct service restore refuses to relabel mixed source records', async () => {
+  await setup();
+  const rows = [
+    { id: 'new-same-company', companyId: 'c1', name: 'Must not persist' },
+    { id: 'new-foreign-company', companyId: 'c2', name: 'Must not retarget' }
+  ];
+  await assert.rejects(restoreCompanyBackup({ contacts: rows },
+    { companyId: 'c1', userId: 'restore-admin' }), /شرکت دیگری/);
+  assert.equal(await StorageService.get('contacts', 'new-same-company'), undefined);
+  assert.equal(await StorageService.get('contacts', 'new-foreign-company'), undefined);
+  assert.equal((await StorageService.getAll('audit_events')).length, 0);
+  await assert.rejects(restoreCompanyBackup({ products: [
+    { id: 'ownerless', name: 'Do not guess' }
+  ] }, { companyId: 'c1', userId: 'restore-admin' }), /شرکت دیگری/);
+  assert.equal(await StorageService.get('products', 'ownerless'), undefined);
 });
 
 test('A04: company backup rejects duplicate IDs before any database writes', async () => {
