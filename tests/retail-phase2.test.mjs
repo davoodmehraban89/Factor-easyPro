@@ -600,6 +600,34 @@ test('A01: only genuinely paid customer credit may be refunded, once, even with 
  assert.equal(balance.totals.debit,balance.totals.credit);
 });
 
+test('A01: customer credit refund requires administrator and rejected attempt leaves no writes',async()=>{
+  await setup();await purchase10();
+  const sold=await retail.issueInvoice(invoice('sale',3,200,{paidAmount:500}));
+  const returned=await retail.issueInvoice(invoice('sale_return',1,200,{
+    originalInvoiceId:sold.id
+  }));
+  const beforeJournals=(await db.getAll('journal_entries')).length;
+  const beforeAudits=(await db.getAll('audit_events')).length;
+  Auth.currentUser={id:'phase2-clerk',role:'user',username:'clerk',companyIds:[company]};
+  await assert.rejects(retail.postTransaction({
+    id:'unauthorized-return-refund',type:'payment',date,amount:25,
+    refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1'
+  }),/فقط توسط مدیر/);
+  assert.equal(await db.get('treasury','unauthorized-return-refund'),undefined);
+  assert.equal((await db.get('invoices',returned.id)).paidAmount,0);
+  assert.equal((await db.getAll('journal_entries')).length,beforeJournals);
+  assert.equal((await db.getAll('audit_events')).length,beforeAudits);
+  Auth.currentUser={id:'phase2-admin',role:'admin',username:'admin'};
+  const approved=await retail.postTransaction({
+    id:'approved-return-refund',type:'payment',date,amount:25,
+    refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1'
+  });
+  assert.equal(approved.amount,25);
+  assert.equal((await db.get('invoices',returned.id)).paidAmount,25);
+  const trial=await accounts.trialBalance();
+  assert.equal(trial.totals.debit,trial.totals.credit);
+});
+
 test('A01: supplier cash recovery cannot exceed previously paid credit after purchase return',async()=>{
  await setup();
  const purchased=await retail.issueInvoice(invoice('purchase',10,100,{paidAmount:700}));
