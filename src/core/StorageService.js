@@ -388,7 +388,7 @@ class StorageServiceImpl {
       data.users = data.users.map(stripCredentials);
     }
 
-    const auditAnchors = {};
+    const auditAnchors = Object.create(null);
     for (const companyId of new Set((data.audit_events || []).map(row => row.companyId))) {
       const rows = data.audit_events.filter(row => row.companyId === companyId)
         .sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0));
