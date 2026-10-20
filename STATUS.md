@@ -65,3 +65,9 @@ Review CI on latest A03 PR head, fix failing fixtures and ensure restore authori
 - SHA 46f5dd613b543778e27c498a54c664f9edf01845; completed failure, npm test: 257 tests, 251 passed, 6 failed, exit 1.
 - Failures: A02 audit rollback; A03 full restore rejects modified event (error message mismatch, integrity rejection correctly occurs); A03 v6 migration; A03 company scope; A03 append-only direct protection; A03 clear rollback.
 - Root cause of five fixture failures: restoreHistorical validated legacy actorId/sourceId/commandKey before deterministic migration defaults were applied. Fix permits missing legacy metadata but rejects present invalid values. Sixth test now accepts earlier chain integrity rejection rather than requiring a later immutable-overwrite error. The rejection and rollback assertion remain mandatory.
+
+## A03 completed CI evidence 2026-10-20 (pre-STATUS commit)
+- PR quality workflow run 39374506277, SHA 9563296884b7131a97a265a296d99977d7522fce: completed SUCCESS. Linux npm test 257 passed / 0 failed; Windows npm test 257 passed / 0 failed. Frontend build, production npm audit, and Windows Tauri installer build all succeeded.
+- This evidence verifies the application code at the stated SHA. A STATUS-only documentation commit will require its own final-head CI run before completion.
+- Independent three-agent review remains NOT VERIFIED: this execution environment does not expose a multi-agent reviewer launch capability. No approval or merge is claimed.
+- Local clone/npm test remains unavailable because container DNS cannot resolve github.com; GitHub Actions is the actual test runner.
