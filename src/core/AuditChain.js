@@ -33,7 +33,7 @@ export function verifyChain(rows, anchor = null) {
   let previous=null;
   for(let i=0;i<ordered.length;i++){
     const row=ordered[i];
-    if(!row||row.prevHash!==previous||row.eventHash!==auditHash(row))return {valid:false,index:i,reason:'chain mismatch'};
+    if(!row||row.chainIndex!==i||row.prevHash!==previous||row.eventHash!==auditHash(row))return {valid:false,index:i,reason:'chain mismatch'};
     previous=row.eventHash;
   }
   if(anchor!==null&&(anchor.count!==ordered.length||anchor.headHash!==previous))
