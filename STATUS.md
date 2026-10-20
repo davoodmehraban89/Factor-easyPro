@@ -78,3 +78,5 @@ Review CI on latest A03 PR head, fix failing fixtures and ensure restore authori
 - Security/quality pass: found malformed non-array input could throw from verifyChain; addressed with invalid result. Public authorizeRestore remains a client trust-boundary limitation, not a cryptographic authorization mechanism. O(n) audit-history read per append remains a scalability concern; no unverified performance claim.
 - Edge-case pass: missing explicit tests for empty/single chains, mixed legacy+hashed history, corrupted JSON, wrong anchors and concurrent writes. Added regression tests; results pending CI.
 - Final approval and merge remain withheld until CI and repeat review.
+
+- GitHub Actions run 39376283188 on SHA 894e1f54409a7f12455ee27b6e3d8b80f4899a55: completed FAILURE, npm test 262 total / 260 passed / 2 failed. Failures A02 rollback and A03 direct append-only protection; root cause: eager genesis-based normalization of a legacy-only snapshot intended to append after existing audit history. Changed legacy-only imports to defer chain index/hash to the active restore transaction. Mixed legacy+hashed chains remain prevalidated. Await rerun.

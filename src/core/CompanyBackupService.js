@@ -54,7 +54,10 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
     }
   }
 
-  const auditRows = prepareAuditRows(data.audit_events || []);
+  const sourceAudit = data.audit_events || [];
+  const auditRows = sourceAudit.some(row =>
+    row?.eventHash !== undefined || row?.chainIndex !== undefined || row?.prevHash !== undefined)
+    ? prepareAuditRows(sourceAudit) : sourceAudit;
   const counts = { added: 0, updated: 0, skipped: 0 };
   // Reads, ownership validation, foreign-key validation and writes share one IndexedDB transaction.
   return StorageService.transaction([...COMPANY_BACKUP_STORES, 'settings'], async tx => {

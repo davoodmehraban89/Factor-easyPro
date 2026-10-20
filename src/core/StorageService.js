@@ -447,7 +447,14 @@ class StorageServiceImpl {
     }
 
     const incomingAudit = json.data.audit_events || [];
-    const auditRowsForValidation = prepareAuditRows(incomingAudit);
+    // Legacy-only snapshots have no genesis chain; their rows must be linked
+    // to existing history inside the write transaction, not pre-hashed at index zero.
+    const needsChainValidation = json.auditAnchors !== undefined ||
+      incomingAudit.some(row => row?.eventHash !== undefined || row?.chainIndex !== undefined || row?.prevHash !== undefined);
+    const auditRowsForValidation = needsChainValidation
+      ? [...new Set(incomingAudit.map(row => row?.companyId))].flatMap(companyId =>
+          prepareAuditRows(incomingAudit.filter(row => row?.companyId === companyId)))
+      : incomingAudit;
     if (json.auditAnchors !== undefined) {
       if (!json.auditAnchors || typeof json.auditAnchors !== 'object' || Array.isArray(json.auditAnchors))
         throw new Error('لنگر پشتیبان نامعتبر است');
