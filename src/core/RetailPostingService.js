@@ -454,6 +454,25 @@ class RetailPostingServiceImpl {
         status:paid===related.grandTotal?'paid':'partial'});
       await tx.put('settlements',{id:uid('set_'),companyId:ctx.companyId,
         invoiceId:related.id,transactionId:id,amount:sum,date:ctx.date,ownerUserId:actor()});
+      // A01: returning goods and handing back (or recovering) money are
+      // distinct corrections. Trace every cash settlement back to its posted
+      // return without rewriting either the original invoice or earlier cash
+      // entries. This insert shares the treasury/journal/audit transaction.
+      if (related.kind==='sale_return' || related.kind==='purchase_return') {
+        await tx.add('document_corrections',{
+          id:uid('cor_'),companyId:ctx.companyId,
+          sourceType:'invoice',sourceId:related.id,
+          correctionType:'settlement_refund',
+          resultType:'treasury',resultId:id,
+          correlationId:journal.id,
+          idempotencyKey:JSON.stringify([ctx.companyId,'settlement_refund',id]),
+          actorId:actor(),occurredAtUtc:today(),businessDate:ctx.date,
+          documentVersion:1,schemaVersion:1,
+          reasonCode:related.kind==='sale_return'
+            ? 'customer_credit_refund' : 'supplier_credit_recovery',
+          amount:sum
+        });
+      }
     }
     return transaction;
   }

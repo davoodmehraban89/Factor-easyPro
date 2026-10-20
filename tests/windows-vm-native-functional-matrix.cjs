@@ -651,8 +651,73 @@ async function nativeReturnCashSettlementGuardrails() {
   toast.querySelector('.toast-close')?.click();FINORA.Modal.close();
   check(!document.querySelector('.toast-error')&&!document.querySelector('.modal-backdrop'),
     'Native A01 cash cap left an error toast/modal');
+
+  // Establish a real, paid customer credit in the installed WebView2 app:
+  // sale 600, cash received 400, total returns 400 -> refund cap 200.
+  // Post a second 200-rial return through the actual invoice UI.
+  const contact=await db.get('contacts',sale.contactId);
+  const product=(await db.getAll('products')).find(p=>p.code==='VM-E2E-100');
+  check(contact&&product,'Native positive refund requires customer and product');
+  await FINORA.Router.go('invoices');await wait(180);
+  await window.InvoiceFormView.open();await wait(160);
+  document.getElementById('invKind').value='sale_return';
+  await window.InvoiceFormView._onKindChange();
+  const original=document.getElementById('invOriginalInvoice');
+  check(original&&[...original.options].some(x=>x.value===sale.id),
+    'Native positive refund original invoice selector absent');
+  original.value=sale.id;
+  document.getElementById('invDate').value='1405/07/18';
+  const contactSearch=document.getElementById('invContactSearch');
+  contactSearch.value=contact.name;
+  window.InvoiceFormView._showContactOptions(true);
+  const contactItem=document.querySelector('.contact-option[data-id="'+contact.id+'"]');
+  check(contactItem,'Native positive refund contact missing');
+  contactItem.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+  const productSearch=document.querySelector('.row-product-search');
+  productSearch.value=product.code;
+  window.InvoiceFormView._showProductOptions(0,true);
+  const productItem=document.querySelector('.product-option[data-id="'+product.id+'"]');
+  check(productItem,'Native positive refund product missing');
+  productItem.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+  document.querySelector('.row-qty').value='1';
+  window.InvoiceFormView._onFieldChange(0,'qty','1');
+  document.querySelector('.row-price').value='200';
+  window.InvoiceFormView._onFieldChange(0,'price','200');
+  document.getElementById('invPayment').value='credit';
+  window.InvoiceFormView._onPaymentChange();
+  await window.InvoiceFormView._save(false);await wait(170);
+  check(!document.querySelector('.toast-error'),'Second synthetic return failed in native UI');
+  const second=(await db.getAll('invoices')).find(x=>
+    x.kind==='sale_return'&&x.originalInvoiceId===sale.id&&x.id!==returned.id);
+  check(second?.grandTotal===200&&second.paidAmount===0,
+    'Second posted customer credit document missing');
+  await FINORA.Router.go('treasury');await wait(170);
+  await view.openPaymentModal();
+  const select=document.getElementById('txInvoiceRef');
+  check(select&&[...select.options].some(x=>x.value===second.id),
+    'Native positive refund return not selectable in treasury UI');
+  select.value=second.id;view._onInvoiceSelection();
+  document.getElementById('txAmount').value='100';
+  document.getElementById('txDate').value='1405/07/18';
+  await view._saveTransaction('payment');await wait(170);
+  check(!document.querySelector('.toast-error'),'Authorized native customer refund failed');
+  const refund=(await db.getAll('treasury')).find(x=>
+    x.recordType==='transaction'&&x.refInvoiceId===second.id&&x.type==='payment');
+  const correction=(await db.getAll('document_corrections')).find(x=>
+    x.correctionType==='settlement_refund'&&x.sourceId===second.id&&
+    x.resultId===refund?.id);
+  const audit=(await db.getAll('audit_events')).find(x=>
+    x.sourceId===refund?.journalId&&x.correlationId===correction?.correlationId);
+  check(refund?.amount===100&&correction?.amount===100&&
+    correction.reasonCode==='customer_credit_refund'&&
+    correction.actorId===FINORA.Auth.current()?.id&&audit&&
+    (await db.get('invoices',second.id))?.paidAmount===100,
+    'Native refund correction, treasury, audit or invoice linkage is invalid');
+  check(!document.querySelector('.modal-backdrop'),
+    'Native refund left an unexpected payment dialog');
   return {overcollectionRejectedWithoutWrites:true,netReceiptAccepted:true,
-    nonexistentRefundCreditRejected:true,realTreasuryInvoiceSelector:true};
+    nonexistentRefundCreditRejected:true,realTreasuryInvoiceSelector:true,
+    authorizedRefundTracedInInstalledWebView2:true};
 }
 
 async function nativeBackupRestore() {
