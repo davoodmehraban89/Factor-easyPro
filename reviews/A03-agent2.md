@@ -7,3 +7,5 @@ Findings: verifyChain(null) previously threw instead of returning an invalid res
 Review method: sequential pass; no independent agent claim. No final approval while security and performance limitations remain.
 
 CI review finding: eager legacy-only migration pre-hashes with chainIndex 0 and violates existing append sequence. Fixed by deferring legacy-only hashing to transactional restore. This is a correctness fix, not a relaxation of hash validation.
+
+Follow-up security finding: AuditService.authorizeRestore was public, allowing an admin caller to mint permission outside backup restore. Refactored into restoreFromBackup which performs ownership/admin checks and internally manages one-use transaction authorization. Direct restoreHistorical without that scoped context still rejects. Client-side malicious admin/raw IndexedDB remains outside security boundary. CI pending.

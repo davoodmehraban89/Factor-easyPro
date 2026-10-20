@@ -345,3 +345,15 @@ test('A03: company import rejects corrupted JSON and incorrect hash anchor witho
   await assert.rejects(SettingsController.importBackup(wrong), /لنگر پشتیبان|زنجیره ممیزی/);
   assert.equal((await AuditService.list()).length, count);
 });
+
+
+test('A03: restore authorization cannot be minted directly by an admin', async () => {
+  await setup();
+  assert.equal(typeof AuditService.authorizeRestore, 'undefined');
+  await assert.rejects(StorageService.transaction('audit_events', tx =>
+    AuditService.restoreHistorical(tx, {
+      id: 'untrusted-restore', companyId: company, actorId: 'audit-admin',
+      eventType: 'journal_posted', sourceId: 'untrusted', commandKey: 'untrusted'
+    })), /بازیابی مستقیم ممیزی/);
+  assert.equal(await StorageService.get('audit_events', 'untrusted-restore'), undefined);
+});

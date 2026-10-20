@@ -469,12 +469,6 @@ class StorageServiceImpl {
       }
     }
     await this.transaction(STORES, async tx => {
-      const auditRows = auditRowsForValidation;
-      for (const companyId of new Set(auditRows.map(row => row.companyId))) {
-        AuditService.authorizeRestore(tx, {
-          companyId, rows: auditRows.filter(row => row.companyId === companyId)
-        });
-      }
       for (const store of STORES) {
         const items = json.data[store];
         if (!items) continue;
@@ -497,7 +491,7 @@ class StorageServiceImpl {
                 throw new Error('بازنویسی سابقه ممیزی یا اصلاح سند از پشتیبان مجاز نیست');
               }
             } else {
-              if (store === 'audit_events') await AuditService.restoreHistorical(tx, item);
+              if (store === 'audit_events') await AuditService.restoreFromBackup(tx, { companyId: item.companyId, rows: [item] });
               else await tx.add(store, { ...item });
             }
           }

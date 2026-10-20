@@ -59,16 +59,23 @@ class AuditServiceImpl {
     return event;
   }
 
-  // Restore permission is scoped to a single transaction and company.
-  // Only validated restore flows should invoke this entry point.
-  authorizeRestore(tx, { companyId, rows }) {
+  // Only the validated backup restoration entry point may mint a transient
+  // transaction-scoped permission. Direct historical restoration remains denied.
+  async restoreFromBackup(tx, { companyId, rows }) {
     if (!Auth.isAdmin() || !validId(companyId) || !Array.isArray(rows) ||
-        rows.some(row => !row || row.companyId !== companyId)) {
+        rows.some(row => !row || typeof row !== 'object' || Array.isArray(row) ||
+          row.companyId !== companyId)) {
       throw new Error('مجوز بازیابی ممیزی نامعتبر است');
     }
     const permissions = authorizedRestoreTransactions.get(tx) || new Map();
+    if (permissions.has(companyId)) throw new Error('بازیابی ممیزی هم‌زمان مجاز نیست');
     permissions.set(companyId, new WeakSet(rows));
     authorizedRestoreTransactions.set(tx, permissions);
+    try {
+      for (const row of rows) await this.restoreHistorical(tx, row);
+    } finally {
+      permissions.delete(companyId);
+    }
   }
 
   async restoreHistorical(tx, row) {
