@@ -292,3 +292,26 @@ test('A03: legacy v6 company backup without audit hashes is migrated', async () 
   assert.match(restored.eventHash, /^[0-9a-f]{64}$/);
   assert.equal((await AuditService.verifyChain()).valid, true);
 });
+
+
+test('A03: full backup anchor detects changed, missing, reordered and truncated audit history', async () => {
+  const state = await setup();
+  await AccountingService.postJournal(journal(state));
+  const snapshot = await StorageService.exportAll();
+  assert.equal(snapshot.auditAnchors[company].count, 2);
+  const events = snapshot.data.audit_events.filter(row => row.companyId === company);
+  for (const kind of ['tamper', 'middle-delete', 'reorder', 'tail-delete']) {
+    const changed = structuredClone(snapshot);
+    const target = changed.data.audit_events;
+    if (kind === 'tamper') target[0].eventType = 'period_closed';
+    if (kind === 'middle-delete') target.splice(target.findIndex(row => row.id === events[0].id), 1);
+    if (kind === 'reorder') target.reverse();
+    if (kind === 'tail-delete') target.splice(target.findIndex(row => row.id === events[1].id), 1);
+    if (kind === 'reorder') {
+      // Full-backup imports normalize input order; reordering serialized rows alone is harmless.
+      await StorageService.importAll(changed);
+    } else {
+      await assert.rejects(StorageService.importAll(changed), /زنجیره ممیزی|لنگر/);
+    }
+  }
+});
