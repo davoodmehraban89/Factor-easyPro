@@ -103,7 +103,8 @@ class AuditServiceImpl {
 
   async verifyChain({ companyId, anchor = null } = {}) {
     if (!Auth.isAdmin()) throw new Error('بررسی زنجیره ممیزی فقط برای مدیر مجاز است');
-    const target = companyId || await DataScope.companyId();
+    const target = await DataScope.companyId();
+    if (companyId && companyId !== target) throw new Error('بررسی ممیزی شرکت دیگر مجاز نیست');
     const rows = await StorageService.getAllByIndex('audit_events', 'companyId', target);
     return checkAuditChain(rows.sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0)), anchor);
   }
