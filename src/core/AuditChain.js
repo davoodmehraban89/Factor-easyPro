@@ -46,6 +46,8 @@ export function normalizeLegacyAudit(row, index, prevHash) {
   const copy = { ...row };
   copy.actorId ??= 'legacy-unknown';
   copy.sourceType ??= 'legacy';
+  copy.sourceId ??= copy.id;
+  copy.commandKey ??= `${copy.companyId}:legacy:${copy.id}`;
   copy.occurredAtUtc ??= '1970-01-01T00:00:00.000Z';
   copy.businessDate ??= null;
   copy.correlationId ??= `legacy:${copy.id}`;
