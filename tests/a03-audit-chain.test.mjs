@@ -51,3 +51,13 @@ test('A03 old backup audit metadata receives deterministic defaults', () => {
   assert.equal(verifyChain([migrated]).valid, true);
   assert.deepEqual(normalizeLegacyAudit(old, 0, null), migrated);
 });
+
+test('A03: foreign-company event cannot join an otherwise valid hash chain', () => {
+  const rows = sample();
+  rows[1].companyId = 'other-company';
+  rows[1].eventHash = auditHash(rows[1]);
+  assert.equal(verifyChain(rows).valid, false);
+});
+test('A03: invalid anchor metadata is rejected', () => {
+  assert.equal(verifyChain(sample(), { count: -1, headHash: null }).valid, false);
+});

@@ -78,7 +78,8 @@ class SettingsControllerImpl {
       }
     }
 
-    const events = [...backup.data.audit_events].sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0));
+    backup.data.audit_events.sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0));
+    const events = backup.data.audit_events;
     const result = verifyChain(events);
     if (!result.valid) throw new Error('زنجیره ممیزی هنگام تهیه پشتیبان نامعتبر است');
     backup.auditAnchor = { count: result.count, headHash: result.headHash };
@@ -188,8 +189,7 @@ class SettingsControllerImpl {
     const history = backup.data.audit_events || [];
     if (!Array.isArray(history)) throw new Error('سوابق ممیزی پشتیبان نامعتبر است');
     if (backup.auditAnchor !== undefined || history.some(row => row.eventHash !== undefined)) {
-      const ordered = [...history].sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0));
-      const result = verifyChain(ordered, backup.auditAnchor ?? null);
+      const result = verifyChain(history, backup.auditAnchor ?? null);
       if (!result.valid) throw new Error('زنجیره ممیزی یا لنگر پشتیبان نامعتبر است');
     }
 

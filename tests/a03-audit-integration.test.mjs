@@ -272,3 +272,52 @@ test('A03: direct historical restore without authorization is rejected', async (
     })), /بازیابی مستقیم ممیزی/);
   assert.equal(await StorageService.get('audit_events', 'forged-restore'), undefined);
 });
+
+
+test('A03: company backup detects payload change, middle deletion, reorder and tail deletion', async () => {
+  await setup();
+  for (let i = 0; i < 3; i++) {
+    await StorageService.transaction('audit_events', tx => AuditService.append(tx, {
+      companyId: company, eventType: 'journal_posted', sourceType: 'journal',
+      sourceId: 'tamper-' + i, commandKey: 'tamper-' + i, businessDate
+    }));
+  }
+  const original = await SettingsController.exportBackup();
+  assert.equal(original.auditAnchor.count, original.data.audit_events.length);
+  for (const mutation of ['payload', 'middle', 'reorder', 'tail']) {
+    const altered = structuredClone(original);
+    const rows = altered.data.audit_events;
+    if (mutation === 'payload') rows[1].sourceId = 'forged';
+    if (mutation === 'middle') rows.splice(1, 1);
+    if (mutation === 'reorder') [rows[0], rows[1]] = [rows[1], rows[0]];
+    if (mutation === 'tail') rows.pop();
+    await assert.rejects(SettingsController.importBackup(altered), /زنجیره ممیزی|لنگر پشتیبان/,
+      mutation);
+  }
+  const withoutAnchor = structuredClone(original);
+  withoutAnchor.data.audit_events.pop();
+  delete withoutAnchor.auditAnchor;
+  const { verifyChain } = await import('../src/core/AuditChain.js');
+  assert.equal(verifyChain(withoutAnchor.data.audit_events).valid, true,
+    'Without an independently retained head, tail truncation is not detectable');
+});
+
+test('A03: legacy v6 backup imports audit rows without new metadata and exports a valid anchor', async () => {
+  await StorageService.clearAll();
+  Auth.currentUser = { id: 'audit-admin', role: 'admin', username: 'manager' };
+  CompanyService.activeCompanyId = company;
+  await StorageService.put('companies', { id: company, name: 'Synthetic C1' });
+  const old = { id: 'legacy-6', companyId: company, eventType: 'journal_posted',
+    sourceId: 'journal-6', commandKey: company + ':old' };
+  await StorageService.importAll({ app: 'Factor-easyPro', version: 6,
+    data: { audit_events: [old] } });
+  const migrated = await StorageService.get('audit_events', old.id);
+  assert.equal(migrated.actorId, 'legacy-unknown');
+  assert.equal(migrated.chainIndex, 0);
+  assert.match(migrated.eventHash, /^[0-9a-f]{64}$/);
+  const backup = await StorageService.exportAll();
+  assert.equal(backup.auditAnchors[company].headHash, migrated.eventHash);
+  await StorageService.importAll({ app: 'Factor-easyPro', version: 6,
+    data: { audit_events: [old] } });
+  assert.equal((await StorageService.getAll('audit_events')).length, 1);
+});

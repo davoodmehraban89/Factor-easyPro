@@ -31,12 +31,13 @@ export const auditHash = row => sha256(canonical(Object.fromEntries(Object.entri
 export function verifyChain(rows, anchor = null) {
   const ordered=[...rows];
   let previous=null;
+  const companyId = ordered[0]?.companyId;
   for(let i=0;i<ordered.length;i++){
     const row=ordered[i];
-    if(!row||row.chainIndex!==i||row.prevHash!==previous||row.eventHash!==auditHash(row))return {valid:false,index:i,reason:'chain mismatch'};
+    if(!row||row.companyId!==companyId||row.chainIndex!==i||row.prevHash!==previous||!(/^[0-9a-f]{64}$/).test(row.eventHash)||row.eventHash!==auditHash(row))return {valid:false,index:i,reason:'chain mismatch'};
     previous=row.eventHash;
   }
-  if(anchor!==null&&(anchor.count!==ordered.length||anchor.headHash!==previous))
+  if(anchor!==null&&(!anchor||!Number.isSafeInteger(anchor.count)||anchor.count<0||anchor.count!==ordered.length||anchor.headHash!==previous))
     return {valid:false,index:ordered.length,reason:'anchor mismatch'};
   return {valid:true,count:ordered.length,headHash:previous,anchored:anchor!==null};
 }

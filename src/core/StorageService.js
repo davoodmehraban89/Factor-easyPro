@@ -1,4 +1,5 @@
 import { isAuditServiceRow, AuditService } from './AuditService.js';
+import { verifyChain, normalizeLegacyAudit } from './AuditChain.js';
 
 // ============================================================
 // StorageService — IndexedDB wrapper
@@ -387,9 +388,20 @@ class StorageServiceImpl {
       data.users = data.users.map(stripCredentials);
     }
 
+    const auditAnchors = {};
+    const companies = [...new Set((data.audit_events || []).map(row => row.companyId))].sort();
+    data.audit_events = companies.flatMap(companyId =>
+      data.audit_events.filter(row => row.companyId === companyId)
+        .sort((a,b) => (a.chainIndex ?? 0) - (b.chainIndex ?? 0)));
+    for (const companyId of companies) {
+      const result = verifyChain(data.audit_events.filter(row => row.companyId === companyId));
+      if (!result.valid) throw new Error('زنجیره ممیزی در پشتیبان کامل نامعتبر است');
+      auditAnchors[companyId] = { count: result.count, headHash: result.headHash };
+    }
     return {
       app: 'Factor-easyPro',
       version: DB_VERSION,
+      auditAnchors,
       exportedAt: new Date().toISOString(),
       data
     };
@@ -434,6 +446,25 @@ class StorageServiceImpl {
       }
     }
 
+    const auditRowsForValidation = json.data.audit_events || [];
+    if (json.auditAnchors !== undefined) {
+      if (!json.auditAnchors || typeof json.auditAnchors !== 'object' || Array.isArray(json.auditAnchors))
+        throw new Error('لنگر پشتیبان نامعتبر است');
+      const companies = new Set(auditRowsForValidation.map(row => row.companyId));
+      if (Object.keys(json.auditAnchors).length !== companies.size ||
+          [...companies].some(companyId => !Object.hasOwn(json.auditAnchors, companyId)))
+        throw new Error('لنگر پشتیبان ناقص است');
+      for (const companyId of companies) {
+        const rows = auditRowsForValidation.filter(row => row.companyId === companyId);
+        if (!verifyChain(rows, json.auditAnchors[companyId]).valid)
+          throw new Error('زنجیره ممیزی یا لنگر پشتیبان نامعتبر است');
+      }
+    } else if (auditRowsForValidation.some(row => row.eventHash !== undefined)) {
+      for (const companyId of new Set(auditRowsForValidation.map(row => row.companyId))) {
+        if (!verifyChain(auditRowsForValidation.filter(row => row.companyId === companyId)).valid)
+          throw new Error('زنجیره ممیزی فایل پشتیبان نامعتبر است');
+      }
+    }
     await this.transaction(STORES, async tx => {
       const auditRows = (json.data.audit_events || []).filter(item => !!item);
       for (const companyId of new Set(auditRows.map(row => row.companyId))) {
@@ -458,7 +489,9 @@ class StorageServiceImpl {
             }
             const old = await tx.get(store, item.id);
             if (old) {
-              if (!sameSnapshotRecord(old, item)) {
+              const comparable = store === 'audit_events' && item.eventHash === undefined
+                ? normalizeLegacyAudit(item, old.chainIndex, old.prevHash) : item;
+              if (!sameSnapshotRecord(old, comparable)) {
                 throw new Error('بازنویسی سابقه ممیزی یا اصلاح سند از پشتیبان مجاز نیست');
               }
             } else {
