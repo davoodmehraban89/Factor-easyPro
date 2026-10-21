@@ -538,6 +538,9 @@ async function nativeInactiveBankSettlementGuard() {
   const journalCount=(await db.getAll('journal_entries')).length;
   await cv.changeStatus(cheque.id);
   check(document.getElementById('newStatus'),'Cheque status form missing');
+  const dateInput=document.getElementById('chqEventDate');
+  check(dateInput,'Native posted cheque must request the financial event date');
+  dateInput.value='1405/07/20'; // intentionally different from the cheque due date
   document.getElementById('newStatus').value='cleared';
   await cv._applyStatusChange(cheque.id);
   toast=[...document.querySelectorAll('.toast-error')].find(x=>
@@ -550,13 +553,19 @@ async function nativeInactiveBankSettlementGuard() {
   toast.querySelector('.toast-close')?.click();
   await db.put('treasury',active);
   await cv._applyStatusChange(cheque.id);
-  check((await db.get('cheques',cheque.id)).status==='cleared'&&
-    (await db.getAll('treasury')).filter(t=>t.refChequeId===cheque.id).length===1,
-    'Restoring active bank did not clear cheque exactly once');
+  const cleared=await db.get('cheques',cheque.id);
+  const journal=await db.get('journal_entries',cleared.statusJournalId);
+  const settlement=(await db.getAll('treasury')).filter(t=>t.refChequeId===cheque.id);
+  check(cleared.status==='cleared'&&cleared.dueDate==='1405/07/18'&&
+    cleared.statusBusinessDate==='1405/07/20'&&
+    journal?.date==='1405/07/20'&&settlement.length===1&&
+    settlement[0].date==='1405/07/20',
+    'Native cheque financial event date not persisted separately from due date');
   check(!document.querySelector('.toast-error')&&!document.querySelector('.modal-backdrop'),
     'A05 native treasury scenario left error toast/modal');
   return { inactiveTransferRejected:true, invalidTransferRolledBack:true,
-    disabledChequeClearingRejected:true, validChequeClearedExactlyOnce:true };
+    disabledChequeClearingRejected:true, validChequeClearedExactlyOnce:true,
+    chequeEventDateDifferentFromDueDate:true };
 }
 
 async function nativeTreasuryChequeReconciliation() {
