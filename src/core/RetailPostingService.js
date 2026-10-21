@@ -582,7 +582,13 @@ class RetailPostingServiceImpl {
       if(cheque.status!=='pending')throw Error('تنها چک در جریان قابل تعیین تکلیف است');
       if(!['cleared','bounced','returned','spent'].includes(status))throw Error('وضعیت چک نامعتبر است');
       if(status==='spent'&&cheque.direction!=='inbound')throw Error('فقط چک دریافتی قابل خرج‌کرد است');
-      const ctx=await this.context(tx,company,options.date||cheque.dueDate);
+      // The actual cheque event is posted in an open period, which may be
+      // later than its contractual due date (including when that period closed).
+      // An explicitly blank date must fail rather than silently fall back.
+      const ctx=await this.context(tx,company,options.date??cheque.dueDate);
+      if(ctx.date<cheque.issueDate) {
+        throw Error('تاریخ رویداد مالی چک نمی‌تواند پیش از تاریخ صدور باشد');
+      }
       const sum=amount(cheque.amount),inbound=cheque.direction==='inbound';
       const ref={contactId:cheque.contactId};
       const accounts=(await tx.getAll('treasury')).filter(a=>a.companyId===company&&
@@ -602,7 +608,7 @@ class RetailPostingServiceImpl {
         [postLine(chequeAccount,sum,0,ref),postLine(target,0,sum,ref)];
       const journal=await this.journal(tx,ctx,'cheque_status',id,lines,'تغییر وضعیت چک '+status,2);
       const updated={...cheque,status,statusVersion:2,
-        statusJournalId:journal.id,statusChangedAt:today()};
+        statusJournalId:journal.id,statusBusinessDate:ctx.date,statusChangedAt:today()};
       await tx.put('cheques',updated);
       if(status==='cleared'){
         if(!bank)throw Error('بانک یا صندوق چک مشخص نیست');
