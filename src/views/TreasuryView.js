@@ -426,6 +426,12 @@ class TreasuryViewImpl {
     const row=cache.invoices.find(x=>x.id===id);
     const contact=document.getElementById('txContact');
     if(row?.contactId && contact) contact.value=row.contactId;
+    const reasonGroup=document.getElementById('txReturnReasonGroup');
+    if(reasonGroup) {
+      const isReturn=row && ['sale_return','purchase_return'].includes(row.kind);
+      reasonGroup.style.display=isReturn?'':'none';
+      if(!isReturn) document.getElementById('txReturnReason').value='';
+    }
   }
 
   async openReceiptModal() {
@@ -476,6 +482,15 @@ class TreasuryViewImpl {
         </select>
       </div>
 
+      <div class="form-group" id="txReturnReasonGroup" style="display:none">
+        <label class="form-label">دلیل تسویه مرجوعی <span class="req">*</span></label>
+        <select class="form-control" id="txReturnReason">
+          <option value="">— دلیل را انتخاب کنید —</option>
+          <option value="goods_return">برگشت کالا</option>
+          <option value="quality_issue">ایراد یا کیفیت کالا</option>
+          <option value="pricing_dispute">اختلاف قیمت/محاسبه</option>
+        </select>
+      </div>
       <div class="form-group">
         <label class="form-label">توضیحات</label>
         <textarea class="form-control" id="txDescription" rows="2"></textarea>
@@ -536,6 +551,15 @@ class TreasuryViewImpl {
         </select>
       </div>
 
+      <div class="form-group" id="txReturnReasonGroup" style="display:none">
+        <label class="form-label">دلیل تسویه مرجوعی <span class="req">*</span></label>
+        <select class="form-control" id="txReturnReason">
+          <option value="">— دلیل را انتخاب کنید —</option>
+          <option value="goods_return">برگشت کالا</option>
+          <option value="quality_issue">ایراد یا کیفیت کالا</option>
+          <option value="pricing_dispute">اختلاف قیمت/محاسبه</option>
+        </select>
+      </div>
       <div class="form-group">
         <label class="form-label">توضیحات</label>
         <textarea class="form-control" id="txDescription" rows="2"></textarea>
@@ -619,6 +643,26 @@ class TreasuryViewImpl {
       }
     }
 
+    const related=cache.invoices.find(x=>x.id===data.refInvoiceId);
+    if(related && ['sale_return','purchase_return'].includes(related.kind)) {
+      data.reasonCode=document.getElementById('txReturnReason')?.value||'';
+      if(!['goods_return','quality_issue','pricing_dispute'].includes(data.reasonCode)) {
+        Toast.warning('برای تسویه مرجوعی دلیل را انتخاب کنید');
+        return;
+      }
+      Modal.confirm({
+        title: type==='payment'?'تأیید بازپرداخت مرجوعی':'تأیید دریافت وجه مرجوعی',
+        message: 'آیا مبلغ '+Formatters.number(data.amount)+' ریال برای مرجوعی انتخاب‌شده تأیید می‌شود؟',
+        confirmText: 'تأیید و ثبت',
+        danger: type==='payment',
+        onConfirm: () => this._commitTransaction(type,{...data,explicitlyApproved:true})
+      });
+      return;
+    }
+    await this._commitTransaction(type,data);
+  }
+
+  async _commitTransaction(type,data) {
     try {
       await TreasuryController.createTransaction(data);
       Toast.success(TreasuryController.getTypeLabel(type) + ' ثبت شد');

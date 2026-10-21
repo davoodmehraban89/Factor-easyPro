@@ -642,9 +642,17 @@ async function nativeReturnCashSettlementGuardrails() {
   document.getElementById('txAmount').value='1';
   document.getElementById('txDate').value='1405/07/18';
   const preRefund=await before();
+  document.getElementById('txReturnReason').value='goods_return';
   await view._saveTransaction('payment');
-  toast=[...document.querySelectorAll('.toast-error')].find(x=>
-    x.textContent.includes('بازپرداخت مجاز'));
+  let approve=document.querySelector('.modal-footer [data-action="confirm"]');
+  check(approve,'Native refund must explicitly ask for confirmation');
+  approve.click();
+  for(let i=0;i<30;i++){
+    toast=[...document.querySelectorAll('.toast-error')].find(x=>
+      x.textContent.includes('بازپرداخت مجاز'));
+    if(toast)break;
+    await wait(100);
+  }
   check(toast,'Cash refund with zero actual paid customer credit was not rejected');
   check(JSON.stringify(await before())===JSON.stringify(preRefund),
     'Rejected customer refund wrote a ledger, treasury or settlement');
@@ -699,18 +707,32 @@ async function nativeReturnCashSettlementGuardrails() {
   select.value=second.id;view._onInvoiceSelection();
   document.getElementById('txAmount').value='100';
   document.getElementById('txDate').value='1405/07/18';
-  await view._saveTransaction('payment');await wait(170);
+  document.getElementById('txReturnReason').value='quality_issue';
+  const beforeApproval=await before();
+  await view._saveTransaction('payment');
+  approve=document.querySelector('.modal-footer [data-action="confirm"]');
+  check(approve,'Native accepted refund missing explicit confirmation dialog');
+  check(JSON.stringify(await before())===JSON.stringify(beforeApproval),
+    'Opening approval dialog must not post cash or journal');
+  approve.click();
+  let refund=null;
+  for(let i=0;i<40;i++){
+    refund=(await db.getAll('treasury')).find(x=>
+      x.recordType==='transaction'&&x.refInvoiceId===second.id&&x.type==='payment');
+    if(refund)break;
+    await wait(100);
+  }
   check(!document.querySelector('.toast-error'),'Authorized native customer refund failed');
-  const refund=(await db.getAll('treasury')).find(x=>
-    x.recordType==='transaction'&&x.refInvoiceId===second.id&&x.type==='payment');
   const correction=(await db.getAll('document_corrections')).find(x=>
     x.correctionType==='settlement_refund'&&x.sourceId===second.id&&
     x.resultId===refund?.id);
   const audit=(await db.getAll('audit_events')).find(x=>
     x.sourceId===refund?.journalId&&x.correlationId===correction?.correlationId);
   check(refund?.amount===100&&correction?.amount===100&&
-    correction.reasonCode==='customer_credit_refund'&&
-    correction.actorId===FINORA.Auth.current()?.id&&audit&&
+    correction.reasonCode==='quality_issue'&&
+    correction.actionCode==='customer_credit_refund'&&
+    correction.approvedBy===FINORA.Auth.current()?.id&&
+    correction.approvalMethod==='explicit_confirmation'&&audit&&
     (await db.get('invoices',second.id))?.paidAmount===100,
     'Native refund correction, treasury, audit or invoice linkage is invalid');
   check(!document.querySelector('.modal-backdrop'),

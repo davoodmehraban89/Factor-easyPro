@@ -223,7 +223,9 @@ class TreasuryControllerImpl {
       refInvoiceNumber: data.refInvoiceNumber || null,
       method: data.method || 'cash',         // cash | card | cheque | transfer
       description: (data.description || '').trim(),
-      chequeNumber: data.chequeNumber || ''
+      chequeNumber: data.chequeNumber || '',
+      ...(data.reasonCode ? { reasonCode: data.reasonCode } : {}),
+      ...(data.explicitlyApproved === true ? { explicitlyApproved: true } : {})
     };
     if (await RetailPostingService.isEnabled()) {
       return RetailPostingService.postTransaction(await DataScope.stamp('treasury',tx));

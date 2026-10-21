@@ -546,7 +546,8 @@ test('A01: a return offsets receivables before any cash refund and caps later re
  const before=(await db.getAll('journal_entries')).length;
  await assert.rejects(retail.postTransaction({
    id:'a01-invalid-refund',type:'payment',date,amount:1,
-   refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1'
+   refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1',
+   reasonCode:'goods_return',explicitlyApproved:true
  }),/بازپرداخت مجاز/);
  await assert.rejects(retail.postTransaction({
    id:'a01-overcollect',type:'receipt',date,amount:201,
@@ -577,21 +578,25 @@ test('A01: only genuinely paid customer credit may be refunded, once, even with 
  }));
  const attempts=await Promise.allSettled([
    retail.postTransaction({id:'refund-a',type:'payment',date,amount:70,
-     refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1'}),
+     refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1',
+   reasonCode:'goods_return',explicitlyApproved:true}),
    retail.postTransaction({id:'refund-b',type:'payment',date,amount:70,
-     refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1'})
+     refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1',
+   reasonCode:'goods_return',explicitlyApproved:true})
  ]);
  assert.equal(attempts.filter(x=>x.status==='fulfilled').length,1);
  assert.equal(attempts.filter(x=>x.status==='rejected').length,1);
  assert.equal((await db.get('invoices',returned.id)).paidAmount,70);
  const finish=await retail.postTransaction({
    id:'refund-final',type:'payment',date,amount:30,
-   refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1'
+   refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1',
+   reasonCode:'goods_return',explicitlyApproved:true
  });
  assert.equal(finish.amount,30);
  await assert.rejects(retail.postTransaction({
    id:'refund-excess',type:'payment',date,amount:1,
-   refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1'
+   refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1',
+   reasonCode:'goods_return',explicitlyApproved:true
  }),/بازپرداخت مجاز/);
  assert.equal((await db.get('invoices',returned.id)).paidAmount,100);
  assert.equal((await db.getAll('treasury')).filter(t=>
@@ -611,7 +616,8 @@ test('A01: customer credit refund requires administrator and rejected attempt le
   Auth.currentUser={id:'phase2-clerk',role:'user',username:'clerk',companyIds:[company]};
   await assert.rejects(retail.postTransaction({
     id:'unauthorized-return-refund',type:'payment',date,amount:25,
-    refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1'
+    refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1',
+   reasonCode:'goods_return',explicitlyApproved:true
   }),/فقط توسط مدیر/);
   assert.equal(await db.get('treasury','unauthorized-return-refund'),undefined);
   assert.equal((await db.get('invoices',returned.id)).paidAmount,0);
@@ -620,7 +626,8 @@ test('A01: customer credit refund requires administrator and rejected attempt le
   Auth.currentUser={id:'phase2-admin',role:'admin',username:'admin'};
   const approved=await retail.postTransaction({
     id:'approved-return-refund',type:'payment',date,amount:25,
-    refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1'
+    refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1',
+   reasonCode:'goods_return',explicitlyApproved:true
   });
   assert.equal(approved.amount,25);
   assert.equal((await db.get('invoices',returned.id)).paidAmount,25);
@@ -636,16 +643,19 @@ test('A01: supplier cash recovery cannot exceed previously paid credit after pur
  }));
  await assert.rejects(retail.postTransaction({
    id:'supplier-refund-over',type:'receipt',date,amount:101,
-   refInvoiceId:returned.id,contactId:'contact-1',toAccountId:'cash-1'
+   refInvoiceId:returned.id,contactId:'contact-1',toAccountId:'cash-1',
+   reasonCode:'goods_return',explicitlyApproved:true
  }),/بازپرداخت مجاز/);
  const cash=await retail.postTransaction({
    id:'supplier-refund-valid',type:'receipt',date,amount:100,
-   refInvoiceId:returned.id,contactId:'contact-1',toAccountId:'cash-1'
+   refInvoiceId:returned.id,contactId:'contact-1',toAccountId:'cash-1',
+   reasonCode:'goods_return',explicitlyApproved:true
  });
  assert.equal(cash.amount,100);
  await assert.rejects(retail.postTransaction({
    id:'supplier-refund-excess',type:'receipt',date,amount:1,
-   refInvoiceId:returned.id,contactId:'contact-1',toAccountId:'cash-1'
+   refInvoiceId:returned.id,contactId:'contact-1',toAccountId:'cash-1',
+   reasonCode:'goods_return',explicitlyApproved:true
  }),/بازپرداخت مجاز/);
  const trial=await accounts.trialBalance();
  assert.equal(trial.totals.debit,trial.totals.credit);
@@ -660,7 +670,8 @@ test('A01: authorized customer credit refund creates one linked correction, sett
  const before=(await db.getAll('document_corrections')).length;
  const refund=await retail.postTransaction({
    id:'a01-refund-trace',type:'payment',date,amount:100,
-   refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1'
+   refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1',
+   reasonCode:'goods_return',explicitlyApproved:true
  });
  const records=(await db.getAll('document_corrections')).filter(c=>
    c.correctionType==='settlement_refund');
@@ -670,7 +681,11 @@ test('A01: authorized customer credit refund creates one linked correction, sett
  assert.equal(records[0].resultType,'treasury');
  assert.equal(records[0].resultId,refund.id);
  assert.equal(records[0].correlationId,refund.journalId);
- assert.equal(records[0].reasonCode,'customer_credit_refund');
+ assert.equal(records[0].reasonCode,'goods_return');
+ assert.equal(records[0].actionCode,'customer_credit_refund');
+ assert.equal(records[0].approvedBy,'phase2-admin');
+ assert.equal(records[0].approvalMethod,'explicit_confirmation');
+ assert.ok(records[0].approvedAtUtc);
  assert.equal(records[0].amount,100);
  assert.equal(records[0].actorId,'phase2-admin');
  assert.equal((await db.getAll('settlements')).filter(s=>
@@ -680,7 +695,8 @@ test('A01: authorized customer credit refund creates one linked correction, sett
  assert.ok(audit);
  await assert.rejects(retail.postTransaction({
    id:refund.id,type:'payment',date,amount:100,
-   refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1'
+   refInvoiceId:returned.id,contactId:'contact-1',fromAccountId:'cash-1',
+   reasonCode:'goods_return',explicitlyApproved:true
  }),/تکراری/);
  assert.equal((await db.getAll('document_corrections')).length,before+1);
  assert.equal((await db.get('invoices',sold.id)).paidAmount,500);
@@ -698,13 +714,15 @@ test('A01: supplier recovery trace is linked; rejected over-recovery adds no cor
  const base=(await db.getAll('document_corrections')).length;
  await assert.rejects(retail.postTransaction({
    id:'a01-supplier-over',type:'receipt',date,amount:101,
-   refInvoiceId:returned.id,contactId:'contact-1',toAccountId:'cash-1'
+   refInvoiceId:returned.id,contactId:'contact-1',toAccountId:'cash-1',
+   reasonCode:'goods_return',explicitlyApproved:true
  }),/بازپرداخت مجاز/);
  assert.equal((await db.getAll('document_corrections')).length,base);
  assert.equal(await db.get('treasury','a01-supplier-over'),undefined);
  const recovered=await retail.postTransaction({
    id:'a01-supplier-trace',type:'receipt',date,amount:100,
-   refInvoiceId:returned.id,contactId:'contact-1',toAccountId:'cash-1'
+   refInvoiceId:returned.id,contactId:'contact-1',toAccountId:'cash-1',
+   reasonCode:'goods_return',explicitlyApproved:true
  });
  const records=(await db.getAll('document_corrections')).filter(c=>
    c.correctionType==='settlement_refund');
@@ -712,7 +730,9 @@ test('A01: supplier recovery trace is linked; rejected over-recovery adds no cor
  assert.equal(records[0].sourceId,returned.id);
  assert.equal(records[0].resultId,recovered.id);
  assert.equal(records[0].correlationId,recovered.journalId);
- assert.equal(records[0].reasonCode,'supplier_credit_recovery');
+ assert.equal(records[0].reasonCode,'goods_return');
+ assert.equal(records[0].actionCode,'supplier_credit_recovery');
+ assert.equal(records[0].approvedBy,'phase2-admin');
  assert.equal(records[0].amount,100);
  assert.equal((await db.get('invoices',purchased.id)).paidAmount,700);
  const trial=await accounts.trialBalance();
@@ -754,4 +774,57 @@ test('A01: late correction idempotency collision rolls back cash, journal, settl
  assert.equal((await db.getAll('document_corrections')).length,before.corrections);
  const trial=await accounts.trialBalance();
  assert.equal(trial.totals.debit,trial.totals.credit);
+});
+
+test('A01: return cash flow requires structured reason and explicit approval before writes',async()=>{
+ await setup();await purchase10();
+ const sold=await retail.issueInvoice(invoice('sale',3,200,{paidAmount:500}));
+ const returned=await retail.issueInvoice(invoice('sale_return',1,200,{
+   originalInvoiceId:sold.id
+ }));
+ const before={
+   treasury:(await db.getAll('treasury')).length,
+   journals:(await db.getAll('journal_entries')).length,
+   audit:(await db.getAll('audit_events')).length,
+   corrections:(await db.getAll('document_corrections')).length,
+   settlements:(await db.getAll('settlements')).length
+ };
+ const base={
+   type:'payment',date,amount:50,refInvoiceId:returned.id,
+   contactId:'contact-1',fromAccountId:'cash-1'
+ };
+ await assert.rejects(retail.postTransaction({
+   ...base,id:'no-reason',explicitlyApproved:true
+ }),/دلیل ساختاریافته/);
+ await assert.rejects(retail.postTransaction({
+   ...base,id:'invalid-reason',reasonCode:'unauthorized-text',explicitlyApproved:true
+ }),/دلیل ساختاریافته/);
+ await assert.rejects(retail.postTransaction({
+   ...base,id:'unconfirmed',reasonCode:'quality_issue'
+ }),/تأیید صریح/);
+ await assert.rejects(retail.postTransaction({
+   ...base,id:'wrong-confirmation',reasonCode:'quality_issue',explicitlyApproved:'true'
+ }),/تأیید صریح/);
+ for(const id of ['no-reason','invalid-reason','unconfirmed','wrong-confirmation']){
+   assert.equal(await db.get('treasury',id),undefined);
+ }
+ assert.equal((await db.get('invoices',returned.id)).paidAmount,0);
+ assert.deepEqual({
+   treasury:(await db.getAll('treasury')).length,
+   journals:(await db.getAll('journal_entries')).length,
+   audit:(await db.getAll('audit_events')).length,
+   corrections:(await db.getAll('document_corrections')).length,
+   settlements:(await db.getAll('settlements')).length
+ },before);
+ const approved=await retail.postTransaction({
+   ...base,id:'approved-reason',reasonCode:'quality_issue',explicitlyApproved:true
+ });
+ const correction=(await db.getAll('document_corrections')).find(x=>
+   x.resultId===approved.id);
+ assert.equal(correction?.reasonCode,'quality_issue');
+ assert.equal(correction?.actionCode,'customer_credit_refund');
+ assert.equal(correction?.approvedBy,'phase2-admin');
+ assert.equal(correction?.approvalMethod,'explicit_confirmation');
+ assert.equal((await accounts.trialBalance()).totals.debit,
+   (await accounts.trialBalance()).totals.credit);
 });

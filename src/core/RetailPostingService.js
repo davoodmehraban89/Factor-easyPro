@@ -396,6 +396,18 @@ class RetailPostingServiceImpl {
       if (kind==='sale_return' && info.type==='payment' && !Auth.isAdmin()) {
         throw Error('استرداد وجه مرجوعی فروش فقط توسط مدیر مجاز است');
       }
+      if (kind==='sale_return' || kind==='purchase_return') {
+        // Explicit approval is a user action, not inferred from posting a
+        // return invoice. Require a structured business reason before any
+        // treasury, GL, settlement, correction or audit writes are committed.
+        const reasons=new Set(['goods_return','quality_issue','pricing_dispute']);
+        if (!reasons.has(info.reasonCode)) {
+          throw Error('دلیل ساختاریافته تسویه مرجوعی باید انتخاب شود');
+        }
+        if (info.explicitlyApproved!==true) {
+          throw Error('تأیید صریح پرداخت یا دریافت وجه مرجوعی الزامی است');
+        }
+      }
       const expected=isReceipt?['sale','non_formal','purchase_return']:['purchase','sale_return'];
       if(!expected.includes(kind))throw Error('جهت دریافت/پرداخت با فاکتور مطابقت ندارد');
       if(kind==='purchase_return')otherCode=LEDGER_CODES.payable;
@@ -468,9 +480,11 @@ class RetailPostingServiceImpl {
           idempotencyKey:JSON.stringify([ctx.companyId,'settlement_refund',id]),
           actorId:actor(),occurredAtUtc:today(),businessDate:ctx.date,
           documentVersion:1,schemaVersion:1,
-          reasonCode:related.kind==='sale_return'
+          actionCode:related.kind==='sale_return'
             ? 'customer_credit_refund' : 'supplier_credit_recovery',
-          amount:sum
+          reasonCode:info.reasonCode,
+          approvalMethod:'explicit_confirmation',approvedBy:actor(),
+          approvedAtUtc:today(),amount:sum
         });
       }
     }
