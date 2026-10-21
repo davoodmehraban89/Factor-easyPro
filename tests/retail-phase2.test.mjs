@@ -828,3 +828,97 @@ test('A01: return cash flow requires structured reason and explicit approval bef
  assert.equal((await accounts.trialBalance()).totals.debit,
    (await accounts.trialBalance()).totals.credit);
 });
+
+test('A01: cheque status uses selected open-period posting date after its due-date period closes',async()=>{
+ const {period}=await setup();
+ const issued=await retail.postCheque({
+   id:'a01-cheque-carry',direction:'inbound',status:'pending',
+   issueDate:date,dueDate:date,contactId:'contact-1',
+   amount:250,chequeNumber:'A01-CARRY'
+ });
+ const before={
+   journals:(await db.getAll('journal_entries')).length,
+   audits:(await db.getAll('audit_events')).length,
+   cash:(await db.getAll('treasury')).filter(x=>x.refChequeId===issued.id).length
+ };
+ await assert.rejects(retail.changeChequeStatus(issued.id,'cleared',{
+   date:'1405/07/17',accountId:'cash-1'
+ }),/پیش از تاریخ صدور/);
+ await assert.rejects(retail.changeChequeStatus(issued.id,'cleared',{
+   date:'',accountId:'cash-1'
+ }),/تاریخ شمسی/);
+ assert.equal((await db.getAll('journal_entries')).length,before.journals);
+ assert.equal((await db.getAll('audit_events')).length,before.audits);
+ assert.equal((await db.get('cheques',issued.id)).status,'pending');
+ await accounts.closePeriod(period.id);
+ const newPeriod=await accounts.createPeriod({
+   name:'۱۴۰۶',startDate:'1406/01/01',endDate:'1406/12/29'
+ });
+ const beforeClosedAttempt={
+   journals:(await db.getAll('journal_entries')).length,
+   audits:(await db.getAll('audit_events')).length
+ };
+ await assert.rejects(retail.changeChequeStatus(issued.id,'cleared',{
+   date,accountId:'cash-1'
+ }),/دوره مالی باز/);
+ assert.equal((await db.getAll('journal_entries')).length,beforeClosedAttempt.journals);
+ assert.equal((await db.getAll('audit_events')).length,beforeClosedAttempt.audits);
+ assert.equal((await db.get('cheques',issued.id)).status,'pending');
+ assert.equal((await db.getAll('treasury')).filter(x=>x.refChequeId===issued.id).length,0);
+
+ // Exercise the real controller forwarding, not only the retail service.
+ const { ChequeController }=await import('../src/controllers/ChequeController.js');
+ const eventDate='1406/01/05';
+ const settled=await ChequeController.changeStatus(issued.id,'cleared',{
+   date:eventDate,accountId:'cash-1'
+ });
+ assert.equal(settled.status,'cleared');
+ assert.equal(settled.dueDate,date);
+ assert.equal(settled.issueDate,date);
+ assert.equal(settled.statusBusinessDate,eventDate);
+ const statusJournal=await db.get('journal_entries',settled.statusJournalId);
+ assert.equal(statusJournal.date,eventDate);
+ assert.equal(statusJournal.periodId,newPeriod.id);
+ const cash=(await db.getAll('treasury')).filter(x=>x.refChequeId===issued.id);
+ assert.equal(cash.length,1);
+ assert.equal(cash[0].date,eventDate);
+ assert.equal(cash[0].journalId,statusJournal.id);
+ const receipt=(await db.getAll('audit_events')).filter(x=>
+   x.correlationId===statusJournal.id&&x.sourceId===statusJournal.id);
+ assert.equal(receipt.length,1);
+ assert.equal(receipt[0].businessDate,eventDate);
+ await assert.rejects(ChequeController.changeStatus(issued.id,'cleared',{
+   date:eventDate,accountId:'cash-1'
+ }),/در جریان/);
+ assert.equal((await db.getAll('treasury')).filter(x=>x.refChequeId===issued.id).length,1);
+ const trial=await accounts.trialBalance();
+ assert.equal(trial.totals.debit,trial.totals.credit);
+});
+
+test('A01: outbound bounced cheque in later open period reverses without cash posting',async()=>{
+ const {period}=await setup();
+ const outgoing=await retail.postCheque({
+   id:'a01-cheque-outgoing',direction:'outbound',status:'pending',
+   issueDate:date,dueDate:date,contactId:'contact-1',
+   amount:120,chequeNumber:'A01-OUT'
+ });
+ await accounts.closePeriod(period.id);
+ const next=await accounts.createPeriod({
+   name:'۱۴۰۶',startDate:'1406/01/01',endDate:'1406/12/29'
+ });
+ const settled=await retail.changeChequeStatus(outgoing.id,'bounced',{
+   date:'1406/01/09'
+ });
+ assert.equal(settled.status,'bounced');
+ assert.equal(settled.dueDate,date);
+ assert.equal(settled.statusBusinessDate,'1406/01/09');
+ const journal=await db.get('journal_entries',settled.statusJournalId);
+ assert.equal(journal.periodId,next.id);
+ assert.equal(journal.date,'1406/01/09');
+ assert.equal((await db.getAll('treasury')).filter(x=>x.refChequeId===outgoing.id).length,0);
+ await assert.rejects(retail.changeChequeStatus(outgoing.id,'cleared',{
+   date:'1406/01/09'
+ }),/در جریان/);
+ const trial=await accounts.trialBalance();
+ assert.equal(trial.totals.debit,trial.totals.credit);
+});

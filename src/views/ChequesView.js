@@ -330,6 +330,13 @@ class ChequesViewImpl {
           ${statuses.map(s => `<option value="${s.value}" ${cheque.status === s.value ? 'selected' : ''}>${s.label}</option>`).join('')}
         </select>
       </div>
+      ${cheque.financePosted ? `
+      <div class="form-group">
+        <label class="form-label">تاریخ ثبت رویداد مالی <span class="req">*</span></label>
+        <input type="text" class="form-control" id="chqEventDate"
+          value="${this._todayJalali()}" placeholder="1405/07/29" />
+        <small class="form-hint">تاریخ ثبت باید در دوره مالی باز باشد؛ تاریخ سررسید چک تغییر نمی‌کند.</small>
+      </div>` : ''}
     `;
     const footer = `
       <button class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button>
@@ -340,8 +347,10 @@ class ChequesViewImpl {
 
   async _applyStatusChange(id) {
     const status = document.getElementById('newStatus').value;
+    const eventDate=document.getElementById('chqEventDate')?.value.trim();
     try {
-      await ChequeController.changeStatus(id, status);
+      await ChequeController.changeStatus(id, status,
+        eventDate === undefined ? {} : { date: eventDate });
       Toast.success('وضعیت چک تغییر کرد');
       Modal.close();
       await this.reload();

@@ -85,10 +85,10 @@ class ChequeControllerImpl {
     return await StorageService.put('cheques', await DataScope.stamp('cheques', updated));
   }
 
-  async changeStatus(id, status) {
+  async changeStatus(id, status, options = {}) {
     const cheque = await StorageService.get('cheques', id);
     if (!cheque || cheque.companyId !== await DataScope.companyId()) throw new Error('چک در شرکت فعال یافت نشد');
-    if (cheque.financePosted) return RetailPostingService.changeChequeStatus(id,status);
+    if (cheque.financePosted) return RetailPostingService.changeChequeStatus(id,status,options);
     cheque.status = status;
     cheque.statusChangedAt = new Date().toISOString();
     return await StorageService.put('cheques', await DataScope.stamp('cheques', cheque));
