@@ -922,3 +922,112 @@ test('A01: outbound bounced cheque in later open period reverses without cash po
  const trial=await accounts.trialBalance();
  assert.equal(trial.totals.debit,trial.totals.credit);
 });
+
+test('A01: cheque endorsement requires third-party identity and explicit confirmation before posting',async()=>{
+ await setup();
+ const id='a01-endorsement-identity';
+ await db.put('contacts',{id:'endorsee-1',companyId:company,name:'تأمین‌کننده دریافت‌کننده'});
+ await db.put('contacts',{id:'other-company-contact',companyId:'other-company',name:'خارج از شرکت'});
+ const cheque=await retail.postCheque({
+   id,direction:'inbound',status:'pending',issueDate:date,dueDate:date,
+   contactId:'contact-1',amount:370,chequeNumber:'E370'
+ });
+ const snapshot=async()=>({
+   cheque:await db.get('cheques',id),
+   journals:(await db.getAll('journal_entries')).length,
+   lines:(await db.getAll('journal_lines')).length,
+   audit:(await db.getAll('audit_events')).length,
+   corrections:(await db.getAll('document_corrections')).length,
+   cash:(await db.getAll('treasury')).filter(x=>x.refChequeId===id).length
+ });
+ const baseline=await snapshot();
+ for(const options of [
+   {date}, {date,endorseeContactId:''},
+   {date,endorseeContactId:'contact-1',explicitlyApproved:true},
+   {date,endorseeContactId:'not-existent',explicitlyApproved:true},
+   {date,endorseeContactId:'other-company-contact',explicitlyApproved:true},
+   {date,endorseeContactId:'endorsee-1'},
+   {date,endorseeContactId:'endorsee-1',explicitlyApproved:'true'},
+   {date,endorseeContactId:'endorsee-1',explicitlyApproved:false}
+ ]){
+   await assert.rejects(retail.changeChequeStatus(id,'spent',options),
+     /دریافت‌کننده|واگذاری|تأیید/);
+   assert.deepEqual(await snapshot(),baseline,'Rejected endorsement mutated financial data');
+ }
+ const approved=await retail.changeChequeStatus(id,'spent',{
+   date,endorseeContactId:'endorsee-1',explicitlyApproved:true
+ });
+ assert.equal(approved.status,'spent');
+ assert.equal(approved.endorseeContactId,'endorsee-1');
+ assert.equal(approved.endorseeContactName,'تأمین‌کننده دریافت‌کننده');
+ assert.equal(approved.endorsementApprovedBy,'phase2-admin');
+ assert.equal(approved.statusBusinessDate,date);
+ const statusJournal=await db.get('journal_entries',approved.statusJournalId);
+ const journalLines=(await db.getAll('journal_lines'))
+   .filter(x=>x.journalId===statusJournal.id);
+ const payable=(await db.getAll('account_chart')).find(x=>x.companyId===company&&x.code==='201');
+ const incoming=(await db.getAll('account_chart')).find(x=>x.companyId===company&&x.code==='105');
+ assert.ok(payable&&incoming);
+ assert.deepEqual(journalLines.sort((a,b)=>b.debit-a.debit).map(x=>({
+   accountId:x.accountId,debit:x.debit,credit:x.credit,contactId:x.contactId
+ })),[
+   {accountId:payable.id,debit:370,credit:0,contactId:'endorsee-1'},
+   {accountId:incoming.id,debit:0,credit:370,contactId:'contact-1'}
+ ]);
+ const correction=(await db.getAll('document_corrections'))
+   .find(x=>x.sourceType==='cheque'&&x.sourceId===id);
+ assert.equal(correction.correctionType,'endorsement');
+ assert.equal(correction.endorseeContactId,'endorsee-1');
+ assert.equal(correction.originalDrawerContactId,'contact-1');
+ assert.equal(correction.correlationId,statusJournal.id);
+ assert.equal(correction.approvedBy,'phase2-admin');
+ assert.equal(correction.amount,370);
+ assert.equal((await db.getAll('treasury')).filter(x=>x.refChequeId===id).length,0);
+ const audit=(await db.getAll('audit_events')).filter(x=>x.correlationId===statusJournal.id);
+ assert.equal(audit.length,1);
+ const once=await snapshot();
+ await assert.rejects(retail.changeChequeStatus(id,'spent',{
+   date,endorseeContactId:'endorsee-1',explicitlyApproved:true
+ }),/در جریان/);
+ assert.deepEqual(await snapshot(),once);
+ const trial=await accounts.trialBalance();
+ assert.equal(trial.totals.debit,trial.totals.credit);
+});
+
+test('A01: duplicate endorsement correction key rolls back GL, status and audit atomically',async()=>{
+ await setup();
+ await db.put('contacts',{id:'endorsee-1',companyId:company,name:'تأمین‌کننده'});
+ const id='a01-endorsement-rollback';
+ await retail.postCheque({
+   id,direction:'inbound',status:'pending',issueDate:date,dueDate:date,
+   contactId:'contact-1',amount:120,chequeNumber:'E120'
+ });
+ const idem=JSON.stringify([company,'cheque_endorsement',id,2]);
+ await db.transaction(['document_corrections'],async tx=>{
+   await tx.add('document_corrections',{
+     id:'collision-endorsement',companyId:company,sourceType:'cheque',sourceId:'fixture',
+     correctionType:'endorsement',idempotencyKey:idem
+   });
+ });
+ const before={
+   cheque:await db.get('cheques',id),
+   journals:(await db.getAll('journal_entries')).length,
+   lines:(await db.getAll('journal_lines')).length,
+   audit:(await db.getAll('audit_events')).length,
+   corrections:(await db.getAll('document_corrections')).length,
+   cash:(await db.getAll('treasury')).length
+ };
+ await assert.rejects(retail.changeChequeStatus(id,'spent',{
+   date,endorseeContactId:'endorsee-1',explicitlyApproved:true
+ }));
+ assert.deepEqual({
+   cheque:await db.get('cheques',id),
+   journals:(await db.getAll('journal_entries')).length,
+   lines:(await db.getAll('journal_lines')).length,
+   audit:(await db.getAll('audit_events')).length,
+   corrections:(await db.getAll('document_corrections')).length,
+   cash:(await db.getAll('treasury')).length
+ },before);
+ const trial=await accounts.trialBalance();
+ assert.equal(trial.totals.debit,trial.totals.credit);
+});

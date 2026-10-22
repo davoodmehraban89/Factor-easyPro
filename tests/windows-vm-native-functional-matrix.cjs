@@ -568,6 +568,100 @@ async function nativeInactiveBankSettlementGuard() {
     chequeEventDateDifferentFromDueDate:true };
 }
 
+async function nativeChequeThirdPartyEndorsement() {
+  const wait=ms=>new Promise(r=>setTimeout(r,ms));
+  const check=(ok,msg)=>{if(!ok)throw Error(msg);};
+  const db=FINORA.Storage,company=await FINORA.Company.current();
+  check(company?.id&&FINORA.Auth.isAdmin(),'A01 endorsement needs synthetic admin');
+  const drawer=(await db.getAll('contacts')).find(c=>
+    c.companyId===company.id&&c.name==='مشتری آزمایشی ویندوز');
+  check(drawer,'Endorsement drawer fixture missing');
+  const endorsee={id:'vm-a01-endorsee-contact',companyId:company.id,
+    name:'تأمین‌کننده واگذاری آزمایشی',ownerUserId:FINORA.Auth.current().id};
+  await db.put('contacts',endorsee);
+  await FINORA.Router.go('cheques');await wait(130);
+  const view=window.ChequesView;
+  await view.reload();
+  await view.openChequeModal();
+  check(document.getElementById('chqSayad'),'Real native cheque create form missing');
+  document.getElementById('chqDirection').value='inbound';
+  document.getElementById('chqContact').value=drawer.id;
+  document.getElementById('chqSayad').value='1234567890123490';
+  document.getElementById('chqAmount').value='75';
+  document.getElementById('chqIssueDate').value='1405/07/18';
+  document.getElementById('chqDueDate').value='1405/07/18';
+  await view.saveCheque(null);
+  const cheque=(await db.getAll('cheques')).find(c=>
+    c.companyId===company.id&&c.sayadNumber==='1234567890123490');
+  check(cheque?.financePosted&&cheque.status==='pending','Endorsement cheque posting failed');
+  await view.changeStatus(cheque.id);
+  const status=document.getElementById('newStatus');
+  const date=document.getElementById('chqEventDate');
+  const endorseeSelect=document.getElementById('chqEndorsee');
+  check(status&&date&&endorseeSelect,'Actual endorsement choice missing in native UI');
+  status.value='spent';date.value='1405/07/20';
+  view._onChequeStatusSelection();
+  check(document.getElementById('chqEndorseeGroup').style.display!=='none',
+    'Third-party contact selector was hidden');
+  const counts=async()=>({
+    journals:(await db.getAll('journal_entries')).length,
+    corrections:(await db.getAll('document_corrections')).length,
+    audits:(await db.getAll('audit_events')).length
+  });
+  const before=await counts();
+  await view._applyStatusChange(cheque.id);
+  check(!document.querySelector('.modal-footer [data-action="confirm"]'),
+    'Endorsement without selected third party opened approval');
+  check(JSON.stringify(await counts())===JSON.stringify(before)&&
+    (await db.get('cheques',cheque.id)).status==='pending',
+    'Missing endorsee wrote a financial event');
+  const warning=[...document.querySelectorAll('.toast-warning')].find(x=>
+    x.textContent.includes('دریافت‌کننده واگذاری'));
+  check(warning,'Missing endorsee was not visibly rejected');
+  warning.querySelector('.toast-close')?.click();
+  endorseeSelect.value=endorsee.id;
+  await view._applyStatusChange(cheque.id);
+  const confirm=document.querySelector('.modal-backdrop:last-of-type [data-action="confirm"]');
+  check(confirm&&confirm.textContent.includes('تأیید و ثبت واگذاری'),
+    'Native endorsement has no separate explicit approval');
+  check(JSON.stringify(await counts())===JSON.stringify(before)&&
+    (await db.get('cheques',cheque.id)).status==='pending',
+    'Endorsement posted before explicit confirmation');
+  confirm.click();
+  let endorsed;
+  for(let i=0;i<60;i++){
+    endorsed=await db.get('cheques',cheque.id);
+    if(endorsed.status==='spent')break;
+    await wait(100);
+  }
+  check(endorsed?.status==='spent'&&endorsed.endorseeContactId===endorsee.id&&
+    endorsed.endorsementApprovedBy===FINORA.Auth.current().id&&
+    endorsed.statusBusinessDate==='1405/07/20',
+    'Native endorsement did not retain selected third party and approval');
+  const journal=await db.get('journal_entries',endorsed.statusJournalId);
+  const lines=(await db.getAll('journal_lines')).filter(x=>x.journalId===journal?.id);
+  const payable=(await db.getAll('account_chart')).find(x=>
+    x.companyId===company.id&&x.code==='201');
+  const incoming=(await db.getAll('account_chart')).find(x=>
+    x.companyId===company.id&&x.code==='105');
+  check(journal?.date==='1405/07/20'&&lines.some(l=>
+    l.accountId===payable?.id&&l.contactId===endorsee.id&&l.debit===75)&&
+    lines.some(l=>l.accountId===incoming?.id&&l.contactId===drawer.id&&l.credit===75),
+    'Endorsement GL was not correctly split between endorsee and drawer');
+  const correction=(await db.getAll('document_corrections')).find(x=>
+    x.sourceType==='cheque'&&x.sourceId===cheque.id&&x.correctionType==='endorsement');
+  check(correction?.endorseeContactId===endorsee.id&&
+    correction?.correlationId===journal.id&&correction?.approvedBy===FINORA.Auth.current().id,
+    'Native endorsement lacks append-only trace and actor');
+  check(!(await db.getAll('treasury')).some(x=>x.refChequeId===cheque.id),
+    'Endorsement incorrectly created cash settlement');
+  check(!document.querySelector('.toast-error')&&!document.querySelector('.modal-backdrop'),
+    'Native endorsement left unexpected error or modal');
+  return {missingEndorseeRejected:true,confirmationRequiredBeforeWrite:true,
+    endorseeLedgerDimensionCorrect:true,drawerChequeAssetPreserved:true,
+    appendOnlyEndorsementCorrelated:true,noPhantomCash:true};
+}
+
 async function nativeTreasuryChequeReconciliation() {
   const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   const check=(ok,msg)=>{if(!ok)throw Error(msg);};
@@ -1013,6 +1107,7 @@ module.exports = async function nativeFunctionalMatrix(cdp) {
     ['purchase-and-post-ledger', purchaseInvoice],
     ['partial-sale-and-inventory', saleInvoice],
     ['inactive-treasury-cheque-settlement', nativeInactiveBankSettlementGuard],
+    ['cheque-third-party-endorsement', nativeChequeThirdPartyEndorsement],
     ['treasury-cheque-reconciliation-readonly', nativeTreasuryChequeReconciliation],
     ['sale-return-immutable-stock-and-ledger', nativeSaleReturnGuardrails],
     ['purchase-return-and-stock-guardrails', nativePurchaseReturnGuardrails],
