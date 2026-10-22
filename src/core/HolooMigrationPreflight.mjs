@@ -72,10 +72,21 @@ export function previewHolooExtract(input = {}, { maxIssues = 100 } = {}) {
         return;
       }
       for (const key of rules.required) {
-        if (!nonempty(field(table, record, key))) add('REQUIRED_FIELD_EMPTY', table, i);
+        const value=field(table,record,key);
+        // Names are human labels, not numeric identifiers: a numeric
+        // value must not masquerade as a valid source master-data name.
+        const valid=key==='name'
+          ? typeof value==='string' && value.trim().length>0
+          : nonempty(value);
+        if (!valid) add('REQUIRED_FIELD_EMPTY', table, i);
       }
       for (const key of rules.money) {
         if (!money(field(table, record, key))) add('AMOUNT_NOT_INTEGER_RIAL', table, i);
+      }
+      if (table === 'cheques' &&
+          money(field(table, record, 'amount')) &&
+          field(table, record, 'amount') === 0) {
+        add('ZERO_VALUE_CHEQUE', table, i);
       }
       if (table === 'invoices' &&
           money(field(table, record, 'paidAmount')) &&
@@ -93,6 +104,12 @@ export function previewHolooExtract(input = {}, { maxIssues = 100 } = {}) {
     sets[table] = ids;
   }
   if (rowTotal === 0) add('SOURCE_HAS_NO_MAPPED_ROWS', 'source');
+  // A source invoice without its line-item extract is not a complete
+  // accounting migration source, even if the invoice header totals look
+  // plausible. Report this safely without inspecting personal data.
+  if (counts.invoices > 0 && counts.invoiceLines === 0) {
+    add('INVOICE_LINES_REQUIRED', 'invoiceLines');
+  }
 
   // Referential checks run only when both involved key maps are present.
   // Missing datasets do not prove missing source objects; this is not a
@@ -100,7 +117,8 @@ export function previewHolooExtract(input = {}, { maxIssues = 100 } = {}) {
   const references = [
     { table: 'invoices', key: 'contactId', parent: 'contacts' },
     { table: 'invoiceLines', key: 'invoiceId', parent: 'invoices' },
-    { table: 'invoiceLines', key: 'productId', parent: 'products' }
+    { table: 'invoiceLines', key: 'productId', parent: 'products' },
+    { table: 'cheques', key: 'contactId', parent: 'contacts' }
   ];
   for (const { table, key, parent } of references) {
     const rows = datasets[table] || [];
