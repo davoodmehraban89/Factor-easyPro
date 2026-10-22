@@ -96,3 +96,47 @@ test('A02/Holoo unrecognized snapshots are blocked and no false import readiness
   assert.equal(sparse.status, 'requires-source-and-accountant-review');
   assert.equal(sparse.canCommit, false);
 });
+
+test('A02/Holoo missing invoice lines cannot appear migration-ready',()=>{
+ const data=clean();
+ data.datasets.invoiceLines=[];
+ const before=structuredClone(data);
+ const result=previewHolooExtract(data);
+ assert.equal(result.status,'blocked');
+ assert.ok(result.issues.some(x=>x.code==='INVOICE_LINES_REQUIRED'));
+ assert.deepEqual(data,before);
+ assert.equal(result.writePerformed,false);
+ assert.equal(result.importPerformed,false);
+ assert.equal(result.canCommit,false);
+});
+
+test('A02/Holoo optional cheque counterparty mapping detects orphan references',()=>{
+ const data=clean();
+ data.datasets.cheques[0].party='C1';
+ data.columns.cheques.contactId='party';
+ assert.equal(previewHolooExtract(data).issueCount,0);
+ data.datasets.cheques[0].party='unlisted-PRIVATE-CONTACT';
+ const before=structuredClone(data);
+ let result=previewHolooExtract(data);
+ assert.ok(result.issues.some(x=>x.code==='REFERENCE_NOT_FOUND'&&x.table==='cheques'));
+ assert.ok(!JSON.stringify(result).includes('PRIVATE-CONTACT'));
+ assert.deepEqual(data,before);
+ data.datasets.contacts=[];
+ result=previewHolooExtract(data);
+ assert.ok(result.issues.some(x=>x.code==='REFERENCE_PARENT_DATASET_REQUIRED'&&x.table==='cheques'));
+ assert.equal(result.importPerformed,false);
+});
+
+test('A02/Holoo numeric names and zero value cheques are blocked without PII leakage',()=>{
+ const data=clean();
+ data.datasets.contacts[0].label=7319;
+ data.datasets.products[0].label=0;
+ data.datasets.cheques[0].total=0;
+ const result=previewHolooExtract(data);
+ assert.equal(result.status,'blocked');
+ assert.equal(result.issues.filter(x=>x.code==='REQUIRED_FIELD_EMPTY').length,2);
+ assert.ok(result.issues.some(x=>x.code==='ZERO_VALUE_CHEQUE'));
+ assert.equal(result.canCommit,false);
+ assert.equal(result.writePerformed,false);
+ assert.ok(!JSON.stringify(result).includes('7319'));
+});
