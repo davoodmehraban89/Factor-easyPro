@@ -152,8 +152,50 @@ export function reconcileFinancialData({
             report('CHEQUE_CLEARING_CASH_MISMATCH', 'وصول چک با جهت یا مبلغ یا سند خزانه مغایرت دارد', cheque.id);
           }
         }
+        // New finance-posted cheques retain the explicitly approved bank ID.
+        // Older cleared cheques may lack this field; do not invent historical
+        // evidence or silently fabricate a clearing account for those rows.
+        if (cheque.clearingAccountId) {
+          const selected = transactions.find(t => t.recordType === 'account' &&
+            t.id === cheque.clearingAccountId);
+          if (!selected) {
+            report('CHEQUE_CLEARING_ACCOUNT_MISSING',
+              'حساب انتخاب‌شده وصول چک در خزانه یافت نشد', cheque.id);
+          }
+          const expectedField = cheque.direction === 'inbound' ? 'toAccountId' : 'fromAccountId';
+          if (money.some(t => t[expectedField] !== cheque.clearingAccountId)) {
+            report('CHEQUE_CLEARING_ACCOUNT_MISMATCH',
+              'حساب مقصد یا مبدأ تراکنش چک با حساب تأییدشده متفاوت است', cheque.id);
+          }
+          const statusLines = journalLinesById.get(cheque.statusJournalId) || [];
+          const expectedCashLine = statusLines.some(line =>
+            line.accountId === selected?.ledgerAccountId &&
+            line.debit === (cheque.direction === 'inbound' ? cheque.amount : 0) &&
+            line.credit === (cheque.direction === 'outbound' ? cheque.amount : 0));
+          if (!selected?.ledgerAccountId || !expectedCashLine) {
+            report('CHEQUE_CLEARING_LEDGER_MISMATCH',
+              'سطر بانک سند وصول با حساب انتخاب‌شده و مبلغ چک تطبیق ندارد', cheque.id);
+          }
+        }
       } else if (money.length) {
         report('NONCLEARED_CHEQUE_HAS_CASH', 'چک وصول‌نشده دارای دریافت یا پرداخت خزانه است', cheque.id);
+      }
+      if (cheque.status === 'spent') {
+        if (!cheque.endorseeContactId || cheque.endorseeContactId === cheque.contactId ||
+            cheque.direction !== 'inbound') {
+          report('CHEQUE_ENDORSEE_INVALID',
+            'واگذاری چک دریافتی فاقد شخص ثالث معتبر است', cheque.id);
+        } else {
+          const lines = journalLinesById.get(cheque.statusJournalId) || [];
+          const matchesPayable=lines.some(l => chart.get(l.accountId)?.code === '201' &&
+            l.contactId === cheque.endorseeContactId && l.debit === cheque.amount && l.credit === 0);
+          const matchesCheque=lines.some(l => chart.get(l.accountId)?.code === '105' &&
+            l.contactId === cheque.contactId && l.credit === cheque.amount && l.debit === 0);
+          if (!matchesPayable || !matchesCheque) {
+            report('CHEQUE_ENDORSEMENT_GL_MISMATCH',
+              'سند واگذاری چک باید بدهکار شخص ثالث و بستانکار اسناد دریافتی صادرکننده باشد', cheque.id);
+          }
+        }
       }
     }
   }
