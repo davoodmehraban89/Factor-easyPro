@@ -319,17 +319,30 @@ class ChequesViewImpl {
       { value: 'cleared', label: 'وصول شده' },
       { value: 'bounced', label: 'برگشتی' },
       { value: 'returned', label: 'عودت داده شده' },
-      { value: 'spent', label: 'خرج شده (به شخص دیگر واگذار شد)' }
+      ...(cheque.direction === 'inbound'
+        ? [{ value: 'spent', label: 'خرج شده (به شخص دیگر واگذار شد)' }] : [])
     ];
+    const eligibleEndorsees=cache.contacts.filter(c=>c.id!==cheque.contactId);
+    const endorseeOptions=eligibleEndorsees.map(c=>
+      `<option value="${this._esc(c.id)}">${this._esc(c.name)}</option>`).join('');
 
     const body = `
       <p style="font-size:13px;margin-bottom:14px;color:var(--text-muted)">وضعیت فعلی: <strong>${ChequeController.getStatusLabel(cheque.status)}</strong></p>
       <div class="form-group">
         <label class="form-label">وضعیت جدید</label>
-        <select class="form-control" id="newStatus">
+        <select class="form-control" id="newStatus" onchange="window.ChequesView._onChequeStatusSelection()">
           ${statuses.map(s => `<option value="${s.value}" ${cheque.status === s.value ? 'selected' : ''}>${s.label}</option>`).join('')}
         </select>
       </div>
+      ${cheque.financePosted && cheque.direction === 'inbound' ? `
+      <div class="form-group" id="chqEndorseeGroup" style="display:none">
+        <label class="form-label">دریافت‌کننده واگذاری <span class="req">*</span></label>
+        <select class="form-control" id="chqEndorsee">
+          <option value="">— شخص ثالث را انتخاب کنید —</option>
+          ${endorseeOptions}
+        </select>
+        <small class="form-hint">سند حساب‌های پرداختنی به نام این شخص ثبت می‌شود، نه صادرکننده چک.</small>
+      </div>` : ''}
       ${cheque.financePosted ? `
       <div class="form-group">
         <label class="form-label">تاریخ ثبت رویداد مالی <span class="req">*</span></label>
@@ -343,20 +356,46 @@ class ChequesViewImpl {
       <button class="btn" onclick="window.ChequesView._applyStatusChange('${id}')">اعمال</button>
     `;
     Modal.open({ title: 'تغییر وضعیت چک', body, footer, size: 'sm' });
+    this._onChequeStatusSelection();
+  }
+
+  _onChequeStatusSelection() {
+    const group=document.getElementById('chqEndorseeGroup');
+    if(group) group.style.display=document.getElementById('newStatus')?.value==='spent'?'':'none';
   }
 
   async _applyStatusChange(id) {
-    const status = document.getElementById('newStatus').value;
+    const status=document.getElementById('newStatus').value;
     const eventDate=document.getElementById('chqEventDate')?.value.trim();
+    const options=eventDate===undefined?{}:{date:eventDate};
+    if(status==='spent' && document.getElementById('chqEndorsee')) {
+      const endorseeContactId=document.getElementById('chqEndorsee').value;
+      if(!endorseeContactId) { Toast.warning('دریافت‌کننده واگذاری چک را انتخاب کنید'); return; }
+      const recipient=cache.contacts.find(c=>c.id===endorseeContactId);
+      const cheque=cache.cheques.find(c=>c.id===id);
+      Modal.confirm({
+        title:'تأیید واگذاری چک',
+        message:`واگذاری چک ${this._esc(cheque?.chequeNumber||cheque?.sayadNumber||id)} به «${this._esc(recipient?.name||'')}» به مبلغ ${Formatters.money(cheque?.amount||0)} ثبت شود؟ این ثبت مالی قطعی است.`,
+        confirmText:'تأیید و ثبت واگذاری',
+        danger:true,
+        onConfirm:()=>this._commitStatusChange(id,status,{
+          ...options,endorseeContactId,explicitlyApproved:true
+        })
+      });
+      return;
+    }
+    await this._commitStatusChange(id,status,options);
+  }
+
+  async _commitStatusChange(id,status,options) {
     try {
-      await ChequeController.changeStatus(id, status,
-        eventDate === undefined ? {} : { date: eventDate });
+      await ChequeController.changeStatus(id,status,options);
       Toast.success('وضعیت چک تغییر کرد');
       Modal.close();
       await this.reload();
-      document.getElementById('cheques-content').innerHTML = this.renderContent();
-    } catch (err) {
-      Toast.error('خطا: ' + err.message);
+      document.getElementById('cheques-content').innerHTML=this.renderContent();
+    } catch(err) {
+      Toast.error('خطا: '+err.message);
     }
   }
 
