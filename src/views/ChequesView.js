@@ -5,12 +5,13 @@
 import { NumberInput } from '../utils/NumberInput.js';
 import { ChequeController } from '../controllers/ChequeController.js';
 import { ContactController } from '../controllers/ContactController.js';
+import { TreasuryController } from '../controllers/TreasuryController.js';
 import { Modal } from '../core/Modal.js';
 import { Toast } from '../core/Toast.js';
 import { Formatters } from '../utils/Formatters.js';
 
 let filter = { search: '', direction: '', status: '' };
-let cache = { cheques: [], contacts: [], stats: {} };
+let cache = { cheques: [], contacts: [], accounts: [], stats: {} };
 
 class ChequesViewImpl {
   async render() {
@@ -55,6 +56,8 @@ class ChequesViewImpl {
   async reload() {
     cache.cheques = await ChequeController.getAll();
     cache.contacts = await ContactController.getAll();
+    cache.accounts = (await TreasuryController.getAccounts())
+      .filter(x=>x.isActive!==false && !!x.ledgerAccountId);
     cache.stats = await ChequeController.getStats();
   }
 
@@ -313,6 +316,12 @@ class ChequesViewImpl {
   async changeStatus(id) {
     const cheque = cache.cheques.find(c => c.id === id);
     if (!cheque) return;
+    if(cheque.financePosted && cheque.status!=='pending') {
+      Toast.warning('چک دارای سند مالی قبلاً تعیین تکلیف شده؛ اصلاح آن نیازمند سند مستقل است');
+      return;
+    }
+    cache.accounts=(await TreasuryController.getAccounts())
+      .filter(x=>x.isActive!==false && !!x.ledgerAccountId);
 
     const statuses = [
       { value: 'pending', label: 'در جریان' },
@@ -325,6 +334,8 @@ class ChequesViewImpl {
     const eligibleEndorsees=cache.contacts.filter(c=>c.id!==cheque.contactId);
     const endorseeOptions=eligibleEndorsees.map(c=>
       `<option value="${this._esc(c.id)}">${this._esc(c.name)}</option>`).join('');
+    const accountOptions=cache.accounts.map(a=>
+      `<option value="${this._esc(a.id)}">${this._esc(a.name)}</option>`).join('');
 
     const body = `
       <p style="font-size:13px;margin-bottom:14px;color:var(--text-muted)">وضعیت فعلی: <strong>${ChequeController.getStatusLabel(cheque.status)}</strong></p>
@@ -334,6 +345,15 @@ class ChequesViewImpl {
           ${statuses.map(s => `<option value="${s.value}" ${cheque.status === s.value ? 'selected' : ''}>${s.label}</option>`).join('')}
         </select>
       </div>
+      ${cheque.financePosted ? `
+      <div class="form-group" id="chqClearingAccountGroup" style="display:none">
+        <label class="form-label">حساب بانک یا صندوق وصول <span class="req">*</span></label>
+        <select class="form-control" id="chqClearingAccount">
+          <option value="">— حساب وصول را انتخاب کنید —</option>
+          ${accountOptions}
+        </select>
+        <small class="form-hint">وجه فقط به همین حساب وارد یا از آن خارج می‌شود.</small>
+      </div>` : ''}
       ${cheque.financePosted && cheque.direction === 'inbound' ? `
       <div class="form-group" id="chqEndorseeGroup" style="display:none">
         <label class="form-label">دریافت‌کننده واگذاری <span class="req">*</span></label>
@@ -360,14 +380,33 @@ class ChequesViewImpl {
   }
 
   _onChequeStatusSelection() {
+    const status=document.getElementById('newStatus')?.value;
     const group=document.getElementById('chqEndorseeGroup');
-    if(group) group.style.display=document.getElementById('newStatus')?.value==='spent'?'':'none';
+    if(group) group.style.display=status==='spent'?'':'none';
+    const clearing=document.getElementById('chqClearingAccountGroup');
+    if(clearing) clearing.style.display=status==='cleared'?'':'none';
   }
 
   async _applyStatusChange(id) {
     const status=document.getElementById('newStatus').value;
     const eventDate=document.getElementById('chqEventDate')?.value.trim();
     const options=eventDate===undefined?{}:{date:eventDate};
+    if(status==='cleared' && document.getElementById('chqClearingAccount')) {
+      const accountId=document.getElementById('chqClearingAccount').value;
+      if(!accountId) { Toast.warning('برای وصول چک، حساب بانک یا صندوق را انتخاب کنید'); return; }
+      const bank=cache.accounts.find(a=>a.id===accountId);
+      const cheque=cache.cheques.find(c=>c.id===id);
+      Modal.confirm({
+        title:'تأیید وصول چک',
+        message:`وصول چک ${this._esc(cheque?.chequeNumber||cheque?.sayadNumber||id)} به مبلغ ${Formatters.money(cheque?.amount||0)} در حساب «${this._esc(bank?.name||'')}» ثبت شود؟ این ثبت مالی قطعی است.`,
+        confirmText:'تأیید و ثبت وصول',
+        danger:true,
+        onConfirm:()=>this._commitStatusChange(id,status,{
+          ...options,accountId,explicitlyApproved:true
+        })
+      });
+      return;
+    }
     if(status==='spent' && document.getElementById('chqEndorsee')) {
       const endorseeContactId=document.getElementById('chqEndorsee').value;
       if(!endorseeContactId) { Toast.warning('دریافت‌کننده واگذاری چک را انتخاب کنید'); return; }

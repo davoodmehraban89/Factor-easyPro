@@ -608,12 +608,22 @@ class RetailPostingServiceImpl {
       }
       const sum=amount(cheque.amount),inbound=cheque.direction==='inbound';
       const ref={contactId:cheque.contactId};
-      const accounts=(await tx.getAll('treasury')).filter(a=>a.companyId===company&&
-        a.recordType==='account'&&a.isActive!==false);
-      if(options.accountId&&!accounts.some(a=>a.id===options.accountId))
-        throw Error('حساب بانکی انتخاب‌شده فعال نیست یا در شرکت فعال وجود ندارد');
-      const bank=accounts.find(a=>a.id===options.accountId)||accounts.find(a=>a.isDefault)||accounts[0];
-      if(status==='cleared'&&!bank)throw Error('حساب بانک یا صندوق برای وصول چک مشخص نیست');
+      // Clearing moves real funds and must never silently route to an
+      // unrelated default account. Require both explicit selection and
+      // confirmation at the finance service boundary, not only in the UI.
+      let bank=null;
+      if(status==='cleared') {
+        if(typeof options.accountId!=='string'||!options.accountId.trim()) {
+          throw Error('برای وصول چک، انتخاب صریح حساب بانک یا صندوق الزامی است');
+        }
+        if(options.explicitlyApproved!==true) {
+          throw Error('وصول چک نیازمند تأیید صریح است');
+        }
+        const accounts=(await tx.getAll('treasury')).filter(a=>
+          a.companyId===company&&a.recordType==='account'&&a.isActive!==false);
+        bank=accounts.find(a=>a.id===options.accountId);
+        if(!bank)throw Error('حساب بانکی انتخاب‌شده فعال نیست یا در شرکت فعال وجود ندارد');
+      }
       const bankLedger=status==='cleared'?cashLedger(ctx,bank):null;
       const chequeAccount=leg(ctx,LEDGER_CODES[inbound?'chequeIn':'chequeOut']);
       let target;
@@ -627,6 +637,8 @@ class RetailPostingServiceImpl {
       const journal=await this.journal(tx,ctx,'cheque_status',id,lines,'تغییر وضعیت چک '+status,2);
       const updated={...cheque,status,statusVersion:2,
         statusJournalId:journal.id,statusBusinessDate:ctx.date,statusChangedAt:today(),
+        ...(bank?{clearingAccountId:bank.id,clearingApprovedBy:actor(),
+          clearingApprovedAtUtc:today()}:{}),
         ...(endorsee?{endorseeContactId:endorsee.id,endorseeContactName:endorsee.name,
           endorsementApprovedBy:actor(),endorsementApprovedAtUtc:today()}: {})};
       await tx.put('cheques',updated);
