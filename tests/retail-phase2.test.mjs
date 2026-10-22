@@ -91,7 +91,7 @@ test('v2 cash expense, cheque deposit and bank transfer produce balanced journal
  const c=await retail.postCheque({id:'cheque-in-1',issueDate:date,dueDate:date,
    direction:'inbound',status:'pending',contactId:'contact-1',amount:250,chequeNumber:'C1'});
  assert.equal(c.status,'pending');
- const cleared=await retail.changeChequeStatus(c.id,'cleared',{date});
+ const cleared=await retail.changeChequeStatus(c.id,'cleared',{date,accountId:'cash-1',explicitlyApproved:true});
  assert.equal(cleared.status,'cleared');
  await assert.rejects(retail.changeChequeStatus(c.id,'cleared',{date}),/در جریان/);
  assert.equal((await db.getAll('treasury')).filter(r=>r.refChequeId===c.id).length,1);
@@ -520,13 +520,13 @@ test('A05: inactive treasury accounts reject transfers, expenses and cheque clea
  });
  const preClear=await count('journal_entries');
  await assert.rejects(retail.changeChequeStatus(cheque.id,'cleared',{
-   date,accountId:second.id
+   date,accountId:second.id,explicitlyApproved:true
  }),/فعال نیست/);
  assert.equal((await db.get('cheques',cheque.id)).status,'pending');
  assert.equal(await count('journal_entries'),preClear);
  assert.equal((await db.getAll('treasury')).filter(x=>x.refChequeId===cheque.id).length,0);
  const cleared=await retail.changeChequeStatus(cheque.id,'cleared',{
-   date,accountId:active.id
+   date,accountId:active.id,explicitlyApproved:true
  });
  assert.equal(cleared.status,'cleared');
  await assert.rejects(retail.changeChequeStatus(cheque.id,'cleared',{
@@ -842,10 +842,10 @@ test('A01: cheque status uses selected open-period posting date after its due-da
    cash:(await db.getAll('treasury')).filter(x=>x.refChequeId===issued.id).length
  };
  await assert.rejects(retail.changeChequeStatus(issued.id,'cleared',{
-   date:'1405/07/17',accountId:'cash-1'
+   date:'1405/07/17',accountId:'cash-1',explicitlyApproved:true
  }),/پیش از تاریخ صدور/);
  await assert.rejects(retail.changeChequeStatus(issued.id,'cleared',{
-   date:'',accountId:'cash-1'
+   date:'',accountId:'cash-1',explicitlyApproved:true
  }),/تاریخ شمسی/);
  assert.equal((await db.getAll('journal_entries')).length,before.journals);
  assert.equal((await db.getAll('audit_events')).length,before.audits);
@@ -859,7 +859,7 @@ test('A01: cheque status uses selected open-period posting date after its due-da
    audits:(await db.getAll('audit_events')).length
  };
  await assert.rejects(retail.changeChequeStatus(issued.id,'cleared',{
-   date,accountId:'cash-1'
+   date,accountId:'cash-1',explicitlyApproved:true
  }),/دوره مالی باز/);
  assert.equal((await db.getAll('journal_entries')).length,beforeClosedAttempt.journals);
  assert.equal((await db.getAll('audit_events')).length,beforeClosedAttempt.audits);
@@ -870,7 +870,7 @@ test('A01: cheque status uses selected open-period posting date after its due-da
  const { ChequeController }=await import('../src/controllers/ChequeController.js');
  const eventDate='1406/01/05';
  const settled=await ChequeController.changeStatus(issued.id,'cleared',{
-   date:eventDate,accountId:'cash-1'
+   date:eventDate,accountId:'cash-1',explicitlyApproved:true
  });
  assert.equal(settled.status,'cleared');
  assert.equal(settled.dueDate,date);
@@ -1028,6 +1028,60 @@ test('A01: duplicate endorsement correction key rolls back GL, status and audit 
    corrections:(await db.getAll('document_corrections')).length,
    cash:(await db.getAll('treasury')).length
  },before);
+ const trial=await accounts.trialBalance();
+ assert.equal(trial.totals.debit,trial.totals.credit);
+});
+
+test('A01/A05: cheque cash clearing requires explicit active company account and confirmation',async()=>{
+ await setup();
+ const id='cheque-explicit-bank-a01';
+ const first=await retail.postCheque({id,issueDate:date,dueDate:date,
+   direction:'inbound',status:'pending',contactId:'contact-1',
+   amount:365,chequeNumber:'A01-BANK'});
+ const second=await retail.createTreasuryAccount({
+   id:'bank-a01',companyId:company,recordType:'account',
+   type:'bank',name:'بانک مقصد',ownerUserId:'phase2-admin',
+   initialBalance:0,isActive:true,isDefault:false
+ });
+ const state=async()=>({
+   cheque:await db.get('cheques',id),
+   journals:(await db.getAll('journal_entries')).length,
+   lines:(await db.getAll('journal_lines')).length,
+   audit:(await db.getAll('audit_events')).length,
+   transactions:(await db.getAll('treasury')).filter(x=>x.refChequeId===id).length
+ });
+ const before=await state();
+ for(const options of [
+   {date,explicitlyApproved:true},
+   {date,accountId:'',explicitlyApproved:true},
+   {date,accountId:second.id},
+   {date,accountId:second.id,explicitlyApproved:'true'},
+   {date,accountId:'nonexistent',explicitlyApproved:true},
+   {date,accountId:'cash-1',explicitlyApproved:false}
+ ]){
+   await assert.rejects(retail.changeChequeStatus(id,'cleared',options),
+     /انتخاب|تأیید|فعال نیست/);
+   assert.deepEqual(await state(),before,'Rejected clearing changed financial state');
+ }
+ const result=await retail.changeChequeStatus(id,'cleared',{
+   date,accountId:second.id,explicitlyApproved:true
+ });
+ assert.equal(result.status,'cleared');
+ assert.equal(result.clearingAccountId,second.id);
+ assert.equal(result.clearingApprovedBy,'phase2-admin');
+ const journal=await db.get('journal_entries',result.statusJournalId);
+ const lines=(await db.getAll('journal_lines')).filter(x=>x.journalId===journal.id);
+ assert.ok(lines.some(x=>x.accountId===second.ledgerAccountId&&x.debit===365));
+ const defaultCash=await db.get('treasury','cash-1');
+ assert.ok(!lines.some(x=>x.accountId===defaultCash.ledgerAccountId&&x.debit===365));
+ const receipts=(await db.getAll('treasury')).filter(x=>x.refChequeId===id);
+ assert.equal(receipts.length,1);
+ assert.equal(receipts[0].toAccountId,second.id);
+ assert.equal(receipts[0].journalId,journal.id);
+ await assert.rejects(retail.changeChequeStatus(first.id,'cleared',{
+   date,accountId:second.id,explicitlyApproved:true
+ }),/در جریان/);
+ assert.equal((await db.getAll('treasury')).filter(x=>x.refChequeId===id).length,1);
  const trial=await accounts.trialBalance();
  assert.equal(trial.totals.debit,trial.totals.credit);
 });
