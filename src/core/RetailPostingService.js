@@ -582,6 +582,23 @@ class RetailPostingServiceImpl {
       if(cheque.status!=='pending')throw Error('تنها چک در جریان قابل تعیین تکلیف است');
       if(!['cleared','bounced','returned','spent'].includes(status))throw Error('وضعیت چک نامعتبر است');
       if(status==='spent'&&cheque.direction!=='inbound')throw Error('فقط چک دریافتی قابل خرج‌کرد است');
+      // Endorsing an incoming cheque pays a *different* counterparty.
+      // The drawer still owns the cheque asset; the endorsee is the
+      // payable we debit. Do not silently use the original drawer for both.
+      let endorsee=null;
+      if(status==='spent') {
+        if(typeof options.endorseeContactId!=='string'||!options.endorseeContactId.trim()) {
+          throw Error('برای واگذاری چک، انتخاب شخص دریافت‌کننده الزامی است');
+        }
+        if(options.endorseeContactId===cheque.contactId) {
+          throw Error('دریافت‌کننده واگذاری باید با صادرکننده چک متفاوت باشد');
+        }
+        endorsee=sameCompany(await tx.get('contacts',options.endorseeContactId),
+          company,'دریافت‌کننده واگذاری چک');
+        if(options.explicitlyApproved!==true) {
+          throw Error('واگذاری چک نیازمند تأیید صریح است');
+        }
+      }
       // The actual cheque event is posted in an open period, which may be
       // later than its contractual due date (including when that period closed).
       // An explicitly blank date must fail rather than silently fall back.
@@ -604,12 +621,28 @@ class RetailPostingServiceImpl {
       else if(status==='spent')target=leg(ctx,LEDGER_CODES.payable);
       else target=leg(ctx,LEDGER_CODES[inbound?'receivable':'payable']);
       const lines=inbound?
-        [postLine(target,sum,0,ref),postLine(chequeAccount,0,sum,ref)]:
+        [postLine(target,sum,0,endorsee?{contactId:endorsee.id}:ref),
+          postLine(chequeAccount,0,sum,ref)]:
         [postLine(chequeAccount,sum,0,ref),postLine(target,0,sum,ref)];
       const journal=await this.journal(tx,ctx,'cheque_status',id,lines,'تغییر وضعیت چک '+status,2);
       const updated={...cheque,status,statusVersion:2,
-        statusJournalId:journal.id,statusBusinessDate:ctx.date,statusChangedAt:today()};
+        statusJournalId:journal.id,statusBusinessDate:ctx.date,statusChangedAt:today(),
+        ...(endorsee?{endorseeContactId:endorsee.id,endorseeContactName:endorsee.name,
+          endorsementApprovedBy:actor(),endorsementApprovedAtUtc:today()}: {})};
       await tx.put('cheques',updated);
+      if(endorsee) {
+        await tx.add('document_corrections',{
+          id:uid('cor_'),companyId:company,sourceType:'cheque',sourceId:id,
+          correctionType:'endorsement',resultType:'journal',resultId:journal.id,
+          correlationId:journal.id,
+          idempotencyKey:JSON.stringify([company,'cheque_endorsement',id,2]),
+          actorId:actor(),occurredAtUtc:today(),businessDate:ctx.date,
+          documentVersion:2,schemaVersion:1,actionCode:'third_party_cheque_endorsement',
+          reasonCode:'supplier_settlement',originalDrawerContactId:cheque.contactId,
+          endorseeContactId:endorsee.id,approvalMethod:'explicit_confirmation',
+          approvedBy:actor(),approvedAtUtc:today(),amount:sum
+        });
+      }
       if(status==='cleared'){
         if(!bank)throw Error('بانک یا صندوق چک مشخص نیست');
         await tx.put('treasury',{id:uid('tx_'),companyId:company,recordType:'transaction',
