@@ -542,30 +542,60 @@ async function nativeInactiveBankSettlementGuard() {
   check(dateInput,'Native posted cheque must request the financial event date');
   dateInput.value='1405/07/20'; // intentionally different from the cheque due date
   document.getElementById('newStatus').value='cleared';
+  cv._onChequeStatusSelection();
+  check(document.getElementById('chqClearingAccount'),
+    'Explicit bank selection was not presented in posted cheque UI');
   await cv._applyStatusChange(cheque.id);
-  toast=[...document.querySelectorAll('.toast-error')].find(x=>
-    x.textContent.includes('حساب بانک یا صندوق برای وصول چک مشخص نیست'));
-  check(toast,'Cheque clearing with all banks inactive did not reject');
+  toast=[...document.querySelectorAll('.toast-warning')].find(x=>
+    x.textContent.includes('حساب بانک یا صندوق را انتخاب کنید'));
+  check(toast,'Clearing without selected active bank did not visibly reject');
   check((await db.get('cheques',cheque.id)).status==='pending'&&
     (await db.getAll('journal_entries')).length===journalCount&&
     !(await db.getAll('treasury')).some(t=>t.refChequeId===cheque.id),
     'Rejected cheque clearance modified ledger or treasury');
   toast.querySelector('.toast-close')?.click();
+  FINORA.Modal.close();
   await db.put('treasury',active);
+  await db.put('treasury',{...secondary,isActive:true});
+  await cv.changeStatus(cheque.id);
+  document.getElementById('newStatus').value='cleared';
+  document.getElementById('chqEventDate').value='1405/07/20';
+  cv._onChequeStatusSelection();
+  const selected=document.getElementById('chqClearingAccount');
+  check([...selected.options].some(x=>x.value===secondary.id),
+    'Actual secondary bank not selectable in clearing UI');
+  selected.value=secondary.id; // bank other than the default
   await cv._applyStatusChange(cheque.id);
-  const cleared=await db.get('cheques',cheque.id);
+  const approve=document.querySelector('.modal-backdrop:last-of-type [data-action="confirm"]');
+  check(approve&&approve.textContent.includes('تأیید و ثبت وصول'),
+    'Actual bank clearance missing explicit secondary confirmation');
+  check((await db.get('cheques',cheque.id)).status==='pending'&&
+    (await db.getAll('journal_entries')).length===journalCount,
+    'Cheque cleared before approval');
+  approve.click();
+  let cleared;
+  for(let i=0;i<60;i++){
+    cleared=await db.get('cheques',cheque.id);
+    if(cleared?.status==='cleared')break;
+    await wait(100);
+  }
   const journal=await db.get('journal_entries',cleared.statusJournalId);
   const settlement=(await db.getAll('treasury')).filter(t=>t.refChequeId===cheque.id);
+  const lines=(await db.getAll('journal_lines')).filter(x=>x.journalId===journal?.id);
   check(cleared.status==='cleared'&&cleared.dueDate==='1405/07/18'&&
-    cleared.statusBusinessDate==='1405/07/20'&&
+    cleared.statusBusinessDate==='1405/07/20'&&cleared.clearingAccountId===secondary.id&&
+    cleared.clearingApprovedBy===FINORA.Auth.current().id&&
     journal?.date==='1405/07/20'&&settlement.length===1&&
-    settlement[0].date==='1405/07/20',
-    'Native cheque financial event date not persisted separately from due date');
+    settlement[0].date==='1405/07/20'&&settlement[0].toAccountId===secondary.id&&
+    lines.some(x=>x.accountId===secondary.ledgerAccountId&&x.debit===90)&&
+    !lines.some(x=>x.accountId===active.ledgerAccountId&&x.debit===90),
+    'Native cheque clearance failed selected non-default bank accounting');
   check(!document.querySelector('.toast-error')&&!document.querySelector('.modal-backdrop'),
     'A05 native treasury scenario left error toast/modal');
   return { inactiveTransferRejected:true, invalidTransferRolledBack:true,
     disabledChequeClearingRejected:true, validChequeClearedExactlyOnce:true,
-    chequeEventDateDifferentFromDueDate:true };
+    chequeEventDateDifferentFromDueDate:true,
+    explicitNondefaultClearingAccount:true,confirmationRequiredBeforeCash:true };
 }
 
 async function nativeChequeThirdPartyEndorsement() {
