@@ -170,3 +170,73 @@ test('A05: reconciler checks posted cheque lifecycle and its single matched cash
  assert.equal(before.cheques[0].status,'cleared');
 });
 
+function chequeControlFixture(){
+ const f=fixture();
+ f.accounts.push({id:'a105',code:'105'}, {id:'a102',code:'102'},
+   {id:'cash-mapped',code:'101002',parentCode:'101'});
+ f.journals.push(
+   {id:'ch-origin',status:'posted',sourceType:'cheque',sourceId:'ch',debit:80,credit:80},
+   {id:'ch-status',status:'posted',sourceType:'cheque_status',sourceId:'ch',debit:80,credit:80});
+ f.journalLines.push(
+   {id:'ch1',journalId:'ch-origin',accountId:'a105',contactId:'drawer',debit:80,credit:0},
+   {id:'ch2',journalId:'ch-origin',accountId:'a102',contactId:'drawer',debit:0,credit:80},
+   {id:'ch3',journalId:'ch-status',accountId:'cash-mapped',contactId:'drawer',debit:80,credit:0},
+   {id:'ch4',journalId:'ch-status',accountId:'a105',contactId:'drawer',debit:0,credit:80}
+ );
+ f.cheques=[{id:'ch',financePosted:true,direction:'inbound',contactId:'drawer',
+   status:'cleared',amount:80,journalId:'ch-origin',statusJournalId:'ch-status',
+   clearingAccountId:'bank-selected'}];
+ f.transactions=[
+   {id:'bank-selected',recordType:'account',ledgerAccountId:'cash-mapped'},
+   {id:'bank-default',recordType:'account',ledgerAccountId:'a102'},
+   {id:'ch-cash',recordType:'transaction',refChequeId:'ch',
+     type:'receipt',amount:80,financePosted:true,
+     journalId:'ch-status',toAccountId:'bank-selected'}
+ ];
+ return f;
+}
+
+test('A05: approved cheque bank must match treasury account and GL leaf without mutations',()=>{
+ const f=chequeControlFixture();
+ assert.equal(reconcileFinancialData(f).counts.issues,0);
+ const base=structuredClone(f);
+ f.transactions[2].toAccountId='bank-default';
+ let report=reconcileFinancialData(f);
+ assert.ok(report.issues.some(x=>x.code==='CHEQUE_CLEARING_ACCOUNT_MISMATCH'));
+ f.transactions[2].toAccountId='bank-selected';
+ f.journalLines.find(x=>x.id==='ch3').accountId='a102';
+ report=reconcileFinancialData(f);
+ assert.ok(report.issues.some(x=>x.code==='CHEQUE_CLEARING_LEDGER_MISMATCH'));
+ f.journalLines.find(x=>x.id==='ch3').accountId='cash-mapped';
+ f.transactions=f.transactions.filter(x=>x.id!=='bank-selected');
+ report=reconcileFinancialData(f);
+ assert.ok(report.issues.some(x=>x.code==='CHEQUE_CLEARING_ACCOUNT_MISSING'));
+ f.transactions=base.transactions;
+ delete f.cheques[0].clearingAccountId;
+ assert.equal(reconcileFinancialData(f).counts.issues,0,
+   'Historical cleared cheque without account evidence should not be retroactively forged');
+ assert.equal(base.cheques[0].clearingAccountId,'bank-selected');
+});
+
+test('A05: endorsed cheque reconciliation validates drawer and endorsee GL dimensions',()=>{
+ const f=chequeControlFixture();
+ f.cheques[0].status='spent';
+ f.cheques[0].endorseeContactId='supplier-2';
+ delete f.cheques[0].clearingAccountId;
+ f.transactions=[];
+ const debit=f.journalLines.find(x=>x.id==='ch3');
+ debit.accountId='a201';debit.contactId='supplier-2';
+ assert.equal(reconcileFinancialData(f).counts.issues,0);
+ const before=structuredClone(f);
+ debit.contactId='drawer';
+ let report=reconcileFinancialData(f);
+ assert.ok(report.issues.some(x=>x.code==='CHEQUE_ENDORSEMENT_GL_MISMATCH'));
+ debit.contactId='supplier-2';
+ f.cheques[0].endorseeContactId='drawer';
+ report=reconcileFinancialData(f);
+ assert.ok(report.issues.some(x=>x.code==='CHEQUE_ENDORSEE_INVALID'));
+ f.cheques[0].endorseeContactId='supplier-2';
+ assert.equal(reconcileFinancialData(f).counts.issues,0);
+ assert.equal(before.cheques[0].endorseeContactId,'supplier-2',
+   'Read-only checker must not mutate original references');
+});
