@@ -1003,9 +1003,11 @@ test('A01: duplicate endorsement correction key rolls back GL, status and audit 
    contactId:'contact-1',amount:120,chequeNumber:'E120'
  });
  const idem=JSON.stringify([company,'cheque_endorsement',id,2]);
- await db.put('document_corrections',{
-   id:'collision-endorsement',companyId:company,sourceType:'cheque',sourceId:'fixture',
-   correctionType:'endorsement',idempotencyKey:idem
+ await db.transaction(['document_corrections'],async tx=>{
+   await tx.add('document_corrections',{
+     id:'collision-endorsement',companyId:company,sourceType:'cheque',sourceId:'fixture',
+     correctionType:'endorsement',idempotencyKey:idem
+   });
  });
  const before={
    cheque:await db.get('cheques',id),
