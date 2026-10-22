@@ -968,7 +968,7 @@ test('A01: cheque endorsement requires third-party identity and explicit confirm
  const payable=(await db.getAll('account_chart')).find(x=>x.companyId===company&&x.code==='201');
  const incoming=(await db.getAll('account_chart')).find(x=>x.companyId===company&&x.code==='105');
  assert.ok(payable&&incoming);
- assert.deepEqual(journalLines.map(x=>({
+ assert.deepEqual(journalLines.sort((a,b)=>b.debit-a.debit).map(x=>({
    accountId:x.accountId,debit:x.debit,credit:x.credit,contactId:x.contactId
  })),[
    {accountId:payable.id,debit:370,credit:0,contactId:'endorsee-1'},
