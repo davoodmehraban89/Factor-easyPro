@@ -113,6 +113,12 @@ export function reconcileFinancialData({
   // Only posted integrated cheques can be reconciled against double-entry GL.
   if (integrated) {
     const chequeById = new Map(cheques.map(row => [row.id, row]));
+    // One account index for the entire report. A linear treasury.find for
+    // every cleared cheque was O(cheques × treasury rows) and scaled poorly
+    // when real stores have thousands of cheques and bank/cash records.
+    const cashAccountById = new Map(transactions
+      .filter(row => row.recordType === 'account')
+      .map(row => [row.id, row]));
     const moneyByCheque = new Map();
     for (const transaction of transactions.filter(row =>
       row.recordType === 'transaction' && row.refChequeId)) {
@@ -156,8 +162,7 @@ export function reconcileFinancialData({
         // Older cleared cheques may lack this field; do not invent historical
         // evidence or silently fabricate a clearing account for those rows.
         if (cheque.clearingAccountId) {
-          const selected = transactions.find(t => t.recordType === 'account' &&
-            t.id === cheque.clearingAccountId);
+          const selected = cashAccountById.get(cheque.clearingAccountId);
           if (!selected) {
             report('CHEQUE_CLEARING_ACCOUNT_MISSING',
               'حساب انتخاب‌شده وصول چک در خزانه یافت نشد', cheque.id);

@@ -240,3 +240,50 @@ test('A05: endorsed cheque reconciliation validates drawer and endorsee GL dimen
  assert.equal(before.cheques[0].endorseeContactId,'supplier-2',
    'Read-only checker must not mutate original references');
 });
+
+test('A08: cheque bank reconciliation indexes account rows once, without per-cheque linear searches',()=>{
+ const f=fixture();
+ f.accounts.push(
+   {id:'cheque-receivable',code:'105'},
+   {id:'customer-receivable',code:'102'},
+   {id:'bank-gl',code:'101001',parentCode:'101'}
+ );
+ f.transactions.push({
+   id:'selected-bank',recordType:'account',ledgerAccountId:'bank-gl'
+ });
+ for(let i=0;i<600;i++){
+   f.transactions.push({id:'unused-account-'+i,recordType:'account',ledgerAccountId:'bank-gl'});
+ }
+ for(let i=0;i<250;i++){
+   const id='cheque-'+i,origin='origin-'+i,final='final-'+i;
+   f.journals.push(
+     {id:origin,status:'posted',sourceType:'cheque',sourceId:id,debit:15,credit:15},
+     {id:final,status:'posted',sourceType:'cheque_status',sourceId:id,debit:15,credit:15}
+   );
+   f.journalLines.push(
+     {id:'cheque-dr-'+i,journalId:origin,accountId:'cheque-receivable',debit:15,credit:0},
+     {id:'cheque-cr-'+i,journalId:origin,accountId:'customer-receivable',debit:0,credit:15},
+     {id:'clear-dr-'+i,journalId:final,accountId:'bank-gl',debit:15,credit:0},
+     {id:'clear-cr-'+i,journalId:final,accountId:'cheque-receivable',debit:0,credit:15}
+   );
+   f.cheques=(f.cheques||[]);
+   f.cheques.push({id,financePosted:true,direction:'inbound',
+     contactId:'customer',status:'cleared',amount:15,
+     journalId:origin,statusJournalId:final,clearingAccountId:'selected-bank'});
+   f.transactions.push({id:'receipt-'+i,recordType:'transaction',refChequeId:id,
+     type:'receipt',amount:15,journalId:final,
+     toAccountId:'selected-bank',financePosted:true});
+ }
+ const guarded=new Proxy(f.transactions,{
+   get(target,key,receiver){
+     if(key==='find')throw Error('Per-cheque linear treasury lookup is forbidden');
+     return Reflect.get(target,key,receiver);
+   }
+ });
+ const result=reconcileFinancialData({...f,transactions:guarded});
+ assert.equal(result.counts.cheques,250);
+ assert.equal(result.counts.issues,0,JSON.stringify(result.issues.slice(0,3)));
+ assert.equal(result.totals.inventoryBook,100);
+ assert.equal(result.totals.inventoryLedger,100);
+ assert.equal(f.transactions.length,851);
+});
