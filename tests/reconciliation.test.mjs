@@ -176,7 +176,7 @@ function chequeControlFixture(){
    {id:'cash-mapped',code:'101002',parentCode:'101'});
  f.journals.push(
    {id:'ch-origin',status:'posted',sourceType:'cheque',sourceId:'ch',debit:80,credit:80},
-   {id:'ch-status',status:'posted',sourceType:'cheque_status',sourceId:'ch',debit:80,credit:80});
+   {id:'ch-status',status:'posted',sourceType:'cheque_status',sourceId:'ch',debit:80,credit:80,date:'1405/07/20'});
  f.journalLines.push(
    {id:'ch1',journalId:'ch-origin',accountId:'a105',contactId:'drawer',debit:80,credit:0},
    {id:'ch2',journalId:'ch-origin',accountId:'a102',contactId:'drawer',debit:0,credit:80},
@@ -185,12 +185,12 @@ function chequeControlFixture(){
  );
  f.cheques=[{id:'ch',financePosted:true,direction:'inbound',contactId:'drawer',
    status:'cleared',amount:80,journalId:'ch-origin',statusJournalId:'ch-status',
-   clearingAccountId:'bank-selected'}];
+   clearingAccountId:'bank-selected',statusBusinessDate:'1405/07/20'}];
  f.transactions=[
    {id:'bank-selected',recordType:'account',ledgerAccountId:'cash-mapped'},
    {id:'bank-default',recordType:'account',ledgerAccountId:'a102'},
    {id:'ch-cash',recordType:'transaction',refChequeId:'ch',
-     type:'receipt',amount:80,financePosted:true,
+     type:'receipt',amount:80,financePosted:true,method:'cheque',date:'1405/07/20',
      journalId:'ch-status',toAccountId:'bank-selected'}
  ];
  return f;
@@ -264,7 +264,7 @@ test('A08: cheque bank reconciliation indexes account rows once, without per-che
      {id:'cheque-dr-'+i,journalId:origin,accountId:'cheque-receivable',debit:15,credit:0},
      {id:'cheque-cr-'+i,journalId:origin,accountId:'customer-receivable',debit:0,credit:15},
      {id:'clear-dr-'+i,journalId:final,accountId:'bank-gl',debit:15,credit:0},
-     {id:'clear-cr-'+i,journalId:final,accountId:'cheque-receivable',debit:0,credit:15}
+     {id:'clear-cr-'+i,journalId:final,accountId:'cheque-receivable',contactId:'customer',debit:0,credit:15}
    );
    f.cheques=(f.cheques||[]);
    f.cheques.push({id,financePosted:true,direction:'inbound',
@@ -272,7 +272,7 @@ test('A08: cheque bank reconciliation indexes account rows once, without per-che
      journalId:origin,statusJournalId:final,clearingAccountId:'selected-bank'});
    f.transactions.push({id:'receipt-'+i,recordType:'transaction',refChequeId:id,
      type:'receipt',amount:15,journalId:final,
-     toAccountId:'selected-bank',financePosted:true});
+     toAccountId:'selected-bank',financePosted:true,method:'cheque'});
  }
  const guarded=new Proxy(f.transactions,{
    get(target,key,receiver){
@@ -286,4 +286,60 @@ test('A08: cheque bank reconciliation indexes account rows once, without per-che
  assert.equal(result.totals.inventoryBook,100);
  assert.equal(result.totals.inventoryLedger,100);
  assert.equal(f.transactions.length,851);
+});
+
+test('A05: posted clearing detects wrong drawer offset, extra lines, cash method and date without writes',()=>{
+ const f=chequeControlFixture();
+ const unchanged=structuredClone(f);
+ assert.equal(reconcileFinancialData(f).counts.issues,0);
+ const offset=f.journalLines.find(x=>x.id==='ch4');
+ offset.contactId='wrong-drawer';
+ let result=reconcileFinancialData(f);
+ assert.ok(result.issues.some(x=>x.code==='CHEQUE_CLEARING_OFFSET_MISMATCH'));
+ offset.contactId='drawer';
+ f.journalLines.push({id:'third-line',journalId:'ch-status',accountId:'a102',debit:0,credit:0});
+ result=reconcileFinancialData(f);
+ assert.ok(result.issues.some(x=>x.code==='CHEQUE_CLEARING_OFFSET_MISMATCH'));
+ f.journalLines.pop();
+ const cash=f.transactions.find(x=>x.id==='ch-cash');
+ cash.method='transfer';
+ result=reconcileFinancialData(f);
+ assert.ok(result.issues.some(x=>x.code==='CHEQUE_CLEARING_METHOD_MISMATCH'));
+ cash.method='cheque';
+ cash.fromAccountId='bank-default';
+ result=reconcileFinancialData(f);
+ assert.ok(result.issues.some(x=>x.code==='CHEQUE_CLEARING_METHOD_MISMATCH'));
+ delete cash.fromAccountId;
+ cash.date='1405/07/19';
+ result=reconcileFinancialData(f);
+ assert.ok(result.issues.some(x=>x.code==='CHEQUE_CLEARING_DATE_MISMATCH'));
+ cash.date='1405/07/20';
+ f.journals.find(x=>x.id==='ch-status').date='1405/07/19';
+ result=reconcileFinancialData(f);
+ assert.ok(result.issues.some(x=>x.code==='CHEQUE_CLEARING_DATE_MISMATCH'));
+ f.journals.find(x=>x.id==='ch-status').date='1405/07/20';
+ assert.equal(reconcileFinancialData(f).counts.issues,0);
+ assert.deepEqual(f,unchanged,'All diagnostic checks must be read-only after fixture restored');
+});
+
+test('A05: explicit outbound cheque clearance checks payable bank direction and offset',()=>{
+ const f=chequeControlFixture();
+ const cheque=f.cheques[0];
+ cheque.direction='outbound';
+ const journal=f.journalLines.filter(x=>x.journalId==='ch-status');
+ const bank=journal.find(x=>x.id==='ch3');
+ const chequeOffset=journal.find(x=>x.id==='ch4');
+ bank.debit=0;bank.credit=80;
+ chequeOffset.debit=80;chequeOffset.credit=0;
+ f.accounts.push({id:'out-cheque',code:'203'});
+ chequeOffset.accountId='out-cheque';
+ f.transactions.find(x=>x.id==='ch-cash').type='payment';
+ const cash=f.transactions.find(x=>x.id==='ch-cash');
+ delete cash.toAccountId;cash.fromAccountId='bank-selected';
+ assert.equal(reconcileFinancialData(f).counts.issues,0);
+ cash.type='receipt';
+ assert.ok(reconcileFinancialData(f).issues.some(x=>x.code==='CHEQUE_CLEARING_CASH_MISMATCH'));
+ cash.type='payment';
+ chequeOffset.contactId='wrong-drawer';
+ assert.ok(reconcileFinancialData(f).issues.some(x=>x.code==='CHEQUE_CLEARING_OFFSET_MISMATCH'));
 });
