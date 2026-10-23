@@ -109,6 +109,23 @@ export function previewHolooExtract(input = {}, { maxIssues = 100 } = {}) {
   // plausible. Report this safely without inspecting personal data.
   if (counts.invoices > 0 && counts.invoiceLines === 0) {
     add('INVOICE_LINES_REQUIRED', 'invoiceLines');
+  } else if (counts.invoices > 0 && counts.invoiceLines > 0 &&
+      typeof mappings.invoices?.sourceId === 'string' &&
+      typeof mappings.invoiceLines?.invoiceId === 'string') {
+    // A nonempty line-item export can still omit whole invoices. Report
+    // uncovered header row indexes, not source IDs, names or invoice values.
+    // Invalid/unknown source references are checked separately below.
+    const linked = new Set(datasets.invoiceLines
+      .filter(row=>row && typeof row === 'object' && !Array.isArray(row))
+      .map(row=>identity(field('invoiceLines',row,'invoiceId')))
+      .filter(Boolean));
+    datasets.invoices.forEach((row,i)=>{
+      if (!row || typeof row !== 'object' || Array.isArray(row)) return;
+      const invoiceId=identity(field('invoices',row,'sourceId'));
+      if (invoiceId && !linked.has(invoiceId)) {
+        add('INVOICE_WITHOUT_LINES','invoices',i);
+      }
+    });
   }
 
   // Referential checks run only when both involved key maps are present.
