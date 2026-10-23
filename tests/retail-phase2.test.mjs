@@ -1085,3 +1085,46 @@ test('A01/A05: cheque cash clearing requires explicit active company account and
  const trial=await accounts.trialBalance();
  assert.equal(trial.totals.debit,trial.totals.credit);
 });
+
+test('A01: immutable cheque rejects invalid or pre-issuance due dates with zero financial writes',async()=>{
+ await setup();
+ const baseline={
+   cheques:(await db.getAll('cheques')).length,
+   journals:(await db.getAll('journal_entries')).length,
+   lines:(await db.getAll('journal_lines')).length,
+   audits:(await db.getAll('audit_events')).length,
+   treasury:(await db.getAll('treasury')).length
+ };
+ const issueDate=date;
+ for(const [id,dueDate] of [
+   ['early','1405/07/17'],
+   ['malformed','2026-10-15'],
+   ['invalid','1405/13/01'],
+   ['empty','']
+ ]){
+   const row={id:'a01-due-'+id,issueDate,dueDate,
+     direction:'inbound',status:'pending',contactId:'contact-1',
+     amount:80,chequeNumber:'due-'+id};
+   await assert.rejects(retail.postCheque(row),/سررسید|تاریخ/);
+   assert.equal(await db.get('cheques',row.id),undefined);
+   assert.deepEqual({
+     cheques:(await db.getAll('cheques')).length,
+     journals:(await db.getAll('journal_entries')).length,
+     lines:(await db.getAll('journal_lines')).length,
+     audits:(await db.getAll('audit_events')).length,
+     treasury:(await db.getAll('treasury')).length
+   },baseline,'Invalid cheque must leave all financial stores unchanged');
+ }
+ const valid=await retail.postCheque({
+   id:'a01-due-valid',issueDate,
+   dueDate:'1405/08/05',direction:'inbound',
+   status:'pending',contactId:'contact-1',
+   amount:80,chequeNumber:'due-valid'
+ });
+ assert.equal(valid.dueDate,'1405/08/05');
+ assert.equal(valid.issueDate,issueDate);
+ assert.equal((await db.getAll('journal_entries')).length,baseline.journals+1);
+ assert.equal((await db.getAll('audit_events')).length,baseline.audits+1);
+ const trial=await accounts.trialBalance();
+ assert.equal(trial.totals.debit,trial.totals.credit);
+});
