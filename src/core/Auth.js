@@ -9,6 +9,7 @@
 
 import { StorageService, CREDENTIAL_FIELDS } from './StorageService.js';
 import { EventBus } from './EventBus.js';
+import { LicenseService } from './LicenseService.js';
 
 const PBKDF2_ITERATIONS = 600000;
 const MIN_PASSWORD_LENGTH = 8;
@@ -319,8 +320,12 @@ class AuthImpl {
     if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
       throw new Error(`رمز عبور باید حداقل ${MIN_PASSWORD_LENGTH} کاراکتر باشد`);
     }
+    if (LicenseService.state) LicenseService.assertWritable();
+    const limit=LicenseService.state
+      ? Math.min(4,LicenseService.status().maxUsers)
+      : 4;
     const users = await StorageService.getAll('users');
-    if (users.length >= 4) throw new Error('حداکثر ۴ کاربر (۱ مدیر و ۳ کاربر اضافی) مجاز است');
+    if (users.length >= limit) throw new Error('حداکثر تعداد کاربر مجاز در اشتراک تکمیل شده است');
     if (role === 'admin' && users.some(u => u.role === 'admin')) throw new Error('فقط یک مدیر سیستم مجاز است');
     if (users.some(u => u.username === name)) throw new Error('این نام کاربری قبلاً ثبت شده است');
     const created = await StorageService.put('users', {
