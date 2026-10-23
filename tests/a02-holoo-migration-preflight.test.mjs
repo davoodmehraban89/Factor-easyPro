@@ -140,3 +140,44 @@ test('A02/Holoo numeric names and zero value cheques are blocked without PII lea
  assert.equal(result.writePerformed,false);
  assert.ok(!JSON.stringify(result).includes('7319'));
 });
+
+test('A02/Holoo each mapped invoice header must be covered by its own line items',()=>{
+ const data=clean();
+ data.datasets.invoices.push({
+   id:'PRIVATE-MISSING-INVOICE-002',contact:'C1',gross:120,paid:0
+ });
+ const before=structuredClone(data);
+ const report=previewHolooExtract(data);
+ assert.equal(report.status,'blocked');
+ assert.equal(report.issueCount,1);
+ assert.deepEqual(report.issues,[{
+   code:'INVOICE_WITHOUT_LINES',table:'invoices',rowIndex:1
+ }]);
+ assert.equal(report.canCommit,false);
+ assert.equal(report.writePerformed,false);
+ assert.equal(report.importPerformed,false);
+ assert.ok(!JSON.stringify(report).includes('PRIVATE-MISSING-INVOICE-002'));
+ assert.deepEqual(data,before,'The preflight must remain read-only');
+ data.datasets.invoiceLines.push({invoice:'PRIVATE-MISSING-INVOICE-002',product:'P1'});
+ const covered=previewHolooExtract(data);
+ assert.equal(covered.issueCount,0);
+ assert.equal(covered.status,'requires-source-and-accountant-review');
+ assert.equal(covered.canCommit,false);
+});
+
+test('A02/Holoo orphan line does not disguise an uncovered invoice and diagnostics stay bounded',()=>{
+ const data=clean();
+ data.datasets.invoices.push({id:'PRIVATE-UNCOVERED',contact:'C1',gross:60,paid:0});
+ data.datasets.invoiceLines[0].invoice='PRIVATE-ORPHAN';
+ const report=previewHolooExtract(data,{maxIssues:2});
+ assert.equal(report.status,'blocked');
+ assert.equal(report.issues.length,2);
+ assert.equal(report.truncated,true);
+ assert.equal(report.issueCount,3);
+ assert.equal(report.issues.filter(x=>x.code==='INVOICE_WITHOUT_LINES').length,2);
+ for (const secret of ['PRIVATE-UNCOVERED','PRIVATE-ORPHAN']) {
+   assert.ok(!JSON.stringify(report).includes(secret));
+ }
+ assert.equal(report.importPerformed,false);
+ assert.equal(report.canCommit,false);
+});
