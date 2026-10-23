@@ -1,6 +1,7 @@
 import { StorageService } from './StorageService.js';
 import { Auth } from './Auth.js';
 import { EventBus } from './EventBus.js';
+import { LicenseService } from './LicenseService.js';
 
 const ACTIVE_KEY = 'finora_active_company';
 const MAX_COMPANIES = 5;
@@ -47,7 +48,15 @@ class CompanyServiceImpl {
   }
   async create(data){
     if(!Auth.isAdmin()) throw new Error('فقط مدیر می‌تواند شرکت ایجاد کند');
-    const all=await StorageService.getAll('companies'); if(all.length>=MAX_COMPANIES) throw new Error('حداکثر ۵ شرکت مجاز است');
+    // Preserve pre-boot test/migration behavior, but once the offline
+    // entitlement service has initialized, enforce its signed quota at the
+    // domain boundary (not merely in a UI button).
+    if(LicenseService.state) LicenseService.assertWritable();
+    const limit=LicenseService.state
+      ? Math.min(MAX_COMPANIES,LicenseService.status().maxCompanies)
+      : MAX_COMPANIES;
+    const all=await StorageService.getAll('companies');
+    if(all.length>=limit)throw new Error('حداکثر تعداد شرکت مجاز در اشتراک تکمیل شده است');
     return StorageService.put('companies',{...data,id:StorageService.uid('cmp_'),ownerUserId:Auth.current().id});
   }
   async _migrateLegacy(defaultCompanyId){

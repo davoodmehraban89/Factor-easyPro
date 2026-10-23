@@ -3,6 +3,11 @@ import assert from 'node:assert/strict';
 import { canonical } from '../src/core/EntitlementVerifier.mjs';
 import { loadProductionLicensePublicKey, validateOfflineActivation }
   from '../src/core/LicenseActivationCore.mjs';
+import 'fake-indexeddb/auto';
+import { StorageService as db } from '../src/core/StorageService.js';
+import { Auth } from '../src/core/Auth.js';
+import { CompanyService } from '../src/core/CompanyService.js';
+import { LicenseService } from '../src/core/LicenseService.js';
 
 const NOW = Date.UTC(2026, 9, 15);
 async function newSignedExample() {
@@ -75,4 +80,66 @@ test('A06: invalid wall-clock inputs cannot validate a signed offline lease', as
       false, String(invalidNow));
   }
   assert.equal(await validateOfflineActivation(token, pub, payload.installationId, NOW), true);
+});
+
+test('A06: initialized verified quota limits new companies and users; existing data stays readable',async()=>{
+ const previous={state:LicenseService.state,verifiedPayload:LicenseService.verifiedPayload,
+   clockRollback:LicenseService.clockRollback,user:Auth.currentUser,
+   company:CompanyService.activeCompanyId};
+ try {
+   await db.clearAll();
+   await db.put('users',{id:'quota-admin',role:'admin',username:'quota-admin'});
+   await db.put('companies',{id:'quota-primary',name:'Existing company'});
+   Auth.currentUser={id:'quota-admin',role:'admin',username:'quota-admin'};
+   CompanyService.activeCompanyId='quota-primary';
+   const now=new Date().toISOString();
+   LicenseService.state={installationId:'quota-device',lastSeenAt:now};
+   // The signature/installation verification is tested above. Here we
+   // simulate its already verified in-memory payload at the service boundary.
+   LicenseService.verifiedPayload={
+     product:'Factor-easyPro',installationId:'quota-device',
+     perpetual:true,issuedAt:now,lastOnlineCheckAt:now,
+     maxCompanies:1,maxUsers:1,maxDevices:1
+   };
+   LicenseService.clockRollback=false;
+   await assert.rejects(CompanyService.create({name:'Blocked extra company'}),/تعداد شرکت/);
+   await assert.rejects(Auth.createUser({
+     username:'quota-staff',password:'secure-password-012345',
+     displayName:'Employee'
+   }),/تعداد کاربر/);
+   assert.equal((await db.getAll('companies')).length,1);
+   assert.equal((await db.getAll('users')).length,1);
+   assert.equal((await CompanyService.list()).length,1);
+   LicenseService.verifiedPayload={
+     ...LicenseService.verifiedPayload,maxCompanies:2,maxUsers:2
+   };
+   const newCompany=await CompanyService.create({name:'Allowed second company'});
+   assert.ok(newCompany.id);
+   const newUser=await Auth.createUser({
+     username:'quota-staff',password:'secure-password-012345',
+     displayName:'Employee'
+   });
+   assert.equal(newUser.username,'quota-staff');
+   assert.equal((await db.getAll('companies')).length,2);
+   assert.equal((await db.getAll('users')).length,2);
+   await assert.rejects(CompanyService.create({name:'Third company'}),/تعداد شرکت/);
+   await assert.rejects(Auth.createUser({
+     username:'third-staff',password:'secure-password-012345'
+   }),/تعداد کاربر/);
+   LicenseService.clockRollback=true;
+   await assert.rejects(CompanyService.create({name:'Expired write'}),/پایان/);
+   await assert.rejects(Auth.createUser({
+     username:'expired-staff',password:'secure-password-012345'
+   }),/پایان/);
+   assert.equal((await db.getAll('companies')).length,2,
+     'Read-only license must not delete existing company data');
+   assert.equal((await db.getAll('users')).length,2,
+     'Read-only license must not delete existing accounts');
+ } finally {
+   LicenseService.state=previous.state;
+   LicenseService.verifiedPayload=previous.verifiedPayload;
+   LicenseService.clockRollback=previous.clockRollback;
+   Auth.currentUser=previous.user;
+   CompanyService.activeCompanyId=previous.company;
+ }
 });
