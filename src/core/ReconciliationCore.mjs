@@ -181,6 +181,32 @@ export function reconcileFinancialData({
             report('CHEQUE_CLEARING_LEDGER_MISMATCH',
               'سطر بانک سند وصول با حساب انتخاب‌شده و مبلغ چک تطبیق ندارد', cheque.id);
           }
+          // Complete the two-leg accounting proof for new explicitly
+          // bank-selected clearances; a balanced journal alone cannot prove
+          // the cheque asset/liability was cleared for the correct drawer.
+          const expectedChequeCode = cheque.direction === 'inbound' ? '105' : '203';
+          const hasChequeOffset = statusLines.some(line =>
+            chart.get(line.accountId)?.code === expectedChequeCode &&
+            line.contactId === cheque.contactId &&
+            line.debit === (cheque.direction === 'outbound' ? cheque.amount : 0) &&
+            line.credit === (cheque.direction === 'inbound' ? cheque.amount : 0));
+          if (statusLines.length !== 2 || !hasChequeOffset) {
+            report('CHEQUE_CLEARING_OFFSET_MISMATCH',
+              'طرف مقابل سند وصول با حساب اسناد و صادرکننده چک تطبیق ندارد', cheque.id);
+          }
+          for (const transaction of money) {
+            if (transaction.method !== 'cheque' ||
+                (cheque.direction === 'inbound' && transaction.fromAccountId != null) ||
+                (cheque.direction === 'outbound' && transaction.toAccountId != null)) {
+              report('CHEQUE_CLEARING_METHOD_MISMATCH',
+                'روش یا جهت حساب مقابل تراکنش وصول چک نامعتبر است', cheque.id);
+            }
+            if (cheque.statusBusinessDate && (transaction.date !== cheque.statusBusinessDate ||
+                final?.date !== cheque.statusBusinessDate)) {
+              report('CHEQUE_CLEARING_DATE_MISMATCH',
+                'تاریخ تراکنش یا سند وصول با تاریخ تأییدشده رویداد مالی یکسان نیست', cheque.id);
+            }
+          }
         }
       } else if (money.length) {
         report('NONCLEARED_CHEQUE_HAS_CASH', 'چک وصول‌نشده دارای دریافت یا پرداخت خزانه است', cheque.id);
