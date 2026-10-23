@@ -556,6 +556,13 @@ class RetailPostingServiceImpl {
     return StorageService.transaction(FINANCE_STORES,async tx=>{
       if(await tx.get('cheques',row.id))throw Error('چک تکراری است');
       const ctx=await this.context(tx,company,row.issueDate);
+      // Due date is a contractual property, not the accounting posting date.
+      // An invalid or pre-issuance due date must never enter an immutable
+      // financed cheque record even if the issue-date period is open.
+      assertJalaliDate(row.dueDate);
+      if(row.dueDate<row.issueDate) {
+        throw Error('سررسید چک نمی‌تواند پیش از تاریخ صدور باشد');
+      }
       positiveAmount(row.amount);
       if(!row.contactId)throw Error('چک باید طرف‌حساب معتبر داشته باشد');
       sameCompany(await tx.get('contacts',row.contactId),company,'شخص چک');
