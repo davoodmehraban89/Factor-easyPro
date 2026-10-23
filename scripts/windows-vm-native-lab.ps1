@@ -171,6 +171,7 @@ try {
     'purchase-and-post-ledger',
     'partial-sale-and-inventory',
     'inactive-treasury-cheque-settlement',
+    'cheque-third-party-endorsement',
     'treasury-cheque-reconciliation-readonly',
     'sale-return-immutable-stock-and-ledger',
     'purchase-return-and-stock-guardrails',
