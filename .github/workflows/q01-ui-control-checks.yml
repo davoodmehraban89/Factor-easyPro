@@ -7,6 +7,7 @@ on:
       - 'src/**'
       - 'tests/ui-control-structure.test.mjs'
       - 'scripts/q01-ui-control-catalog.cjs'
+      - 'scripts/q01-native-action-gap-report.cjs'
       - 'tests/windows-vm-ui-interaction-audit-browser.js'
       - 'tests/windows-vm-installed-tauri-cdp.cjs'
       - '.github/workflows/q01-ui-control-checks.yml'
