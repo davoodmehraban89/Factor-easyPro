@@ -65,11 +65,13 @@ try{
   $conn.Open()
   $phase='create-synthetic-database'
   ExecSql $conn ('CREATE DATABASE ['+$source+'];')
-  ExecSql $conn ('CREATE TABLE ['+$source+'].dbo.A02Synthetic('+
+  $conn.ChangeDatabase($source)
+  ExecSql $conn ('CREATE TABLE dbo.A02Synthetic('+
     'id int NOT NULL PRIMARY KEY,amount bigint NOT NULL,parentId int NULL,'+
     'CONSTRAINT FK_A02Synthetic_Parent FOREIGN KEY(parentId) REFERENCES dbo.A02Synthetic(id));'+
-    'CREATE UNIQUE INDEX UX_A02Synthetic_Amount ON ['+$source+'].dbo.A02Synthetic(amount) INCLUDE(parentId);'+
-    'INSERT INTO ['+$source+'].dbo.A02Synthetic(id,amount,parentId) VALUES(1,12345,NULL),(2,67890,1);')
+    'CREATE UNIQUE INDEX UX_A02Synthetic_Amount ON dbo.A02Synthetic(amount) INCLUDE(parentId);'+
+    'INSERT INTO dbo.A02Synthetic(id,amount,parentId) VALUES(1,12345,NULL),(2,67890,1);')
+  $conn.ChangeDatabase('master')
   $phase='create-synthetic-backup'
   $bak=Join-Path $folder 'synthetic_copy_only.bak'
   ExecSql $conn ('BACKUP DATABASE ['+$source+'] TO DISK = '+(Literal $bak)+' WITH INIT,COPY_ONLY;')
