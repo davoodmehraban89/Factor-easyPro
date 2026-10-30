@@ -158,6 +158,8 @@ test('A03: financial list views encode imported record IDs and textual values', 
     assert.doesNotMatch(source,/<option value="\$\{(?:[a-zA-Z]+)\.id\}"/,
       name+' still interpolates raw IDs into option attributes');
   }
+  const invoice=fs.readFileSync(path.join(root,'src','views','InvoicesView.js'),'utf8');
+  assert.ok(invoice.includes('${this._esc(k.label)}'), 'unknown imported invoice kind is not HTML escaped');
   const expenses=fs.readFileSync(path.join(root,'src','views','ExpensesView.js'),'utf8');
   assert.ok(expenses.includes('this._esc(JSON.stringify(String(e.id ??')));
 });
