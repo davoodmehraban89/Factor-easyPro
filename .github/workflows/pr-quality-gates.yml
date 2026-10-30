@@ -110,6 +110,17 @@ jobs:
               $result.canImport -ne $false) {
             throw 'A02 SQL offline preflight selftest breached no-write contract'
           }
+      - name: Isolated schema fingerprint safety selftest (synthetic; no SQL)
+        shell: pwsh
+        run: |
+          $out = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File './scripts/a02-isolated-schema-inventory.ps1' -Mode Test
+          if ($LASTEXITCODE -ne 0) { throw 'A02 schema inventory selftest failed' }
+          $s = ($out | Out-String | ConvertFrom-Json)
+          if ($s.status -ne 'schema-fingerprint-selftest-passed' -or
+              $s.sqlOpened -ne $false -or $s.userRowsRead -ne $false -or
+              $s.databaseModified -ne $false -or $s.canImport -ne $false) {
+            throw 'A02 schema inventory selftest safety breach'
+          }
       - name: Actual synthetic SQL LocalDB backup and isolated restore
         shell: pwsh
         run: |
@@ -122,6 +133,7 @@ jobs:
               $report.dbccPassed -ne $true -or
               $report.syntheticRecords -ne 2 -or
               $report.syntheticTotal -ne 80235 -or
+              $report.schemaOnlyInventoryVerified -ne $true -or
               $report.canImport -ne $false) {
             throw 'A02 synthetic LocalDB restore did not satisfy safety/reconciliation contract'
           }
