@@ -111,6 +111,27 @@ test('Q01: shared dialogs have ARIA naming, keyboard dismissal and focus restora
   assert.match(code, /removeEventListener\('keydown'/);
 });
 
+test('Q01: form labels are only associated within unambiguous modal groups', () => {
+  const modal=fs.readFileSync(path.join(root,'src','core','Modal.js'),'utf8');
+  const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
+  assert.match(modal, /_associateFormLabels\(card\)/);
+  assert.match(modal, /fields\.length !== 1/);
+  assert.match(modal, /labels\.length !== 1/);
+  assert.match(modal, /field\.labels\?\.length/);
+  assert.match(audit, /Modal form labels were missing, ambiguous, or overwrote explicit names/);
+  assert.match(audit, /expense-category-label-missing/);
+});
+
+test('Q01: primary search and filter controls have explicit accessible names', () => {
+  for (const [name, count] of [
+    ['InvoicesView',3],['ProductsView',2],['ContactsView',4],['ExpensesView',5]
+  ]) {
+    const source=fs.readFileSync(path.join(root,'src','views',name+'.js'),'utf8');
+    const names=[...source.matchAll(/aria-label="[^"]+"/g)];
+    assert.ok(names.length>=count, name+' lost search/filter accessibility labels');
+  }
+});
+
 test('Q01: Escape is handled once for nested financial dialogs and shortcut target is topmost', () => {
   const shortcuts = fs.readFileSync(path.join(root,'src','core','KeyboardShortcuts.js'),'utf8');
   const modal = fs.readFileSync(path.join(root,'src','core','Modal.js'),'utf8');
