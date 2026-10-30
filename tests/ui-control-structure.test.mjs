@@ -62,3 +62,18 @@ test('Q01: the native UI coverage runner must report unclicked controls explicit
   assert.ok(!source.includes('localStorage.clear()') && !source.includes('wipeAll('),
     'interaction audit must never clear the database in the installed VM');
 });
+
+test('Q01: menu controls remain keyboard-reachable with synchronized screen-reader state', () => {
+  const shell = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const main = fs.readFileSync(path.join(root, 'src','main.js'), 'utf8');
+  const router = fs.readFileSync(path.join(root, 'src','core','Router.js'), 'utf8');
+  const styles = fs.readFileSync(path.join(root, 'src','styles','main.css'), 'utf8');
+  const navLinks = [...shell.matchAll(/<a href="#([a-z]+)" data-page="([a-z]+)"/g)];
+  assert.equal(navLinks.length, 10);
+  for(const match of navLinks) assert.equal(match[1], match[2]);
+  assert.match(shell, /id="sidebarToggleBtn"[^>]*aria-label="[^"]+"[^>]*aria-expanded="true"[^>]*aria-controls="sidebarMenu"/);
+  assert.match(main, /localStorage\.setItem\(SIDEBAR_COLLAPSED_KEY,/);
+  assert.match(main, /aria-expanded/);
+  assert.match(router, /aria-current/);
+  assert.match(styles, /:focus-visible/);
+});
