@@ -183,6 +183,11 @@
   // Cross-app dialog behavior: nested modal focus, Escape and focus return.
   const modalTrigger=hamburger;
   modalTrigger.focus();
+  // A focus-restore regression is actionable only if the trigger was
+  // focusable before opening any dialog. Prove this precondition in WebView2.
+  if (document.activeElement!==modalTrigger) {
+    throw Error('Q01 modal-focus setup failed: sidebar trigger cannot receive focus');
+  }
   let unexpectedConfirm=false;
   FINORA.Modal.open({title:'Q01 Synthetic outer dialog',
     body:'<input id="q01ModalField" value="synthetic" />',
@@ -248,7 +253,19 @@
   document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
   await wait(15);
   if(document.querySelector('.modal-backdrop') || document.activeElement!==modalTrigger ||
-    unexpectedConfirm) throw Error('Escape did not restore focus to original control');
+    unexpectedConfirm) {
+    const active=document.activeElement;
+    throw Error('Escape did not restore focus to original control: '+
+      JSON.stringify({
+        activeTag:active?.tagName||null,activeId:active?.id||null,
+        expectedTag:modalTrigger.tagName,expectedId:modalTrigger.id,
+        triggerConnected:modalTrigger.isConnected,
+        activeInDom:!!active?.isConnected,
+        remainingDialogStack:FINORA.Modal.stack.length,
+        remainingBackdrops:document.querySelectorAll('.modal-backdrop').length,
+        unexpectedConfirm
+      }));
+  }
   // Open a fresh synthetic confirmation: a user clicking Cancel must NOT
   // execute the callback. Deliberate Confirm should execute exactly once.
   let syntheticConfirmed=0;
