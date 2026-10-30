@@ -50,6 +50,16 @@ button { cursor: pointer; font-family: inherit; }
 input, select, textarea { font-family: inherit; font-size: inherit; }
 a { color: inherit; }
 
+/* Keyboard users must always be able to identify the focused action.
+   Visible only for keyboard-type focus, not ordinary pointer interaction. */
+:where(button, a[href], input, select, textarea, [role="button"]):focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+:where(button, a[href], [role="button"])[disabled] {
+  cursor: not-allowed;
+}
+
 /* Splash */
 #splash {
   position: fixed; inset: 0;
