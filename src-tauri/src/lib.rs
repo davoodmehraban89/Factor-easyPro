@@ -1,3 +1,4 @@
+mod migration_readiness;
 #[cfg(windows)]
 #[repr(C)] struct DataBlob { cb_data:u32, pb_data:*mut u8 }
 #[cfg(windows)]
@@ -18,4 +19,4 @@ fn unprotect_local_state(value:String)->Result<String,String>{
  #[cfg(not(windows))]{String::from_utf8(raw).map_err(|e|e.to_string())}
 }
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run(){tauri::Builder::default().plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_fs::init()).plugin(tauri_plugin_opener::init()).invoke_handler(tauri::generate_handler![protect_local_state,unprotect_local_state]).run(tauri::generate_context!()).expect("error while running tauri application");}
+pub fn run(){tauri::Builder::default().plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_fs::init()).plugin(tauri_plugin_opener::init()).invoke_handler(tauri::generate_handler![protect_local_state,unprotect_local_state,migration_readiness::migration_system_readiness]).run(tauri::generate_context!()).expect("error while running tauri application");}
