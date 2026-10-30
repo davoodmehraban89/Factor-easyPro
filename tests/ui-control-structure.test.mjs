@@ -191,7 +191,7 @@ test('A02: Excel imports reject destructive replacement before touching master d
     'both contact and product imports must fail closed');
   assert.doesNotMatch(controller,/if \(mode === 'replace'\)/,
     'nontransactional delete-then-import must never be reachable');
-  const importModeSelect=settings.match(/<select class="form-control" id="importMode">([\\s\\S]*?)<\\/select>/)?.[1];
+  const importModeSelect=settings.split('id="importMode">')[1]?.split('</select>')[0];
   assert.ok(importModeSelect, 'Excel import mode selector missing');
   assert.doesNotMatch(importModeSelect,/<option value="replace"/,
     'destructive Excel option must not be offered; the backup restore option is separate');
