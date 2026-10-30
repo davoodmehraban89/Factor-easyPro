@@ -427,7 +427,23 @@
       JSON.stringify(await FINORA.Storage.getAll('contacts'))!==beforeContacts) {
     throw Error('An unsupported Excel mode mutated existing customer or product data');
   }
+  // A read-only malicious ledger fixture must render all references as text.
+  const hostileLedgerText='<img src=x onerror="window.Q01_LEDGER_INJECTION=true">';
+  const syntheticLedger={finalBalance:0,totalDebit:0,totalCredit:0,
+    rows:[{date:hostileLedgerText,refNumber:hostileLedgerText,
+      type:'invoice_sale',typeLabel:hostileLedgerText,
+      isCheque:false,debit:0,credit:0,balance:0,note:hostileLedgerText}]};
+  const syntheticContact={name:hostileLedgerText,nationalId:hostileLedgerText,
+    entityType:'natural',role:'customer',tags:[]};
+  const ledgerScratch=document.createElement('div');
+  ledgerScratch.innerHTML=window.ContactLedgerModal._buildBody(syntheticContact,syntheticLedger);
+  if(ledgerScratch.querySelector('img') || window.Q01_LEDGER_INJECTION ||
+    !ledgerScratch.textContent.includes(hostileLedgerText)) {
+    throw Error('Financial contact ledger interpreted imported text as executable markup');
+  }
+  delete window.Q01_LEDGER_INJECTION;
   const modalKeyboard={roleAndLabel:true,nestedDialogIsolation:true,
+    financialLedgerContentEscaped:true,
     excelReplacementRejectedWithoutWrites:true,
     importedInvoiceHtmlEscaped:true,
     expenseUnsafeHtmlEscaped:true,
