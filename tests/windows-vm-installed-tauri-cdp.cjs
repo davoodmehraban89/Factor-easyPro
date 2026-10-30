@@ -435,6 +435,12 @@ async function connect(url) {
       fs.writeFileSync(path.join(path.dirname(reportPath),
         report.nativeControlAudit.evidenceFile),
         JSON.stringify(audit, null, 2), { flag: 'wx' });
+      // The Markdown matrix is for owner/QA review and includes every
+      // remaining unique action with its route, reason and handler.
+      const gapReport=require('../scripts/q01-native-action-gap-report.cjs').buildReport(audit);
+      report.nativeControlAudit.gapReportFile='q01-native-unverified-controls.md';
+      fs.writeFileSync(path.join(path.dirname(reportPath),
+        report.nativeControlAudit.gapReportFile),gapReport,{flag:'wx'});
       const routeScreenshots = [];
       for (const route of audit.routeNames) {
         await cdp.evaluate('FINORA.Router.go(' + JSON.stringify(route) + ')', 20000);
