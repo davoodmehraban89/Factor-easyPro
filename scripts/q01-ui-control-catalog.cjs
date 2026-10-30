@@ -6,7 +6,7 @@ const root=path.resolve(__dirname,'..');
 const paths=['index.html',...fs.readdirSync(path.join(root,'src','views'))
   .filter(x=>x.endsWith('.js')).sort().map(x=>'src/views/'+x)];
 const controls=[],summary=[];
-const risk=/\b(?:delete|wipe|remove|restore|save|post|submit|confirm|activate|seed|commit|final|approve|closePeriod|logout|export|import|download|print|settle|apply|reset|changeStatus|_save|_apply|_commit)\s*\(/i;
+const risk=/(?:^|[.\s])(?:_?(?:save|delete|wipe|restore|post|submit|confirm|activate|seed|commit|final|approve|logout|export|import|download|print|settle|apply|reset|changeStatus|remove)\w*)\s*\(/i;
 const line=(s,i)=>s.slice(0,i).split('\n').length;
 for(const file of paths){
  const source=fs.readFileSync(path.join(root,file),'utf8');
