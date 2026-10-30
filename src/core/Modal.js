@@ -148,12 +148,15 @@ class ModalManager {
   }
 
   confirm({ title, message, confirmText = 'تأیید', cancelText = 'انصراف', danger = false, onConfirm }) {
-    const body = `<p style="font-size:13.5px;line-height:1.8">${message}</p>`;
+    // Confirmations always render their message as text; financial record names
+    // and externally imported labels must never become executable markup.
+    const body = '<p data-confirm-message style="font-size:13.5px;line-height:1.8"></p>';
     const footer = `
       <button class="btn btn-secondary" data-action="cancel">${cancelText}</button>
       <button class="btn ${danger ? 'btn-danger' : ''}" data-action="confirm">${confirmText}</button>
     `;
     const modal = this.open({ title, body, footer, size: 'sm' });
+    modal.card.querySelector('[data-confirm-message]').textContent = String(message ?? '');
     const footerEl = modal.card.querySelector('.modal-footer');
     footerEl.querySelector('[data-action="cancel"]').onclick = () => this.close();
     footerEl.querySelector('[data-action="confirm"]').onclick = () => {
