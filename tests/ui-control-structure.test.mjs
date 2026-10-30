@@ -98,3 +98,14 @@ test('Q01: Escape is handled once for nested financial dialogs and shortcut targ
   assert.match(modal, /shortcuts\.escapeCloses === false/);
   assert.match(modal, /this\.close\(\)/);
 });
+
+test('Q01: pressing plain Enter on focused Cancel, buttons or inputs must not invoke global save', () => {
+  const shortcuts = fs.readFileSync(path.join(root, 'src','core','KeyboardShortcuts.js'), 'utf8');
+  const nativeAudit = fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'), 'utf8');
+  assert.match(shortcuts, /active !== modal\.querySelector\('\.modal-card'\)/,
+    'plain Enter must only target the dialog surface, never its focused controls');
+  assert.match(shortcuts, /e\.key === 'Enter' && !e\.shiftKey && this\.settings\.enterConfirms && modal/);
+  assert.match(nativeAudit, /enterOnFocusedCancelDoesNotSave:true/);
+  assert.match(nativeAudit, /enterOnInputDoesNotSubmit:true/);
+  assert.match(nativeAudit, /'Enter on focused Cancel was hijacked as financial confirmation'/);
+});
