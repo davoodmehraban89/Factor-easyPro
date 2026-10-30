@@ -97,15 +97,19 @@ try{
   $phase='dbcc-checkdb'
   ExecSql $conn ('DBCC CHECKDB(['+$restored+']) WITH NO_INFOMSGS;')
   $phase='isolated-schema-inventory'
-  # Execute the schema-only command against the real restored synthetic DB.
-  # No table names/column names or private data are logged.
+  # Test exact read-only fingerprint tool after a genuine synthetic restore.
   $inventoryScript=Join-Path $PSScriptRoot 'a02-isolated-schema-inventory.ps1'
   $inventoryLines=@(& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $inventoryScript -Mode Inspect -InstanceName $instance -DatabaseName $restored)
   Require ($LASTEXITCODE -eq 0) 'A02_SCHEMA_INVENTORY_INTEGRATION_FAILED'
   $inventory=($inventoryLines | Out-String | ConvertFrom-Json)
-  Require ($inventory.status -eq 'isolated-schema-inventoried' -and
+  $validFingerprint=([string]$inventory.fingerprintSha256 -cmatch '^[0-9a-f]{64}$')
+  $accepted=($inventory.status -eq 'isolated-schema-inventoried' -and
     $inventory.tableCount -eq 1 -and $inventory.columnCount -eq 2 -and
-    $inventory.fingerprintSha256 -cmatch '^[0-9a-f]{64}  $row=QuerySql $conn ('SELECT COUNT_BIG(*) AS C,SUM(amount) AS T FROM ['+$restored+'].dbo.A02Synthetic;')
+    $validFingerprint -and $inventory.userRowsRead -eq $false -and
+    $inventory.databaseModified -eq $false -and $inventory.canImport -eq $false)
+  Require $accepted 'A02_SCHEMA_INVENTORY_CONTRACT_FAILED'
+  $phase='synthetic-reconciliation'
+  $row=QuerySql $conn ('SELECT COUNT_BIG(*) AS C,SUM(amount) AS T FROM ['+$restored+'].dbo.A02Synthetic;')
   Require ($row.Rows.Count -eq 1 -and [long]$row.Rows[0]['C'] -eq 2 -and
     [long]$row.Rows[0]['T'] -eq 80235) 'A02_RESTORED_SYNTHETIC_TOTALS_MISMATCH'
   [pscustomobject]@{
