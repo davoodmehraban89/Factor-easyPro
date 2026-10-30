@@ -95,12 +95,12 @@ class TreasuryViewImpl {
                 <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${t.label}${acc.isDefault ? ' • پیش‌فرض' : ''}</div>
               </div>
               <div class="row-actions">
-                <button class="icon-btn-sm" title="ویرایش" onclick="window.TreasuryView.editAccount('${acc.id}')">✏️</button>
-                <button class="icon-btn-sm danger" title="حذف" onclick="window.TreasuryView.deleteAccount('${acc.id}')">🗑️</button>
+                <button class="icon-btn-sm" title="ویرایش" onclick="window.TreasuryView.editAccount(${this._esc(JSON.stringify(String(acc.id ?? '')))})">✏️</button>
+                <button class="icon-btn-sm danger" title="حذف" onclick="window.TreasuryView.deleteAccount(${this._esc(JSON.stringify(String(acc.id ?? '')))})">🗑️</button>
               </div>
             </div>
             ${acc.bankName ? `<div style="font-size:11.5px;color:var(--text-muted);margin-bottom:4px">🏛️ ${this._esc(acc.bankName)}</div>` : ''}
-            ${acc.accountNumber ? `<div style="font-size:11.5px;color:var(--text-muted);margin-bottom:4px">شماره: ${Formatters.toPersianDigits(acc.accountNumber)}</div>` : ''}
+            ${acc.accountNumber ? `<div style="font-size:11.5px;color:var(--text-muted);margin-bottom:4px">شماره: ${this._esc(Formatters.toPersianDigits(acc.accountNumber))}</div>` : ''}
             <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)">
               <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">موجودی فعلی</div>
               <div style="font-size:18px;font-weight:800;color:${bal >= 0 ? 'var(--success)' : 'var(--danger)'}">${Formatters.money(bal)}</div>
@@ -168,17 +168,17 @@ class TreasuryViewImpl {
           return `
             <tr>
               <td><span class="badge ${typeInfo.cls}">${typeInfo.icon} ${typeInfo.label}</span></td>
-              <td>${Formatters.toPersianDigits(t.date)}</td>
+              <td>${this._esc(Formatters.toPersianDigits(t.date))}</td>
               <td>${this._esc(t.contactName || '—')}</td>
               <td>${accountText}</td>
-              <td>${TreasuryController.getMethodLabel(t.method)}</td>
+              <td>${this._esc(TreasuryController.getMethodLabel(t.method))}</td>
               <td style="font-weight:700;color:${t.type === 'receipt' ? 'var(--success)' : t.type === 'payment' ? 'var(--danger)' : 'var(--warning)'}">
                 ${t.type === 'receipt' ? '+' : t.type === 'payment' ? '-' : ''}${Formatters.money(t.amount)}
               </td>
-              <td>${t.refInvoiceNumber ? '#' + Formatters.toPersianDigits(t.refInvoiceNumber) : '—'}</td>
+              <td>${this._esc(t.refInvoiceNumber ? '#' + Formatters.toPersianDigits(t.refInvoiceNumber) : '—')}</td>
               <td>
                 <div class="row-actions">
-                  <button class="icon-btn-sm danger" title="حذف" onclick="window.TreasuryView.deleteTransaction('${t.id}')">🗑️</button>
+                  <button class="icon-btn-sm danger" title="حذف" onclick="window.TreasuryView.deleteTransaction(${this._esc(JSON.stringify(String(t.id ?? '')))})">🗑️</button>
                 </div>
               </td>
             </tr>
@@ -186,7 +186,7 @@ class TreasuryViewImpl {
         }).join('');
 
     const accountOptions = cache.accounts.map(a =>
-      `<option value="${a.id}" ${txFilter.accountId === a.id ? 'selected' : ''}>${this._esc(a.name)}</option>`
+      `<option value="${this._esc(a.id)}" ${txFilter.accountId === a.id ? 'selected' : ''}>${this._esc(a.name)}</option>`
     ).join('');
 
     return `
@@ -324,7 +324,7 @@ class TreasuryViewImpl {
 
     const footer = `
       <button class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button>
-      <button class="btn" onclick="window.TreasuryView.saveAccount(${isEdit ? `'${accountId}'` : 'null'})">💾 ذخیره</button>
+      <button class="btn" onclick="window.TreasuryView.saveAccount(${isEdit ? this._esc(JSON.stringify(String(accountId ?? ''))) : 'null'})">💾 ذخیره</button>
     `;
 
     Modal.open({ title: isEdit ? 'ویرایش حساب' : 'حساب جدید', body, footer, size: 'md' });
@@ -399,13 +399,13 @@ class TreasuryViewImpl {
     let list = cache.accounts;
     if (filterType) list = list.filter(a => a.type === filterType);
     return list.map(a =>
-      `<option value="${a.id}" ${selectedId === a.id ? 'selected' : ''}>${this._esc(a.name)}</option>`
+      `<option value="${this._esc(a.id)}" ${selectedId === a.id ? 'selected' : ''}>${this._esc(a.name)}</option>`
     ).join('');
   }
 
   _buildContactOptions() {
     return cache.contacts.map(c =>
-      `<option value="${c.id}">${this._esc(c.name)}</option>`
+      `<option value="${this._esc(c.id)}">${this._esc(c.name)}</option>`
     ).join('');
   }
 

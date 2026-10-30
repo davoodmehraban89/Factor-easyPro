@@ -73,8 +73,8 @@ class InvoicesViewImpl {
     if (el) el.innerHTML = this.renderTable();
   }
 
-  renderTable() {
-    if (cache.invoices.length === 0) {
+  renderTable(invoices = cache.invoices) {
+    if (invoices.length === 0) {
       return `
         <div class="table-wrap">
           <table><tbody>
@@ -90,7 +90,7 @@ class InvoicesViewImpl {
         </div>`;
     }
 
-    const rows = cache.invoices.map(inv => {
+    const rows = invoices.map(inv => {
       const statusBadge = inv.status === 'paid'
         ? '<span class="badge badge-success">تسویه‌شده</span>'
         : inv.status === 'partial'
@@ -110,14 +110,14 @@ class InvoicesViewImpl {
       return `
         <tr>
           <td>
-            <strong style="font-size:13.5px">#${Formatters.toPersianDigits(inv.number || '—')}</strong>
+            <strong style="font-size:13.5px">#${this._esc(Formatters.toPersianDigits(inv.number || '—'))}</strong>
             ${preBadge}
           </td>
           <td>
-            <span class="badge ${k.cls}">${k.label}</span>
+            <span class="badge ${k.cls}">${this._esc(k.label)}</span>
           </td>
           <td>${this._esc(inv.contactName || '—')}</td>
-          <td>${Formatters.toPersianDigits(inv.date || '—')}</td>
+          <td>${this._esc(Formatters.toPersianDigits(inv.date || '—'))}</td>
           <td style="font-weight:600">${Formatters.money(inv.grandTotal)}</td>
           <td>${Formatters.money(inv.paidAmount || 0)}</td>
           <td style="color:${inv.remaining > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:600">
@@ -126,10 +126,10 @@ class InvoicesViewImpl {
           <td>${statusBadge}</td>
           <td>
             <div class="row-actions">
-              <button class="icon-btn-sm" title="چاپ" onclick="window.InvoicesView.printInvoice('${inv.id}')">🖨️</button>
-              <button class="icon-btn-sm" title="ویرایش" onclick="window.InvoicesView.editInvoice('${inv.id}')">✏️</button>
-              ${inv.isPreInvoice ? `<button class="icon-btn-sm" title="تبدیل به فاکتور" onclick="window.InvoicesView.convertPreInvoice('${inv.id}')">✅</button>` : ''}
-              <button class="icon-btn-sm danger" title="حذف" onclick="window.InvoicesView.deleteInvoice('${inv.id}')">🗑️</button>
+              <button class="icon-btn-sm" title="چاپ" onclick="window.InvoicesView.printInvoice(${this._esc(JSON.stringify(String(inv.id ?? '')))})">🖨️</button>
+              <button class="icon-btn-sm" title="ویرایش" onclick="window.InvoicesView.editInvoice(${this._esc(JSON.stringify(String(inv.id ?? '')))})">✏️</button>
+              ${inv.isPreInvoice ? `<button class="icon-btn-sm" title="تبدیل به فاکتور" onclick="window.InvoicesView.convertPreInvoice(${this._esc(JSON.stringify(String(inv.id ?? '')))})">✅</button>` : ''}
+              <button class="icon-btn-sm danger" title="حذف" onclick="window.InvoicesView.deleteInvoice(${this._esc(JSON.stringify(String(inv.id ?? '')))})">🗑️</button>
             </div>
           </td>
         </tr>
@@ -137,8 +137,8 @@ class InvoicesViewImpl {
     }).join('');
 
     // خلاصه
-    const totalGrand = cache.invoices.reduce((s, i) => s + (Number(i.grandTotal) || 0), 0);
-    const totalRemaining = cache.invoices.reduce((s, i) => s + (Number(i.remaining) || 0), 0);
+    const totalGrand = invoices.reduce((s, i) => s + (Number(i.grandTotal) || 0), 0);
+    const totalRemaining = invoices.reduce((s, i) => s + (Number(i.remaining) || 0), 0);
 
     return `
       <div class="table-wrap">

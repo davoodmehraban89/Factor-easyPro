@@ -170,13 +170,13 @@ class ContactsViewImpl {
             ${c.phone ? `<small style="color:var(--text-muted)">${Formatters.phone(c.phone)}</small>` : ''}
             ${!c.mobile && !c.phone ? '—' : ''}
           </td>
-          <td>${c.nationalId ? Formatters.toPersianDigits(c.nationalId) : '—'}</td>
+          <td>${this._esc(c.nationalId ? Formatters.toPersianDigits(c.nationalId) : '—')}</td>
           <td style="font-weight:600;color:${balanceColor}">${balanceText}</td>
           <td>
             <div class="row-actions">
-              <button class="icon-btn-sm" title="کارت حساب" onclick="window.ContactsView.openLedger('${c.id}')">📒</button>
-              <button class="icon-btn-sm" title="ویرایش" onclick="window.ContactsView.editContact('${c.id}')">✏️</button>
-              <button class="icon-btn-sm danger" title="حذف" onclick="window.ContactsView.deleteContact('${c.id}')">🗑️</button>
+              <button class="icon-btn-sm" title="کارت حساب" onclick="window.ContactsView.openLedger(${this._esc(JSON.stringify(String(c.id ?? '')))})">📒</button>
+              <button class="icon-btn-sm" title="ویرایش" onclick="window.ContactsView.editContact(${this._esc(JSON.stringify(String(c.id ?? '')))})">✏️</button>
+              <button class="icon-btn-sm danger" title="حذف" onclick="window.ContactsView.deleteContact(${this._esc(JSON.stringify(String(c.id ?? '')))})">🗑️</button>
             </div>
           </td>
         </tr>
@@ -346,7 +346,7 @@ class ContactsViewImpl {
 
     const footer = `
       <button class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button>
-      <button class="btn" onclick="window.ContactsView.saveContact(${isEdit ? `'${contactId}'` : 'null'})">💾 ذخیره</button>
+      <button class="btn" onclick="window.ContactsView.saveContact(${isEdit ? this._esc(JSON.stringify(String(contactId ?? ''))) : 'null'})">💾 ذخیره</button>
     `;
 
     Modal.open({

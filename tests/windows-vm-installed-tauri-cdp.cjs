@@ -387,6 +387,7 @@ async function connect(url) {
       assert.equal(audit.shellResults.modalKeyboard.nestedDialogIsolation, true);
       assert.equal(audit.shellResults.modalKeyboard.modalFormLabelsLinked, true);
       assert.equal(audit.shellResults.modalKeyboard.expenseUnsafeHtmlEscaped, true);
+      assert.equal(audit.shellResults.modalKeyboard.importedInvoiceHtmlEscaped, true);
       assert.equal(audit.shellResults.modalKeyboard.escapeClosesWithoutConfirm, true);
       assert.equal(audit.shellResults.modalKeyboard.focusReturnsToTrigger, true);
       assert.equal(audit.shellResults.modalKeyboard.visibleInputAutoFocused, true);
