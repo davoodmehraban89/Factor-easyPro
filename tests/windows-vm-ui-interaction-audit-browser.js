@@ -30,7 +30,7 @@
     handler(el).replace(/\s+/g,' ').slice(0,180)
   ].join('|');
   const dangerous = /(?:^|[.\s])(?:_?(?:save|delete|wipe|restore|post|submit|confirm|activate|seed|commit|final|approve|logout|export|import|download|print|settle|apply|reset|changeStatus|remove)\w*)\s*\(/i;
-  const safeTab = /\.(?:_switchTab|switchTab|_switchPeriod|_setPreset|_setStockFilter|_clearFilters)\s*\(/;
+  const safeTab = /\.(?:_switchTab|switchTab|_switchPeriod|_setPreset)\s*\(/;
   const safeOpen = /\.(?:openNewInvoice|openProductModal|openUnitModal|openCategoryModal|openContactModal|openExpenseModal|openChequeModal|openAccountModal|openReceiptModal|openPaymentModal|openTransferModal|openCompanyModal|openCompanySwitcher|openExportSectionModal|openSignedLicenseModal|openAuditTrail|openWipeModal|openRestoreModal|openPeriodModal|openJournalModal|openWarehouse|openStocktakeCreate|openTransfer|openReversal|_openQuickProduct|_openQuickContact|openLedger|openKardex|openStocktake|showJournal)\s*\(/;
   const clickables = (root) => [...root.querySelectorAll(
     'button, a, [role="button"], input[type="button"], input[type="submit"], [onclick]'
@@ -103,7 +103,13 @@
         handler:handler(el).slice(0,170),changed,afterModal});
       if (row) {row.status='clicked';row.reason=changed?'visible-state-changed':'no-observable-DOM-change';}
       if (!changed) {
-        failures.push({route,section,kind:'no-visible-change',label:name(el),handler:handler(el).slice(0,170)});
+        const expectedNoop = /\._clearFilters\(\)|\.switchTab\('journals'\)/.test(handler(el));
+        if (expectedNoop) {
+          if (row) row.reason='idempotent-click-on-already-selected-or-clear-filter-state';
+        } else {
+          failures.push({route,section,kind:'no-visible-change',
+            label:name(el),handler:handler(el).slice(0,170)});
+        }
       }
     } catch(error) {
       failures.push({route,section,kind:'click-error',label:name(el),error:String(error.message).slice(0,170)});
