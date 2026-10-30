@@ -266,6 +266,9 @@ if ($Mode -eq 'Restore' -and
 $connection = $null
 try {
     $localBackup = Assert-LocalFilesystemSource $BackupPath
+    # Bind metadata/VERIFYONLY and eventual restore to unchanged file bytes.
+    # Never output this private source fingerprint to console or CI.
+    $sourceHash = (Get-FileHash -LiteralPath $localBackup -Algorithm SHA256).Hash
     $builder = New-Object System.Data.SqlClient.SqlConnectionStringBuilder
     $builder.DataSource = 'lpc:.\FINORAMIG'
     $builder.InitialCatalog = 'master'
@@ -322,6 +325,9 @@ SELECT TRY_CAST(SERVERPROPERTY('ProductMajorVersion') AS int) AS Major,
     Assert-DestinationDiskSpace $plan
     Assert-PlanCollisionFree $connection $plan
     Invoke-SqlCommand $connection $plan.VerifySql 1800
+    if ((Get-FileHash -LiteralPath $localBackup -Algorithm SHA256).Hash -cne $sourceHash) {
+        throw 'A02_SOURCE_BACKUP_CHANGED_AFTER_VERIFY'
+    }
     if ($Mode -eq 'Inspect') {
         [pscustomobject]@{
             status = 'backup-verifyonly-passed'
@@ -334,7 +340,17 @@ SELECT TRY_CAST(SERVERPROPERTY('ProductMajorVersion') AS int) AS Major,
     # Recheck to narrow races; SQL itself also refuses existing database
     # without WITH REPLACE. This cannot prove true exclusive use of instance.
     Assert-PlanCollisionFree $connection $plan
+    if ((Get-FileHash -LiteralPath $localBackup -Algorithm SHA256).Hash -cne $sourceHash) {
+        throw 'A02_SOURCE_BACKUP_CHANGED_BEFORE_RESTORE'
+    }
     Invoke-SqlCommand $connection $plan.RestoreSql 3600
+    $online = Invoke-SqlRows $connection (
+        'SELECT state_desc FROM sys.databases WHERE name = ' +
+        (Sql-Literal $plan.DatabaseName)
+    )
+    if ($online.Rows.Count -ne 1 -or [string]$online.Rows[0]['state_desc'] -ne 'ONLINE') {
+        throw 'A02_ISOLATED_DATABASE_NOT_ONLINE'
+    }
     $schema = Invoke-SqlRows $connection (
         'SELECT (SELECT COUNT(*) FROM [' + $plan.DatabaseName +
         '].sys.tables) AS TableCount, (SELECT COUNT(*) FROM [' +
