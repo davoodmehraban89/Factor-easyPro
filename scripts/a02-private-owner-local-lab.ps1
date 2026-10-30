@@ -10,6 +10,7 @@ param(
  [string]$Mode='Test',
  [string]$SourceZip='',
  [string]$StagedBackupPath='',
+ [string]$ExpectedBackupSha256='',
  [string]$ManifestOutputPath='',
  [string]$StagingConsent='',
  [string]$RestoreConsent=''
@@ -87,6 +88,7 @@ function Invoke-JsonStep([string]$scriptName,[string[]]$stepArgs,[string]$expect
 if($Mode -eq 'Test'){
   Require ([string]::IsNullOrWhiteSpace($SourceZip) -and
     [string]::IsNullOrWhiteSpace($StagedBackupPath) -and
+    [string]::IsNullOrWhiteSpace($ExpectedBackupSha256) -and
     [string]::IsNullOrWhiteSpace($ManifestOutputPath) -and
     [string]::IsNullOrWhiteSpace($StagingConsent) -and
     [string]::IsNullOrWhiteSpace($RestoreConsent)) 'A02_SELFTEST_REQUIRES_SYNTHETIC_ONLY'
@@ -138,6 +140,7 @@ try{
     Require ($StagingConsent -ceq 'I_AUTHORIZE_PRIVATE_HOLOO_STAGING' -and
       -not [string]::IsNullOrWhiteSpace($SourceZip)) 'A02_STAGING_CONSENT_AND_ZIP_REQUIRED'
     Require ([string]::IsNullOrWhiteSpace($StagedBackupPath) -and
+      [string]::IsNullOrWhiteSpace($ExpectedBackupSha256) -and
       [string]::IsNullOrWhiteSpace($ManifestOutputPath) -and
       [string]::IsNullOrWhiteSpace($RestoreConsent)) 'A02_STAGE_FORBIDS_RESTORE_ARGUMENTS'
     $script:Phase='zip-envelope'
@@ -155,9 +158,11 @@ try{
       $staged.sqlBackupVerified -eq $false -and
       $staged.databaseModified -eq $false) 'A02_ZIP_STAGE_INCOMPLETE'
     $script:BackupPath=Assert-StagedBackup ([string]$staged.stagedBackupPath)
+    $stageDigest=(Get-FileHash -LiteralPath $script:BackupPath -Algorithm SHA256).Hash.ToUpperInvariant()
     [pscustomobject]@{
       status='private-zip-staged-crc-verified'
       stagedBackupPath=$script:BackupPath
+      stagedBackupSha256=$stageDigest
       archiveBytes=$probe.archiveBytes;backupBytes=$staged.backupBytes
       crcVerified=$true;sqlBackupVerified=$false;restoreExecuted=$false
       financialMigrationPerformed=$false;canImport=$false
@@ -171,6 +176,72 @@ try{
     [string]::IsNullOrWhiteSpace($StagingConsent)) 'A02_RESTORED_STAGE_MUST_NOT_REEXTRACT'
   $script:Phase='validate-staged-file'
   $script:BackupPath=Assert-StagedBackup $StagedBackupPath
+  Require ($ExpectedBackupSha256 -cmatch '^[a-fA-F0-9]{64}
+    Require ($RestoreConsent -ceq 'I_AUTHORIZE_A_NEW_ISOLATED_SQL_DATABASE') 'A02_RESTORE_CONSENT_REQUIRED'
+    $script:Phase='validate-manifest-destination'
+    Assert-ManifestDestination $ManifestOutputPath
+  }else{
+    Require ([string]::IsNullOrWhiteSpace($RestoreConsent) -and
+      [string]::IsNullOrWhiteSpace($ManifestOutputPath)) 'A02_INSPECT_FORBIDS_RESTORE_ARGS'
+  }
+  $script:Phase='sql-header-filelist-verifyonly'
+  $check=Invoke-JsonStep 'a02-isolated-sql-restore.ps1' @(
+    '-Mode','Inspect','-BackupPath',$script:BackupPath
+  ) 'backup-verifyonly-passed'
+  Require ($check.restoreExecuted -eq $false -and
+    $check.financialReconciled -eq $false -and
+    $check.sourceSqlMajor -le $check.engineSqlMajor) 'A02_SQL_INSPECT_CONTRACT_INVALID'
+  Require ((Get-FileHash -LiteralPath $script:BackupPath -Algorithm SHA256).Hash -ieq
+    $ExpectedBackupSha256) 'A02_STAGED_BACKUP_CHANGED_DURING_VERIFYONLY'
+  if($Mode -eq 'InspectStaged'){
+    [pscustomobject]@{
+      status='private-staged-sql-verifyonly-passed'
+      stagedBackupPath=$script:BackupPath
+      sourceSqlMajor=$check.sourceSqlMajor;engineSqlMajor=$check.engineSqlMajor
+      engineEdition=$check.engineEdition;fileCount=$check.fileCount
+      sqlBackupVerified=$true;backupDigestContinuityVerified=$true;restoreExecuted=$false
+      financialMigrationPerformed=$false;canImport=$false
+    } | ConvertTo-Json -Compress
+    return
+  }
+  $script:Phase='sql-isolated-restore'
+  $restored=Invoke-JsonStep 'a02-isolated-sql-restore.ps1' @(
+    '-Mode','Restore','-BackupPath',$script:BackupPath,'-ConsentPhrase',$RestoreConsent
+  ) 'isolated-restore-completed-needs-mapping-and-reconciliation'
+  $database=[string]$restored.databaseName
+  Require ($database -cmatch '^FinoraHoloo_[0-9a-f]{32}$' -and
+    $restored.financialReconciled -eq $false -and
+    $restored.importPerformed -eq $false -and
+    $restored.dbccCheckDbPassed -eq $true) 'A02_RESTORE_CONTRACT_INVALID'
+  Require ((Get-FileHash -LiteralPath $script:BackupPath -Algorithm SHA256).Hash -ieq
+    $ExpectedBackupSha256) 'A02_STAGED_BACKUP_CHANGED_DURING_RESTORE'
+  $script:Phase='private-schema-export'
+  $schema=Invoke-JsonStep 'a02-isolated-schema-inventory.ps1' @(
+    '-Mode','PrivateManifest','-InstanceName','FINORAMIG',
+    '-DatabaseName',$database,'-OutputPath',$ManifestOutputPath
+  ) 'private-schema-manifest-encrypted'
+  Require ($schema.dpapiScope -ceq 'CurrentUser' -and
+    $schema.fileAclRestricted -eq $true -and
+    $schema.userRowsRead -eq $false -and
+    $schema.databaseModified -eq $false) 'A02_PRIVATE_SCHEMA_ENCRYPTION_INVALID'
+  [pscustomobject]@{
+    status='isolated-restore-and-encrypted-schema-created'
+    isolatedDatabaseName=$database;stagedBackupPath=$script:BackupPath
+    encryptedSchemaManifestPath=$ManifestOutputPath
+    tableCount=$schema.tableCount;columnCount=$schema.columnCount
+    sqlBackupVerified=$true;restoreExecuted=$true;dbccCheckDbPassed=$true
+    backupDigestContinuityVerified=$true
+    financialReconciled=$false;financialMigrationPerformed=$false;canImport=$false
+  } | ConvertTo-Json -Compress
+}catch{
+  # Failed restore can leave a NEW incomplete DB. Never silently delete it.
+  Write-Error ('A02_PRIVATE_LAB_BLOCKED_AT_'+$script:Phase.ToUpperInvariant().Replace('-','_')+
+    '_NO_IMPORT_MANUAL_REVIEW_OF_PRIVATE_STAGING_AND_SQL_MAY_BE_REQUIRED')
+  exit 2
+}
+) 'A02_EXPECTED_BACKUP_DIGEST_REQUIRED'
+  $initialDigest=(Get-FileHash -LiteralPath $script:BackupPath -Algorithm SHA256).Hash
+  Require ($initialDigest -ieq $ExpectedBackupSha256) 'A02_STAGED_BACKUP_CHANGED_SINCE_CRC_STAGING'
   if($Mode -eq 'RestoreAndInventory'){
     Require ($RestoreConsent -ceq 'I_AUTHORIZE_A_NEW_ISOLATED_SQL_DATABASE') 'A02_RESTORE_CONSENT_REQUIRED'
     $script:Phase='validate-manifest-destination'
