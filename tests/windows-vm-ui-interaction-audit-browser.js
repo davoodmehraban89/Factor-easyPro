@@ -425,7 +425,9 @@
     if(!uniqueGroups.has(key))uniqueGroups.set(key,[]);
     uniqueGroups.get(key).push(row);
   }
-  const statusRank={clicked:4,failed:3,'broken-handler':2,disabled:1,'not-clicked':0};
+  // A failure on ANY context must never be hidden by a passing click on
+  // another tab. Fail > broken handler > clicked > disabled > untested.
+  const statusRank={failed:5,'broken-handler':4,clicked:3,disabled:1,'not-clicked':0};
   const uniqueActions=[...uniqueGroups.values()].map(group=>{
     const representative=group[0];
     const dominant=[...group].sort((a,b)=>
@@ -442,6 +444,8 @@
       label:representative.label,handler:representative.handler,
       status:dominant.status,contexts:[...new Set(group.map(x=>x.section))],
       instances:group.length,
+      testedInstances:group.filter(x=>x.status==='clicked').length,
+      failedInstances:group.filter(x=>x.status==='failed' || x.status==='broken-handler').length,
       whyNotVerified:dominant.status==='not-clicked'
         ?[...new Set(group.map(x=>x.reason))].join('; ').slice(0,300)
         :''
