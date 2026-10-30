@@ -50,6 +50,12 @@ on:
 permissions:
   contents: read
 
+# Building the Windows installer is costly. For a PR, only the newest source
+# snapshot should consume a runner; main-branch validation remains uncancelled.
+concurrency:
+  group: native-vm-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   native-windows-lab:
     name: Install, login, migrate v6 to v7, verify DPAPI and reinstall
