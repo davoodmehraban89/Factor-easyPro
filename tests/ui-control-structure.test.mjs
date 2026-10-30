@@ -160,6 +160,8 @@ test('A03: financial list views encode imported record IDs and textual values', 
   }
   const invoice=fs.readFileSync(path.join(root,'src','views','InvoicesView.js'),'utf8');
   assert.ok(invoice.includes('${this._esc(k.label)}'), 'unknown imported invoice kind is not HTML escaped');
+  assert.ok(invoice.includes('renderTable(invoices = cache.invoices)'),
+    'native adversarial test needs an isolated read-only invoice render fixture');
   const expenses=fs.readFileSync(path.join(root,'src','views','ExpensesView.js'),'utf8');
   assert.ok(expenses.includes('this._esc(JSON.stringify(String(e.id ??'));
 });
