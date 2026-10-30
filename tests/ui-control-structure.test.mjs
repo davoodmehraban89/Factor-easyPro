@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -125,4 +127,34 @@ test('Q01: installed WebView2 must click synthetic modal Cancel/Confirm and trap
     'modalKeyboard.cancelDoesNotConfirmAndRestoresFocus',
     'modalKeyboard.syntheticConfirmRunsExactlyOnce'
   ]) assert.ok(native.includes(check),'installed native runner must assert: '+check);
+});
+
+test('Q01: financial mutations are not mislabeled safe by the static control catalog', () => {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'q01-source-catalog-'));
+  try {
+    const output=path.join(dir,'catalog.json');
+    execFileSync(process.execPath,[path.join(root,'scripts','q01-ui-control-catalog.cjs'),output],{
+      cwd:root,encoding:'utf8',timeout:20000,stdio:['ignore','pipe','pipe']
+    });
+    const catalog=JSON.parse(fs.readFileSync(output,'utf8'));
+    assert.ok(catalog.eventBindings>=200,'unexpectedly few view event bindings');
+    assert.ok(catalog.sensitiveBindings>=40,
+      'financial actions were not classified conservatively; check verb+suffix matcher');
+    assert.equal(catalog.allButtonsClicked,false);
+    for (const name of ['saveJournal','postDraft','deleteDraft',
+      'confirmOpeningPosting','saveCheque','saveProduct','restoreBackup','confirmWipe']) {
+      const matches=catalog.controls.filter(x=>x.action.includes('.'+name+'('));
+      assert.ok(matches.length>0,'sensitive action not discovered: '+name);
+      assert.ok(matches.every(x=>x.category==='sensitive-write-or-export'),
+        'sensitive action incorrectly marked navigation: '+name);
+      assert.ok(matches.every(x=>x.runtimeClicked===false),
+        'source catalog must not claim runtime interaction: '+name);
+    }
+    const safe=catalog.controls.filter(x=>/\.(?:switchTab|_switchTab)\s*\(/.test(x.action));
+    assert.ok(safe.length>0,'navigation controls not discovered');
+    assert.ok(safe.some(x=>x.category==='navigation-or-other'),
+      'all menu actions incorrectly categorized as financial writes');
+  } finally {
+    fs.rmSync(dir,{recursive:true,force:true});
+  }
 });
