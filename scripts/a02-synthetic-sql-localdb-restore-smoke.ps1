@@ -65,8 +65,11 @@ try{
   $conn.Open()
   $phase='create-synthetic-database'
   ExecSql $conn ('CREATE DATABASE ['+$source+'];')
-  ExecSql $conn ('CREATE TABLE ['+$source+'].dbo.A02Synthetic(id int NOT NULL PRIMARY KEY,amount bigint NOT NULL);'+
-    'INSERT INTO ['+$source+'].dbo.A02Synthetic(id,amount) VALUES(1,12345),(2,67890);')
+  ExecSql $conn ('CREATE TABLE ['+$source+'].dbo.A02Synthetic('+
+    'id int NOT NULL PRIMARY KEY,amount bigint NOT NULL,parentId int NULL,'+
+    'CONSTRAINT FK_A02Synthetic_Parent FOREIGN KEY(parentId) REFERENCES dbo.A02Synthetic(id));'+
+    'CREATE UNIQUE INDEX UX_A02Synthetic_Amount ON ['+$source+'].dbo.A02Synthetic(amount) INCLUDE(parentId);'+
+    'INSERT INTO ['+$source+'].dbo.A02Synthetic(id,amount,parentId) VALUES(1,12345,NULL),(2,67890,1);')
   $phase='create-synthetic-backup'
   $bak=Join-Path $folder 'synthetic_copy_only.bak'
   ExecSql $conn ('BACKUP DATABASE ['+$source+'] TO DISK = '+(Literal $bak)+' WITH INIT,COPY_ONLY;')
@@ -104,7 +107,8 @@ try{
   $inventory=($inventoryLines | Out-String | ConvertFrom-Json)
   $validFingerprint=([string]$inventory.fingerprintSha256 -cmatch '^[0-9a-f]{64}$')
   $accepted=($inventory.status -eq 'isolated-schema-inventoried' -and
-    $inventory.tableCount -eq 1 -and $inventory.columnCount -eq 2 -and
+    $inventory.tableCount -eq 1 -and $inventory.columnCount -eq 3 -and
+    $inventory.primaryKeyCount -eq 1 -and $inventory.foreignKeyCount -eq 1 -and
     $validFingerprint -and $inventory.userRowsRead -eq $false -and
     $inventory.databaseModified -eq $false -and $inventory.canImport -eq $false)
   Require $accepted 'A02_SCHEMA_INVENTORY_CONTRACT_FAILED'
@@ -115,8 +119,8 @@ try{
   Require ($LASTEXITCODE -eq 0) 'A02_PRIVATE_SCHEMA_MANIFEST_CREATE_FAILED'
   $manifestStatus=($manifestOutput | Out-String | ConvertFrom-Json)
   Require ($manifestStatus.status -eq 'private-schema-manifest-encrypted' -and
-    $manifestStatus.tableCount -eq 1 -and $manifestStatus.columnCount -eq 2 -and
-    $manifestStatus.primaryKeyCount -eq 1 -and $manifestStatus.foreignKeyCount -eq 0 -and
+    $manifestStatus.tableCount -eq 1 -and $manifestStatus.columnCount -eq 3 -and
+    $manifestStatus.primaryKeyCount -eq 1 -and $manifestStatus.foreignKeyCount -eq 1 -and
     $manifestStatus.dpapiScope -eq 'CurrentUser' -and
     $manifestStatus.fileAclRestricted -eq $true -and
     $manifestStatus.userRowsRead -eq $false -and
@@ -136,10 +140,19 @@ try{
     $privateManifest.schemaFingerprintSha256 -cmatch '^[0-9a-f]{64}$' -and
     $privateManifest.tables.Count -eq 1 -and
     $privateManifest.tables[0].name -eq 'A02Synthetic' -and
-    $privateManifest.tables[0].columns.Count -eq 2 -and
-    $privateManifest.tables[0].indexes.Count -eq 1 -and
+    $privateManifest.tables[0].columns.Count -eq 3 -and
+    $privateManifest.tables[0].indexes.Count -eq 2 -and
+    $privateManifest.tables[0].foreignKeys.Count -eq 1 -and
     $privateManifest.tables[0].indexes[0].primaryKey -eq $true -and
     $privateManifest.tables[0].indexes[0].keyColumns[0].name -eq 'id' -and
+    $privateManifest.tables[0].indexes[1].name -eq 'UX_A02Synthetic_Amount' -and
+    $privateManifest.tables[0].indexes[1].keyColumns[0].name -eq 'amount' -and
+    $privateManifest.tables[0].indexes[1].includedColumns[0] -eq 'parentId' -and
+    $privateManifest.tables[0].foreignKeys[0].name -eq 'FK_A02Synthetic_Parent' -and
+    $privateManifest.tables[0].foreignKeys[0].referencedTable -eq 'A02Synthetic' -and
+    $privateManifest.tables[0].foreignKeys[0].columns[0].column -eq 'parentId' -and
+    $privateManifest.tables[0].foreignKeys[0].columns[0].referencedColumn -eq 'id' -and
+    $privateManifest.tables[0].foreignKeys[0].deleteAction -eq 'NO_ACTION' -and
     $privateManifest.userRowsRead -eq $false -and
     $privateManifest.databaseModified -eq $false -and
     $privateManifest.canImport -eq $false) 'A02_PRIVATE_SCHEMA_MANIFEST_CONTENT_INVALID'
