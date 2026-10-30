@@ -305,8 +305,20 @@
   if (syntheticConfirmed!==1 || FINORA.Modal.stack.length) {
     throw Error('Text-only confirmation Cancel executed a callback or leaked a dialog');
   }
+  // A financial editor can start with an invisible radio or hidden ID field.
+  // Initial focus must land on the first VISIBLE input, not a hidden element.
+  FINORA.Modal.open({title:'Q01 visible-input focus regression',
+    body:'<input id="q01HiddenInput" style="display:none"><input id="q01VisibleInput">'});
+  await wait(25);
+  if (document.activeElement?.id !== 'q01VisibleInput') {
+    throw Error('Dialog initial focus landed outside first visible financial input');
+  }
+  FINORA.Modal.close();
+  if (document.activeElement!==modalTrigger) {
+    throw Error('Closing visible-input dialog did not restore keyboard focus');
+  }
   const modalKeyboard={roleAndLabel:true,nestedDialogIsolation:true,
-    confirmationTextEscaped:true,
+    confirmationTextEscaped:true,visibleInputAutoFocused:true,
     escapeClosesWithoutConfirm:true,focusReturnsToTrigger:true,
     enterOnFocusedCancelDoesNotSave:true,enterOnInputDoesNotSubmit:true,
     tabAndShiftTabStayInsideTopDialog:true,
