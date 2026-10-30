@@ -70,11 +70,11 @@ function Assert-StagedBackup([string]$value){
   }
   return $full
 }
-function Invoke-JsonStep([string]$scriptName,[string[]]$args,[string]$expected){
+function Invoke-JsonStep([string]$scriptName,[string[]]$stepArgs,[string]$expected){
   $file=Join-Path $PSScriptRoot $scriptName
   Require ([IO.File]::Exists($file)) 'A02_REQUIRED_HELPER_MISSING'
   # No raw error, SQL query or private source path is echoed by this wrapper.
-  $output=@(& powershell.exe -NoProfile -NonInteractive -File $file @args 2>$null)
+  $output=@(& powershell.exe -NoProfile -NonInteractive -File $file @stepArgs 2>$null)
   Require ($LASTEXITCODE -eq 0 -and $output.Count -gt 0 -and $output.Count -le 5) 'A02_HELPER_FAILED'
   $json=$output -join [Environment]::NewLine
   Require ($json.Length -le 16384) 'A02_HELPER_OUTPUT_OVERSIZED'
