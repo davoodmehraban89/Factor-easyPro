@@ -14,6 +14,7 @@ import { ExcelController } from '../controllers/ExcelController.js';
 import { inspectSettlementConsistency } from '../core/FinancialDiagnosticsService.js';
 import { AuditService } from '../core/AuditService.js';
 import { LicenseService } from '../core/LicenseService.js';
+import { probeHolooBackupZip } from '../core/HolooBackupProbe.mjs';
 
 let cache = { company: {}, stats: {}, invoiceSettings: { numberingMode: 'auto', nextNumber: 1 } };
 
@@ -32,6 +33,7 @@ class SettingsViewImpl {
         ${this._renderExcelCard()}
         ${this._renderShortcutsCard()}
         ${this._renderBackupCard()}
+        ${Auth.isAdmin() ? this._renderHolooBackupCard() : ''}
         ${Auth.isAdmin() ? this._renderLicenseCard() : ''}
         ${this._renderStatsCard()}
         ${Auth.isAdmin() ? this._renderHealthCard() : ''}
@@ -470,6 +472,70 @@ class SettingsViewImpl {
     });
   }
 
+
+  // A02: local ZIP metadata intake only; it cannot restore SQL Server databases.
+  _renderHolooBackupCard() {
+    return [
+      '<div class="card settings-card">',
+      '  <div class="settings-card-header">',
+      '    <div class="settings-card-icon">📦</div>',
+      '    <div>',
+      '      <h3 class="settings-card-title">آماده‌سازی انتقال از هلو (آزمایشی)</h3>',
+      '      <p class="settings-card-desc">تشخیص اولیه فایل ZIP، بدون ارسال یا ثبت داده</p>',
+      '    </div>',
+      '  </div>',
+      '  <p style="font-size:12px;line-height:1.9;color:var(--text-muted)">این مرحله فقط ساختار بسته ZIP را شناسایی می‌کند. بازیابی SQL Server، انتقال اطلاعات و تأیید صحت حسابداری هنوز پیاده‌سازی نشده‌اند.</p>',
+      '  <button class="btn btn-secondary" onclick="window.SettingsView.openHolooBackupProbe()">انتخاب بکاپ هلو و بررسی اولیه</button>',
+      '</div>'
+    ].join('');
+  }
+
+  openHolooBackupProbe() {
+    if (!Auth.isAdmin()) {
+      Toast.error('فقط مدیر می‌تواند بررسی بکاپ هلو را آغاز کند');
+      return;
+    }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.zip';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const report = await probeHolooBackupZip(file);
+        Modal.open({
+          title: 'پیش‌بررسی بکاپ هلو — فقط خواندنی',
+          body: [
+            '<p>ساختار اولیه یک فایل ZIP تک‌ورودی شناسایی شد.</p>',
+            '<div style="font-size:12px;line-height:2">',
+            '<div>فایل: <strong>' + this._esc(file.name) + '</strong></div>',
+            '<div>محتوای بسته: <strong>' + this._esc(report.entryName) + '</strong></div>',
+            '<div>حجم فایل داخلی: <strong>' + Formatters.number(report.uncompressedSize) + '</strong> بایت</div>',
+            '</div>',
+            '<div class="backup-warning" style="margin-top:12px">',
+            '⚠️ این نتیجه به معنای صحت بکاپ SQL Server یا امکان انتقال اطلاعات مالی نیست. ',
+            'برای ادامه باید فایل در محیط ایزوله بازیابی و ساختار جداول و مانده‌ها تطبیق داده شود. ',
+            'تا آن زمان هیچ داده‌ای وارد نرم‌افزار نمی‌شود.',
+            '</div>'
+          ].join(''),
+          footer: '<button class="btn" onclick="FINORA.Modal.close()">متوجه شدم</button>',
+          size: 'md'
+        });
+      } catch (error) {
+        const messages = {
+          HOLOO_FILE_REQUIRED: 'فایل انتخاب‌شده معتبر نیست',
+          HOLOO_NOT_ZIP: 'فایل ZIP شناسایی نشد',
+          HOLOO_ENCRYPTED_ZIP: 'بسته رمزگذاری‌شده پشتیبانی نمی‌شود',
+          HOLOO_ZIP_SINGLE_ENTRY_REQUIRED: 'ساختار بسته با نمونه تک‌فایلی مورد انتظار سازگار نیست',
+          HOLOO_ZIP_TOO_LARGE: 'فایل برای پیش‌بررسی محلی بیش از حد بزرگ است'
+        };
+        Toast.error('بکاپ قابل پیش‌بررسی نیست: ' +
+          (messages[error.message] || 'ساختار ZIP نامعتبر یا پشتیبانی‌نشده است'));
+      }
+    };
+    input.click();
+  }
+
   // ============================================================
   // کارت بکاپ
   // ============================================================
@@ -767,6 +833,7 @@ class SettingsViewImpl {
       + this._renderExcelCard()
       + this._renderShortcutsCard()
       + this._renderBackupCard()
+      + (Auth.isAdmin() ? this._renderHolooBackupCard() : '')
       + (Auth.isAdmin() ? this._renderLicenseCard() : '')
       + this._renderStatsCard()
       + (Auth.isAdmin() ? this._renderHealthCard() : '')
