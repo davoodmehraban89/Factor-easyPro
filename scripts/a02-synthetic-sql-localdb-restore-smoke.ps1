@@ -96,6 +96,52 @@ try{
     [Environment]::NewLine+'RESTORE DATABASE ['+$restored+'] '+$from+', RECOVERY;')
   $phase='dbcc-checkdb'
   ExecSql $conn ('DBCC CHECKDB(['+$restored+']) WITH NO_INFOMSGS;')
+  $phase='isolated-schema-inventory'
+  # Execute the schema-only command against the real restored synthetic DB.
+  # No table names/column names or private data are logged.
+  $inventoryScript=Join-Path $PSScriptRoot 'a02-isolated-schema-inventory.ps1'
+  $inventoryLines=@(& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $inventoryScript -Mode Inspect -InstanceName $instance -DatabaseName $restored)
+  Require ($LASTEXITCODE -eq 0) 'A02_SCHEMA_INVENTORY_INTEGRATION_FAILED'
+  $inventory=($inventoryLines | Out-String | ConvertFrom-Json)
+  Require ($inventory.status -eq 'isolated-schema-inventoried' -and
+    $inventory.tableCount -eq 1 -and $inventory.columnCount -eq 2 -and
+    $inventory.fingerprintSha256 -cmatch '^[0-9a-f]{64}  $row=QuerySql $conn ('SELECT COUNT_BIG(*) AS C,SUM(amount) AS T FROM ['+$restored+'].dbo.A02Synthetic;')
+  Require ($row.Rows.Count -eq 1 -and [long]$row.Rows[0]['C'] -eq 2 -and
+    [long]$row.Rows[0]['T'] -eq 80235) 'A02_RESTORED_SYNTHETIC_TOTALS_MISMATCH'
+  [pscustomobject]@{
+    status='synthetic-localdb-restore-verified';ownerBackupUsed=$false
+    headerVerified=$true;fileListVerified=$true;verifyOnlyPassed=$true
+    restoreExecuted=$true;dbccPassed=$true;syntheticRecords=2
+    syntheticTotal=80235;schemaOnlyInventoryVerified=$true
+    financialMigrationPerformed=$false;canImport=$false
+  }|ConvertTo-Json -Compress
+}catch{
+  # Only a bounded phase and exception *type* are public; never emit raw SQL,
+  # paths, backup bytes, identity, or exception messages.
+  $kind=$_.Exception.GetType().Name
+  Write-Error ('A02_SYNTHETIC_LOCALDB_RESTORE_FAILED phase='+$phase+' type='+$kind)
+  exit 2
+}finally{
+  if($null -ne $conn){
+    try{
+      foreach($name in @($restored,$source)){
+        ExecSql $conn ('IF DB_ID('+(Literal $name)+') IS NOT NULL BEGIN '+
+          'ALTER DATABASE ['+$name+'] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; '+
+          'DROP DATABASE ['+$name+']; END;')
+      }
+    }catch{}
+    $conn.Dispose()
+  }
+  if($created){
+    try{& $localdb stop $instance -k | Out-Null}catch{}
+    try{& $localdb delete $instance | Out-Null}catch{}
+  }
+  if([IO.Directory]::Exists($folder)){try{[IO.Directory]::Delete($folder,$true)}catch{}}
+}
+ -and
+    $inventory.userRowsRead -eq $false -and
+    $inventory.databaseModified -eq $false -and
+    $inventory.canImport -eq $false) 'A02_SCHEMA_INVENTORY_CONTRACT_FAILED'
   $phase='synthetic-reconciliation'
   $row=QuerySql $conn ('SELECT COUNT_BIG(*) AS C,SUM(amount) AS T FROM ['+$restored+'].dbo.A02Synthetic;')
   Require ($row.Rows.Count -eq 1 -and [long]$row.Rows[0]['C'] -eq 2 -and
