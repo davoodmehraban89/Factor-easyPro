@@ -14,6 +14,7 @@
   const clicks = [];
   const skipped = [];
   const all = new Map();
+  const fields = new Map();
   const target = () => document.getElementById('pageContent');
   const isVisible = el => {
     const style = window.getComputedStyle(el);
@@ -35,8 +36,34 @@
   const clickables = (root) => [...root.querySelectorAll(
     'button, a, [role="button"], input[type="button"], input[type="submit"], [onclick]'
   )].filter(isVisible);
+  function auditFields(root, route, section) {
+    if (!root) return;
+    for (const field of root.querySelectorAll(
+      'input:not([type="hidden"]), select, textarea'
+    )) {
+      if (!isVisible(field)) continue;
+      const labels=field.labels ? [...field.labels] : [];
+      const explicit=!!field.getAttribute('aria-label') ||
+        !!field.getAttribute('aria-labelledby') ||
+        !!field.closest('label') || labels.length > 0;
+      const id=field.id||'';
+      const key=[route,section,field.tagName.toLowerCase(),id,
+        field.getAttribute('name')||'',field.getAttribute('type')||''].join('|');
+      if (fields.has(key)) continue;
+      fields.set(key,{
+        route,section,id,tag:field.tagName.toLowerCase(),
+        type:field.getAttribute('type')||'',
+        label:labels.map(x=>x.textContent.trim().slice(0,75)).join(' / ') ||
+          field.getAttribute('aria-label') || '',
+        programmaticLabel:explicit,
+        placeholderOnly:!explicit && !!field.getAttribute('placeholder'),
+        status:explicit?'programmatic-label-found':'needs-accessibility-review'
+      });
+    }
+  }
   function inventory(route, section) {
     const controls = clickables(target());
+    auditFields(target(),route,section);
     const records = [];
     for (const el of controls) {
       const k=sig(el,route,section);
@@ -272,6 +299,7 @@
             failures.push({route,section:ctx.section,kind:'modal-a11y-missing',
               handler:action.slice(0,170)});
           }
+          auditFields(overlay,route,ctx.section+'/modal');
           const nested=clickables(overlay);
           const modalControls=nested.map(x=>({
             route,section:ctx.section+'/modal',tag:x.tagName.toLowerCase(),
@@ -331,10 +359,18 @@
     skippedCount:rows.filter(x=>x.status==='not-clicked').length,
     brokenHandlerCount:rows.filter(x=>x.status==='broken-handler').length,
     accessibilityNameGaps:rows.filter(x=>!x.hasAccessibleName).length,
+    fieldsInspected:fields.size,
+    fieldsMissingProgrammaticLabel:[...fields.values()].filter(x=>!x.programmaticLabel).length,
+    fieldsWithoutLabels:[...fields.values()].filter(x=>!x.programmaticLabel).slice(0,100),
+    fieldCoverageByRoute:Object.fromEntries(routes.map(r=>[r,{
+      inspected:[...fields.values()].filter(x=>x.route===r).length,
+      missingProgrammaticLabel:[...fields.values()].filter(x=>x.route===r && !x.programmaticLabel).length
+    }])),
     problems:failures,
     byRoute,
     controls:rows,
     clickEvidence:clicks,
+    fieldEvidence:[...fields.values()],
     financialActionsNotBulkClicked:true,
     customerDataUsed:false,
     everyActionVerified:false
