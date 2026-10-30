@@ -27,20 +27,20 @@ powershell.exe -NoProfile -NonInteractive -File .\scripts\a02-private-owner-loca
 powershell.exe -NoProfile -NonInteractive -File .\scripts\a02-private-owner-local-lab.ps1 -Mode Stage -SourceZip 'D:\Private\OwnerHoloo.zip' -StagingConsent 'I_AUTHORIZE_PRIVATE_HOLOO_STAGING'
 ```
 
-خروجی روی رایانه خود مالک مسیر `stagedBackupPath` را می‌دهد. مسیر را خصوصی نگه دارید و در مراحل بعد همان کپی را استفاده کنید. هیچ دیتابیسی ایجاد نمی‌شود.
+خروجی روی رایانه خود مالک مسیر `stagedBackupPath` و مقدار `stagedBackupSha256` را می‌دهد. مسیر را خصوصی نگه دارید و در مراحل بعد همان کپی را استفاده کنید. هیچ دیتابیسی ایجاد نمی‌شود.
 
 **۳. بررسی واقعی SQL، فقط READ-ONLY / VERIFYONLY**
 
 ```powershell
-powershell.exe -NoProfile -NonInteractive -File .\scripts\a02-private-owner-local-lab.ps1 -Mode InspectStaged -StagedBackupPath 'C:\Users\Owner\AppData\Local\FactorEasyPro\HolooMigrationStaging\stage_0123456789abcdef0123456789abcdef\HolooBackupCopy.bak'
+powershell.exe -NoProfile -NonInteractive -File .\scripts\a02-private-owner-local-lab.ps1 -Mode InspectStaged -StagedBackupPath 'C:\Users\Owner\AppData\Local\FactorEasyPro\HolooMigrationStaging\stage_0123456789abcdef0123456789abcdef\HolooBackupCopy.bak' -ExpectedBackupSha256 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
 ```
 
-مسیر بالا صرفاً یک **نمونه فرضی** است. ابزار وجود و محل کپی را کنترل می‌کند؛ `RESTORE HEADERONLY` و `FILELISTONLY` و `VERIFYONLY WITH MOVE`، سازگاری نسخه و سقف Express بررسی می‌شوند. اگر سرویس SQL نتواند کپی را بخواند، بررسی مسدود می‌شود. هیچ مجوزی به‌صورت خودکار تغییر داده نمی‌شود.
+مسیر بالا صرفاً یک **نمونه فرضی** است. **هش ۶۴رقمی A در دستور نمونه عمداً ساختگی و نامعتبر از نظر محتواست**؛ به‌جای آن باید دقیقاً مقدار واقعی `stagedBackupSha256` مرحله ۲ وارد شود. اگر کپی حتی یک بایت تغییر کرده باشد، عملیات پیش از SQL متوقف می‌شود. هش و مسیر واقعی را در GitHub یا لاگ عمومی منتشر نکنید. ابزار وجود و محل کپی را کنترل می‌کند؛ `RESTORE HEADERONLY` و `FILELISTONLY` و `VERIFYONLY WITH MOVE`، سازگاری نسخه و سقف Express بررسی می‌شوند. اگر سرویس SQL نتواند کپی را بخواند، بررسی مسدود می‌شود. هیچ مجوزی به‌صورت خودکار تغییر داده نمی‌شود.
 
 **۴. فقط در محیط خصوصی و پس از موفقیت مرحله قبل: Restore به دیتابیس جدید و استخراج اسکیما**
 
 ```powershell
-powershell.exe -NoProfile -NonInteractive -File .\scripts\a02-private-owner-local-lab.ps1 -Mode RestoreAndInventory -StagedBackupPath 'C:\Users\Owner\AppData\Local\FactorEasyPro\HolooMigrationStaging\stage_0123456789abcdef0123456789abcdef\HolooBackupCopy.bak' -RestoreConsent 'I_AUTHORIZE_A_NEW_ISOLATED_SQL_DATABASE' -ManifestOutputPath 'C:\FinoraPrivate\holoo-schema.dpapi'
+powershell.exe -NoProfile -NonInteractive -File .\scripts\a02-private-owner-local-lab.ps1 -Mode RestoreAndInventory -StagedBackupPath 'C:\Users\Owner\AppData\Local\FactorEasyPro\HolooMigrationStaging\stage_0123456789abcdef0123456789abcdef\HolooBackupCopy.bak' -ExpectedBackupSha256 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' -RestoreConsent 'I_AUTHORIZE_A_NEW_ISOLATED_SQL_DATABASE' -ManifestOutputPath 'C:\FinoraPrivate\holoo-schema.dpapi'
 ```
 
 در این حالت پس از بررسی مجدد بکاپ، دیتابیس تصادفی جدید با `MOVE` تمام فایل‌ها ایجاد می‌شود؛ `WITH REPLACE` و `DROP DATABASE` در مسیر واقعی وجود ندارد. ابزار **فقط پس از `DBCC CHECKDB` موفق**، فراداده جدول‌ها، ستون‌ها، PK، Unique Index و Foreign Key را می‌گیرد و فایل `.dpapi` خصوصی تولید می‌کند.
