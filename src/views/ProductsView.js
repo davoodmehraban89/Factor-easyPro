@@ -222,9 +222,9 @@ class ProductsViewImpl {
       <div class="toolbar">
         <div class="search-input-wrap">
           <span class="icon">🔍</span>
-          <input type="text" class="form-control" id="productSearch" placeholder="جستجو بر اساس نام، کد یا بارکد..." value="${this._esc(currentSearch)}" oninput="window.ProductsView._onSearch(this.value)" />
+          <input type="text" class="form-control" id="productSearch" aria-label="جستجوی کالا" placeholder="جستجو بر اساس نام، کد یا بارکد..." value="${this._esc(currentSearch)}" oninput="window.ProductsView._onSearch(this.value)" />
         </div>
-        <select class="form-control" style="width:auto;min-width:160px" onchange="window.ProductsView._setStockFilter(this.value)">
+        <select class="form-control" style="width:auto;min-width:160px" aria-label="وضعیت موجودی" onchange="window.ProductsView._setStockFilter(this.value)">
           <option value="" ${currentStockFilter === '' ? 'selected' : ''}>همه کالاها</option>
           <option value="low" ${currentStockFilter === 'low' ? 'selected' : ''}>⚠️ کم‌موجود</option>
           <option value="out" ${currentStockFilter === 'out' ? 'selected' : ''}>🚨 تمام‌شده</option>
