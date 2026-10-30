@@ -316,15 +316,17 @@ class SettingsViewImpl {
           <label class="form-label">حالت ورود</label>
           <select class="form-control" id="importMode">
             <option value="merge">🔀 ادغام (Merge) — فقط موارد جدید اضافه می‌شن</option>
-            <option value="replace">🔄 جایگزینی (Replace) — همه‌ی ${kindLabel} فعلی پاک و از فایل جایگزین می‌شن</option>
+
           </select>
+          <p style="font-size:12px;color:var(--text-muted);margin-top:8px">حذف و جایگزینی گروهی برای محافظت از سوابق مالی غیرفعال است؛ فقط موارد جدید ادغام می‌شوند.</p>
         </div>
       `;
       const footer = `
-        <button class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button>
-        <button class="btn btn-success" onclick="window.SettingsView._confirmImport(${JSON.stringify(kind).replace(/"/g, "'")}, '${this._esc(file.name)}')">✅ شروع ایمپورت</button>
+        <button type="button" class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button>
+        <button type="button" class="btn btn-success" data-excel-import-submit>✅ شروع ایمپورت</button>
       `;
-      Modal.open({ title: `📤 ورود ${kindLabel} از Excel`, body, footer, size: 'md' });
+      const modal = Modal.open({ title: `📤 ورود ${kindLabel} از Excel`, body, footer, size: 'md' });
+      modal.card.querySelector('[data-excel-import-submit]').addEventListener('click', () => this._confirmImport(kind));
 
       // ذخیره‌ی موقت داده
       window.__importRawData = preview.raw;
@@ -335,8 +337,12 @@ class SettingsViewImpl {
     }
   }
 
-  async _confirmImport(kind, fileName) {
-    const mode = document.getElementById('importMode').value;
+  async _confirmImport(kind) {
+    const mode = document.getElementById('importMode')?.value;
+    if (mode !== 'merge' || !['products', 'contacts'].includes(kind) || window.__importKind !== kind) {
+      Toast.error('حالت ورود نامعتبر است؛ هیچ اطلاعاتی تغییر نکرد.');
+      return;
+    }
     const rawData = window.__importRawData;
 
     if (!rawData) {
