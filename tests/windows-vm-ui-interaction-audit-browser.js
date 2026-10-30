@@ -442,7 +442,41 @@
     throw Error('Financial contact ledger interpreted imported text as executable markup');
   }
   delete window.Q01_LEDGER_INJECTION;
+  // Simulate two rapid clicks on a private workbook preview. No real Excel
+  // rows are persisted; a canceled preview must never be importable later.
+  const excel = window.ExcelController;
+  const settingsView = window.SettingsView;
+  const originalExcelPreview = excel.previewFile;
+  const originalExcelImport = excel.importProducts;
+  let importCount = 0;
+  try {
+    excel.previewFile=async()=>({sheets:[{name:'کالاها',count:1}],
+      raw:{'کالاها':[{'نام':'Synthetic VM-only name'}]}});
+    excel.importProducts=async()=>{importCount++;await wait(85);return {added:1,skipped:0};};
+    await settingsView._handleImportFile({name:'synthetic-vm-preview.xlsx'},'products');
+    const importDialog=FINORA.Modal.stack[FINORA.Modal.stack.length-1]?.card;
+    const submit=importDialog?.querySelector('[data-excel-import-submit]');
+    if(!submit) throw Error('Synthetic Excel preview import button missing');
+    submit.click();submit.click();await wait(160);
+    if(importCount!==1 || submit.disabled!==true || FINORA.Modal.stack.length ||
+       Object.hasOwn(window,'__importRawData') || Object.hasOwn(window,'__importKind')) {
+      throw Error('Rapid Excel import clicks wrote twice or exposed a global workbook');
+    }
+    await settingsView._handleImportFile({name:'synthetic-vm-cancel.xlsx'},'products');
+    FINORA.Modal.close();
+    await settingsView._confirmImport('products');
+    document.querySelectorAll('.toast .toast-close').forEach(x=>x.click());
+    if(importCount!==1 || FINORA.Modal.stack.length) {
+      throw Error('Canceled private Excel preview remained importable');
+    }
+  } finally {
+    excel.previewFile=originalExcelPreview;
+    excel.importProducts=originalExcelImport;
+    FINORA.Modal.closeAll();
+    document.querySelectorAll('.toast .toast-close').forEach(x=>x.click());
+  }
   const modalKeyboard={roleAndLabel:true,nestedDialogIsolation:true,
+    privateExcelPreviewAndSingleFlight:true,
     financialLedgerContentEscaped:true,
     excelReplacementRejectedWithoutWrites:true,
     importedInvoiceHtmlEscaped:true,

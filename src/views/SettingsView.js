@@ -17,6 +17,9 @@ import { LicenseService } from '../core/LicenseService.js';
 import { probeHolooBackupZip } from '../core/HolooBackupProbe.mjs';
 
 let cache = { company: {}, stats: {}, invoiceSettings: { numberingMode: 'auto', nextNumber: 1 } };
+// Excel workbooks can contain private customer data. Never retain previews on window.
+let pendingExcelImport = null;
+let excelImportBusy = false;
 
 class SettingsViewImpl {
   async render() {
@@ -325,12 +328,17 @@ class SettingsViewImpl {
         <button type="button" class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button>
         <button type="button" class="btn btn-success" data-excel-import-submit>✅ شروع ایمپورت</button>
       `;
-      const modal = Modal.open({ title: `📤 ورود ${kindLabel} از Excel`, body, footer, size: 'md' });
+      const pending = { kind, rawData: preview.raw, card: null };
+      pendingExcelImport = pending;
+      const modal = Modal.open({
+        title: `📤 ورود ${kindLabel} از Excel`, body, footer, size: 'md',
+        onClose: () => {
+          // Cancel/close releases the private workbook immediately.
+          if (pendingExcelImport === pending) pendingExcelImport = null;
+        }
+      });
+      pending.card = modal.card;
       modal.card.querySelector('[data-excel-import-submit]').addEventListener('click', () => this._confirmImport(kind));
-
-      // ذخیره‌ی موقت داده
-      window.__importRawData = preview.raw;
-      window.__importKind = kind;
     } catch (err) {
       console.error(err);
       Toast.error('خطا: ' + err.message);
@@ -339,17 +347,22 @@ class SettingsViewImpl {
 
   async _confirmImport(kind) {
     const mode = document.getElementById('importMode')?.value;
-    if (mode !== 'merge' || !['products', 'contacts'].includes(kind) || window.__importKind !== kind) {
+    const pending = pendingExcelImport;
+    if (excelImportBusy) return;
+    if (mode !== 'merge' || !['products', 'contacts'].includes(kind) || pending?.kind !== kind) {
       Toast.error('حالت ورود نامعتبر است؛ هیچ اطلاعاتی تغییر نکرد.');
       return;
     }
-    const rawData = window.__importRawData;
+    const rawData = pending?.rawData;
 
     if (!rawData) {
       Toast.error('داده‌ای برای ایمپورت نیست');
       return;
     }
 
+    excelImportBusy = true;
+    const submitButton = pending.card?.querySelector('[data-excel-import-submit]');
+    if (submitButton) submitButton.disabled = true;
     try {
       Toast.info('در حال ایمپورت...');
       let result;
@@ -359,7 +372,7 @@ class SettingsViewImpl {
         result = await ExcelController.importContacts(rawData, { mode });
       }
 
-      Modal.close();
+      if (Modal.stack[Modal.stack.length - 1]?.card === pending.card) Modal.close();
       Toast.success(`ایمپورت انجام شد: ${Formatters.number(result.added)} اضافه، ${Formatters.number(result.skipped)} رد شده`);
 
       // رفرش KPI ها
@@ -370,8 +383,8 @@ class SettingsViewImpl {
       console.error(err);
       Toast.error('خطا در ایمپورت: ' + err.message);
     } finally {
-      window.__importRawData = null;
-      window.__importKind = null;
+      excelImportBusy = false;
+      if (pendingExcelImport === pending) pendingExcelImport = null;
     }
   }
 

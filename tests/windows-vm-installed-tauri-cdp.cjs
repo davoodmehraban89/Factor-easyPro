@@ -390,6 +390,7 @@ async function connect(url) {
       assert.equal(audit.shellResults.modalKeyboard.importedInvoiceHtmlEscaped, true);
       assert.equal(audit.shellResults.modalKeyboard.excelReplacementRejectedWithoutWrites, true);
       assert.equal(audit.shellResults.modalKeyboard.financialLedgerContentEscaped, true);
+      assert.equal(audit.shellResults.modalKeyboard.privateExcelPreviewAndSingleFlight, true);
       assert.equal(audit.shellResults.modalKeyboard.escapeClosesWithoutConfirm, true);
       assert.equal(audit.shellResults.modalKeyboard.focusReturnsToTrigger, true);
       assert.equal(audit.shellResults.modalKeyboard.visibleInputAutoFocused, true);
