@@ -408,7 +408,27 @@
     delete window.Q01_INVOICE_ID_ATTACK;
     delete window.Q01_INVOICE_HTML_ATTACK;
   }
+  // Fail-closed Excel replacement attempts must not delete financial master
+  // records even when callers bypass the UI. Synthetic workbook only.
+  const beforeProducts=JSON.stringify(await FINORA.Storage.getAll('products'));
+  const beforeContacts=JSON.stringify(await FINORA.Storage.getAll('contacts'));
+  for (const mode of ['replace','wipe','unknown']) {
+    for (const [method, sheet, row] of [
+      ['importProducts','کالاها',{'نام':'Q01 non-destructive product'}],
+      ['importContacts','اشخاص',{'نام':'Q01 non-destructive contact'}]
+    ]) {
+      let rejected=false;
+      try { await window.ExcelController[method]({[sheet]:[row]},{mode}); }
+      catch(error) { rejected=String(error?.message||'').includes('جایگزینی گروهی'); }
+      if (!rejected) throw Error('Excel '+method+' accepted unsafe mode: '+mode);
+    }
+  }
+  if (JSON.stringify(await FINORA.Storage.getAll('products'))!==beforeProducts ||
+      JSON.stringify(await FINORA.Storage.getAll('contacts'))!==beforeContacts) {
+    throw Error('An unsupported Excel mode mutated existing customer or product data');
+  }
   const modalKeyboard={roleAndLabel:true,nestedDialogIsolation:true,
+    excelReplacementRejectedWithoutWrites:true,
     importedInvoiceHtmlEscaped:true,
     expenseUnsafeHtmlEscaped:true,
     modalFormLabelsLinked:true,
