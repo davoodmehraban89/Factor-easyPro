@@ -114,7 +114,7 @@ class InvoicesViewImpl {
             ${preBadge}
           </td>
           <td>
-            <span class="badge ${k.cls}">${k.label}</span>
+            <span class="badge ${k.cls}">${this._esc(k.label)}</span>
           </td>
           <td>${this._esc(inv.contactName || '—')}</td>
           <td>${this._esc(Formatters.toPersianDigits(inv.date || '—'))}</td>
