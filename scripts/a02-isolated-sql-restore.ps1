@@ -94,6 +94,8 @@ function New-LocalRestorePlan(
     $data = 0
     $logs = 0
     $totalBytes = [long]0
+    $dataBytes = [long]0
+    $logBytes = [long]0
     foreach ($file in $Files) {
         $logical = [string]$file.LogicalName
         $type = [string]$file.Type
@@ -117,6 +119,7 @@ function New-LocalRestorePlan(
             throw 'A02_FILELIST_SIZE_OVERFLOW'
         }
         $totalBytes += $size
+        if ($type -eq 'D') { $dataBytes += $size } else { $logBytes += $size }
         $filename = $DatabaseName + '_file' + ($moves.Count + 1).ToString('00') + $ext
         $target = [System.IO.Path]::Combine($directory, $filename)
         $null = Assert-LocalPathShape $target
@@ -142,6 +145,8 @@ function New-LocalRestorePlan(
         DatabaseName = $DatabaseName
         Moves = @($moves)
         TotalBytes = $totalBytes
+        DataBytes = $dataBytes
+        LogBytes = $logBytes
         VerifySql = $verify
         RestoreSql = $restore
         RestoreExecuted = $false
@@ -219,6 +224,21 @@ function Assert-DestinationDiskSpace($Plan) {
     }
 }
 
+function Get-ExpressDataLimitBytes([int]$Major,[int]$EngineEdition) {
+    if ($EngineEdition -ne 4) { return [long]0 }
+    if ($Major -ge 11 -and $Major -le 16) { return [long]10GB }
+    if ($Major -eq 17) { return [long]50GB }
+    throw 'A02_EXPRESS_LIMIT_VERSION_UNSUPPORTED'
+}
+
+function Assert-ExpressDatabaseSizeLimit($Plan,[int]$Major,[int]$EngineEdition) {
+    $limit = Get-ExpressDataLimitBytes $Major $EngineEdition
+    if ($limit -gt 0 -and [long]$Plan.DataBytes -gt $limit) {
+        throw 'A02_EXPRESS_DATABASE_SIZE_LIMIT_EXCEEDED'
+    }
+    return [long]$limit
+}
+
 function Invoke-SelfTest {
     $name = 'FinoraHoloo_0123456789abcdef0123456789abcdef'
     $files = @(
@@ -230,7 +250,43 @@ function Invoke-SelfTest {
         -not $p.RestoreSql.Contains("Data'';DROP DATABASE master;--") -or
         $p.RestoreSql -match '(?i)\bWITH\s+REPLACE\b' -or
         ($p.RestoreSql.Split([string[]]@('RESTORE DATABASE'), [System.StringSplitOptions]::None)).Count -ne 2 -or
-        $p.Moves.Count -ne 2) { throw 'A02_SELFTEST_SQL_PLAN' }
+        $p.Moves.Count -ne 2 -or $p.DataBytes -ne 1024 -or $p.LogBytes -ne 2048) {
+        throw 'A02_SELFTEST_SQL_PLAN'
+    }
+    if ((Get-ExpressDataLimitBytes 16 4) -ne 10GB -or
+        (Get-ExpressDataLimitBytes 17 4) -ne 50GB -or
+        (Get-ExpressDataLimitBytes 16 2) -ne 0) {
+        throw 'A02_SELFTEST_EXPRESS_LIMIT_MAPPING'
+    }
+    $null = Assert-ExpressDatabaseSizeLimit $p 16 4
+    $limitFiles = @(
+        [pscustomobject]@{ LogicalName = 'Data'; Type = 'D'; Size = 10GB },
+        [pscustomobject]@{ LogicalName = 'Log'; Type = 'L'; Size = 2048 }
+    )
+    $atLimit = New-LocalRestorePlan 'D:\copy.bak' 'C:\Data' 'C:\Log' $name $limitFiles
+    $null = Assert-ExpressDatabaseSizeLimit $atLimit 16 4
+    $tooLargeFiles = @(
+        [pscustomobject]@{ LogicalName = 'Data'; Type = 'D'; Size = (10GB + 1) },
+        [pscustomobject]@{ LogicalName = 'Log'; Type = 'L'; Size = 2048 }
+    )
+    $tooLarge = New-LocalRestorePlan 'D:\copy.bak' 'C:\Data' 'C:\Log' $name $tooLargeFiles
+    $rejected = $false
+    try { $null = Assert-ExpressDatabaseSizeLimit $tooLarge 16 4 }
+    catch { $rejected = $true }
+    if (-not $rejected) { throw 'A02_SELFTEST_EXPRESS_10GB_LIMIT' }
+    $tooLarge2025Files = @(
+        [pscustomobject]@{ LogicalName = 'Data'; Type = 'D'; Size = (50GB + 1) },
+        [pscustomobject]@{ LogicalName = 'Log'; Type = 'L'; Size = 2048 }
+    )
+    $tooLarge2025 = New-LocalRestorePlan 'D:\copy.bak' 'C:\Data' 'C:\Log' $name $tooLarge2025Files
+    $rejected = $false
+    try { $null = Assert-ExpressDatabaseSizeLimit $tooLarge2025 17 4 }
+    catch { $rejected = $true }
+    if (-not $rejected) { throw 'A02_SELFTEST_EXPRESS_50GB_LIMIT' }
+    $unknownVersionRejected = $false
+    try { $null = Get-ExpressDataLimitBytes 18 4 }
+    catch { $unknownVersionRejected = $true }
+    if (-not $unknownVersionRejected) { throw 'A02_SELFTEST_UNKNOWN_EXPRESS_VERSION' }
     foreach ($bad in @('relative\file.bak', '\\server\share\a.bak',
         'C:\Private\..\file.bak', 'C:\Private\file.bak:ads', 'C:/Private/file.bak')) {
         $rejected = $false
@@ -281,6 +337,8 @@ try {
     $connection.Open()
     $version = Invoke-SqlRows $connection @"
 SELECT TRY_CAST(SERVERPROPERTY('ProductMajorVersion') AS int) AS Major,
+       CAST(SERVERPROPERTY('EngineEdition') AS int) AS EngineEdition,
+       CAST(SERVERPROPERTY('Edition') AS nvarchar(128)) AS Edition,
        CAST(SERVERPROPERTY('InstanceName') AS nvarchar(128)) AS InstanceName,
        CAST(SERVERPROPERTY('InstanceDefaultDataPath') AS nvarchar(4000)) AS DataDir,
        CAST(SERVERPROPERTY('InstanceDefaultLogPath') AS nvarchar(4000)) AS LogDir;
@@ -290,7 +348,10 @@ SELECT TRY_CAST(SERVERPROPERTY('ProductMajorVersion') AS int) AS Major,
         throw 'A02_SQL_INSTANCE_NOT_DEDICATED'
     }
     [int]$serverMajor = $version.Rows[0]['Major']
+    [int]$engineEdition = $version.Rows[0]['EngineEdition']
+    [string]$engineEditionName = [string]$version.Rows[0]['Edition']
     if ($serverMajor -lt 11) { throw 'A02_SQL_INSTANCE_TOO_OLD' }
+    if ($engineEdition -le 0 -or [string]::IsNullOrWhiteSpace($engineEditionName)) { throw 'A02_SQL_ENGINE_EDITION_UNKNOWN' }
     $dataPath = [string]$version.Rows[0]['DataDir']
     $logPath = [string]$version.Rows[0]['LogDir']
     if ($dataPath.EndsWith('\')) { $dataPath = $dataPath.TrimEnd('\') }
@@ -322,6 +383,7 @@ SELECT TRY_CAST(SERVERPROPERTY('ProductMajorVersion') AS int) AS Major,
     $plan = New-LocalRestorePlan $localBackup $dataPath $logPath (
         New-RandomDatabaseName
     ) @($files.Rows)
+    $expressLimitBytes = Assert-ExpressDatabaseSizeLimit $plan $serverMajor $engineEdition
     Assert-DestinationDiskSpace $plan
     Assert-PlanCollisionFree $connection $plan
     Invoke-SqlCommand $connection $plan.VerifySql 1800
@@ -332,6 +394,10 @@ SELECT TRY_CAST(SERVERPROPERTY('ProductMajorVersion') AS int) AS Major,
         [pscustomobject]@{
             status = 'backup-verifyonly-passed'
             sourceSqlMajor = $sourceMajor; engineSqlMajor = $serverMajor
+            engineEdition = $engineEditionName; engineEditionCode = $engineEdition
+            dataFileBytes = $plan.DataBytes; logFileBytes = $plan.LogBytes
+            expressDataLimitBytes = if ($expressLimitBytes -gt 0) { $expressLimitBytes } else { $null }
+            expressSizeLimitCheck = if ($expressLimitBytes -gt 0) { 'passed' } else { 'not-applicable' }
             fileCount = $plan.Moves.Count; canImport = $false
             restoreExecuted = $false; financialReconciled = $false
         } | ConvertTo-Json -Compress
@@ -359,6 +425,8 @@ SELECT TRY_CAST(SERVERPROPERTY('ProductMajorVersion') AS int) AS Major,
     [pscustomobject]@{
         status = 'isolated-restore-completed-needs-mapping-and-reconciliation'
         databaseName = $plan.DatabaseName
+        engineEdition = $engineEditionName
+        expressDataLimitBytes = if ($expressLimitBytes -gt 0) { $expressLimitBytes } else { $null }
         tableCount = [int]$schema.Rows[0]['TableCount']
         columnCount = [int]$schema.Rows[0]['ColumnCount']
         canImport = $false; financialReconciled = $false
