@@ -61,6 +61,15 @@ jobs:
         run: npm ci
       - name: Windows integration regression
         run: npm test
+      - name: A02 SQL backup preflight selftest (read-only; no SQL instance/data)
+        shell: pwsh
+        run: |
+          $output = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File './scripts/a02-sql-backup-readonly-preflight.ps1' -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw 'A02 PowerShell selftest failed' }
+          $result = ($output | Out-String | ConvertFrom-Json)
+          if ($result.status -ne 'selftest-passed' -or $result.databaseModified -ne $false -or $result.canImport -ne $false -or $result.connectionOpened -ne $false) {
+            throw 'A02 PowerShell selftest safety result invalid'
+          }
       - name: Build Tauri installer
         run: npm exec tauri build
       - name: Inspect produced Windows x64 installer and checksum
