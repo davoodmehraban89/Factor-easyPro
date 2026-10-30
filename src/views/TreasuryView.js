@@ -193,15 +193,15 @@ class TreasuryViewImpl {
       <div class="toolbar">
         <div class="search-input-wrap">
           <span class="icon">🔍</span>
-          <input type="text" class="form-control" placeholder="جستجو..." value="${this._esc(txFilter.search)}" oninput="window.TreasuryView._onTxSearch(this.value)" />
+          <input type="text" class="form-control" placeholder="جستجو..." aria-label="جستجوی تراکنش‌های خزانه" value="${this._esc(txFilter.search)}" oninput="window.TreasuryView._onTxSearch(this.value)" />
         </div>
-        <select class="form-control" style="width:auto;min-width:120px" onchange="window.TreasuryView._onTxFilter('type', this.value)">
+        <select class="form-control" style="width:auto;min-width:120px" aria-label="نوع تراکنش خزانه" onchange="window.TreasuryView._onTxFilter('type', this.value)">
           <option value="">همه انواع</option>
           <option value="receipt" ${txFilter.type === 'receipt' ? 'selected' : ''}>دریافت</option>
           <option value="payment" ${txFilter.type === 'payment' ? 'selected' : ''}>پرداخت</option>
           <option value="transfer" ${txFilter.type === 'transfer' ? 'selected' : ''}>انتقال</option>
         </select>
-        <select class="form-control" style="width:auto;min-width:150px" onchange="window.TreasuryView._onTxFilter('accountId', this.value)">
+        <select class="form-control" style="width:auto;min-width:150px" aria-label="حساب تراکنش خزانه" onchange="window.TreasuryView._onTxFilter('accountId', this.value)">
           <option value="">همه حساب‌ها</option>
           ${accountOptions}
         </select>
