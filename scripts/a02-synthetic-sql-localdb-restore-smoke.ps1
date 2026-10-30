@@ -53,12 +53,23 @@ try{
   $phase='start-instance'
   & $localdb start $instance | Out-Null
   Require ($LASTEXITCODE -eq 0) 'A02_LOCALDB_START_FAILED'
-  $phase='connect-master'
+  $phase='connection-string-build'
   $b=[System.Data.SqlClient.SqlConnectionStringBuilder]::new()
+  $phase='connection-string-datasource'
   $b.DataSource='(localdb)\'+$instance
-  $b.InitialCatalog='master';$b.IntegratedSecurity=$true
-  $b.ConnectTimeout=30;$b.Encrypt=$false;$b.Pooling=$false
+  $phase='connection-string-catalog'
+  $b.InitialCatalog='master'
+  $phase='connection-string-security'
+  $b.IntegratedSecurity=$true
+  $phase='connection-string-timeout'
+  $b.ConnectTimeout=30
+  $phase='connection-string-encryption'
+  $b.Encrypt=$false
+  $phase='connection-string-pooling'
+  $b.Pooling=$false
+  $phase='connection-object'
   $conn=[System.Data.SqlClient.SqlConnection]::new($b.ToString())
+  $phase='connection-open'
   $conn.Open()
   $phase='create-synthetic-database'
   ExecSql $conn ('CREATE DATABASE ['+$source+'];')
