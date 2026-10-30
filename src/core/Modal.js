@@ -59,6 +59,30 @@ class ModalManager {
     }
   }
 
+  // Pair an existing visual label with its field only when the association is
+  // unambiguous. Multi-field groups and already-labelled controls are untouched.
+  _associateFormLabels(card) {
+    for (const group of card.querySelectorAll('.form-group')) {
+      const fields = [...group.querySelectorAll('input, select, textarea')]
+        .filter(field => field.closest('.form-group') === group && field.type !== 'hidden');
+      if (fields.length !== 1) continue;
+      const field = fields[0];
+      if (field.hasAttribute('aria-label') || field.hasAttribute('aria-labelledby') || field.labels?.length) continue;
+      const labels = [...group.querySelectorAll('label.form-label')]
+        .filter(label => label.closest('.form-group') === group &&
+          !label.hasAttribute('for') && !label.querySelector('input, select, textarea'));
+      if (labels.length !== 1 || !labels[0].textContent.trim()) continue;
+      if (field.id) {
+        if (card.querySelectorAll('[id]').length &&
+            [...card.querySelectorAll('[id]')].filter(el => el.id === field.id).length !== 1) continue;
+        if (document.getElementById(field.id)) continue;
+      } else {
+        field.id = 'finora-modal-field-' + (++this.sequence);
+      }
+      labels[0].setAttribute('for', field.id);
+    }
+  }
+
   _create(options) {
     const { title, body, footer, size = 'md', onClose, closeOnBackdrop = true } = options;
     const backdrop = document.createElement('div');
@@ -103,6 +127,7 @@ class ModalManager {
     }
 
     card.querySelector('.modal-close').onclick = () => this.close();
+    this._associateFormLabels(card);
     backdrop.appendChild(card);
     return { backdrop, card, onClose, previousFocus: document.activeElement };
   }
