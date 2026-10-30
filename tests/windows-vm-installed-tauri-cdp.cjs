@@ -395,6 +395,16 @@ async function connect(url) {
       assert.equal(audit.shellResults.toastResults.importantErrorsRemain, true);
       assert.equal(audit.shellResults.toastResults.dismissButtonsWork, true);
       assert.ok(audit.inventoryCount >= 25, 'Too few visible controls discovered');
+      assert.ok(audit.uniqueActionCount >= 20 &&
+        audit.uniqueActionCount <= audit.inventoryCount,
+        'Unique action signatures have an invalid or unexpectedly small count');
+      assert.ok(audit.uniqueActionClicked <= audit.uniqueActionCount &&
+        audit.uniqueActionUnverified <= audit.uniqueActionCount,
+        'Unique action status totals exceed unique action signatures');
+      assert.equal(audit.duplicateInstanceCount,
+        audit.inventoryCount-audit.uniqueActionCount);
+      assert.ok(audit.controls.every(x=>x.status!=='not-clicked' || !!x.reason),
+        'Every nonclicked control must have a machine-readable reason');
       assert.ok(audit.fieldsInspected >= 15, 'Visible form-field inventory unexpectedly small');
       assert.ok(Number.isInteger(audit.fieldsMissingProgrammaticLabel), 'No programmatic label coverage reported');
       assert.ok(audit.safeClickCount >= 15, 'Safe interaction coverage unexpectedly low');
@@ -405,6 +415,13 @@ async function connect(url) {
       report.nativeControlAudit = {
         routesVisited: audit.routesVisited, shellResults: audit.shellResults,
         inventoryCount: audit.inventoryCount,
+        uniqueActionCount: audit.uniqueActionCount,
+        uniqueActionClicked: audit.uniqueActionClicked,
+        uniqueActionUnverified: audit.uniqueActionUnverified,
+        uniqueActionDisabled: audit.uniqueActionDisabled,
+        uniqueActionFailed: audit.uniqueActionFailed,
+        duplicateInstanceCount: audit.duplicateInstanceCount,
+        unclassifiedInstances: audit.unclassifiedInstances,
         safeClickCount: audit.safeClickCount, skippedCount: audit.skippedCount,
         accessibilityNameGaps: audit.accessibilityNameGaps,
         fieldsInspected: audit.fieldsInspected,
