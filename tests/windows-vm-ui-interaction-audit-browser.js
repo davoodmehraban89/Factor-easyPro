@@ -317,7 +317,27 @@
   if (document.activeElement!==modalTrigger) {
     throw Error('Closing visible-input dialog did not restore keyboard focus');
   }
+  // Real DOM probe: preserve ambiguous groups and explicit accessible names.
+  const labelsProbe=FINORA.Modal.open({title:'Q01 Synthetic form labels',body:
+    '<div class="form-group"><label class="form-label">نام آزمایشی</label><input id="q01SingleField"></div>' +
+    '<div class="form-group"><label class="form-label">گروه چندفیلدی</label><input id="q01MultiOne"><input id="q01MultiTwo"></div>' +
+    '<div class="form-group"><label class="form-label" for="q01ExistingField">برچسب صریح</label><input id="q01ExistingField"></div>',
+    footer:'<button class="btn" onclick="FINORA.Modal.close()">بستن</button>',size:'sm'});
+  await wait(25);
+  const namedField=labelsProbe.card.querySelector('#q01SingleField');
+  const multiOne=labelsProbe.card.querySelector('#q01MultiOne');
+  const existingField=labelsProbe.card.querySelector('#q01ExistingField');
+  if (namedField.labels?.length!==1 ||
+      namedField.labels[0].textContent.trim()!=='نام آزمایشی' ||
+      multiOne.labels?.length || existingField.labels?.length!==1 ||
+      existingField.labels[0].getAttribute('for')!=='q01ExistingField') {
+    throw Error('Modal form labels were missing, ambiguous, or overwrote explicit names');
+  }
+  namedField.labels[0].click(); await wait(15);
+  if (document.activeElement!==namedField) throw Error('Linked modal field label did not focus its field');
+  FINORA.Modal.close();
   const modalKeyboard={roleAndLabel:true,nestedDialogIsolation:true,
+    modalFormLabelsLinked:true,
     confirmationTextEscaped:true,visibleInputAutoFocused:true,
     escapeClosesWithoutConfirm:true,focusReturnsToTrigger:true,
     enterOnFocusedCancelDoesNotSave:true,enterOnInputDoesNotSubmit:true,
@@ -415,6 +435,13 @@
               !dialog.contains(document.activeElement)){
             failures.push({route,section:ctx.section,kind:'modal-a11y-missing',
               handler:action.slice(0,170)});
+          }
+          if (route==='expenses' && action.includes('openExpenseModal()')) {
+            const real=dialog?.querySelector('#expCategory');
+            if (!real || real.labels?.length!==1 ||
+                !real.labels[0].textContent.includes('سرفصل')) {
+              failures.push({route,section:ctx.section,kind:'expense-category-label-missing'});
+            }
           }
           auditFields(overlay,route,ctx.section+'/modal');
           const nested=clickables(overlay);
