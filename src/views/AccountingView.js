@@ -14,6 +14,8 @@ import { ACCOUNT_LEVELS, ACCOUNT_TYPES } from '../core/AccountingCore.mjs';
 const levelNames = { group: 'گروه', general: 'کل', subsidiary: 'معین', detail: 'تفصیلی' };
 const typeNames = { asset: 'دارایی', liability: 'بدهی', equity: 'حقوق مالکانه', revenue: 'درآمد', expense: 'هزینه' };
 const html = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Encode both JavaScript argument quotes and the enclosing HTML attribute.
+const actionArg = value => html(JSON.stringify(String(value ?? '')));
 const digits = input => String(input ?? '').replace(/[۰-۹]/g, c => String(c.charCodeAt(0) - 1776)).replace(/[٠-٩]/g, c => String(c.charCodeAt(0) - 1632));
 const rial = input => {
   const raw = digits(input).replace(/[,_،\s]/g, '');
@@ -203,7 +205,7 @@ class AccountingViewImpl {
       <td><strong>${html(p.name)}</strong></td>
       <td>${html(p.startDate)}</td><td>${html(p.endDate)}</td>
       <td><span class="badge ${p.closed ? 'badge-muted' : 'badge-success'}">${p.closed ? 'بسته' : 'باز'}</span></td>
-      <td>${p.closed ? '—' : `<button class="btn btn-secondary" onclick="window.AccountingView.closePeriod('${html(p.id)}')">بستن دوره</button>`}</td></tr>`).join('');
+      <td>${p.closed ? '—' : `<button class="btn btn-secondary" onclick="window.AccountingView.closePeriod(${actionArg(p.id)})">بستن دوره</button>`}</td></tr>`).join('');
     return `<div class="card">
       <div class="toolbar"><strong>دوره‌های مالی</strong>
       <button class="btn" onclick="window.AccountingView.openPeriodModal()">افزودن دوره مالی</button></div>
@@ -230,12 +232,12 @@ class AccountingViewImpl {
       <td>${Formatters.number(j.debit || 0)}</td><td>${Formatters.number(j.credit || 0)}</td>
       <td><span class="badge ${j.status === 'posted' ? 'badge-success' : 'badge-warning'}">${j.status === 'posted' ? 'قطعی' : 'پیش‌نویس'}</span>${j.reversedById ? ' / برگشت‌خورده' : ''}</td>
       <td style="white-space:nowrap">
-        <button class="btn btn-secondary" onclick="window.AccountingView.showJournal('${html(j.id)}')">مشاهده</button>
-        ${j.status === 'draft' ? `<button class="btn btn-secondary" onclick="window.AccountingView.openJournalModal('${html(j.id)}')">ویرایش</button>
-        <button class="btn" onclick="window.AccountingView.postDraft('${html(j.id)}')">قطعی</button>
-        <button class="btn btn-secondary" onclick="window.AccountingView.deleteDraft('${html(j.id)}')">حذف پیش‌نویس</button>` : ''}
+        <button class="btn btn-secondary" onclick="window.AccountingView.showJournal(${actionArg(j.id)})">مشاهده</button>
+        ${j.status === 'draft' ? `<button class="btn btn-secondary" onclick="window.AccountingView.openJournalModal(${actionArg(j.id)})">ویرایش</button>
+        <button class="btn" onclick="window.AccountingView.postDraft(${actionArg(j.id)})">قطعی</button>
+        <button class="btn btn-secondary" onclick="window.AccountingView.deleteDraft(${actionArg(j.id)})">حذف پیش‌نویس</button>` : ''}
         ${j.status === 'posted' && !j.reversedById && !j.reversalOfId
-          ? `<button class="btn btn-secondary" onclick="window.AccountingView.openReversal('${html(j.id)}')">برگشت</button>` : ''}
+          ? `<button class="btn btn-secondary" onclick="window.AccountingView.openReversal(${actionArg(j.id)})">برگشت</button>` : ''}
       </td></tr>`).join('');
     return `<div class="card">
       <div class="toolbar"><strong>اسناد حسابداری مستقل</strong>
@@ -572,7 +574,7 @@ class AccountingViewImpl {
       <td>${Formatters.number(b.quantityUnits/1000)}</td><td>${Formatters.number(b.value)} ریال</td></tr>`).join('');
     const takeRows=stocktakes.map(s=>`<tr><td>${html(warehouseNames[s.warehouseId]||s.warehouseId)}</td>
       <td>${html(s.date)}</td><td>${s.status==='draft'?'در انتظار شمارش':'قطعی'}</td>
-      <td><button class="btn btn-secondary" onclick="window.AccountingView.openStocktake('${html(s.id)}')">مشاهده و شمارش</button></td></tr>`).join('');
+      <td><button class="btn btn-secondary" onclick="window.AccountingView.openStocktake(${actionArg(s.id)})">مشاهده و شمارش</button></td></tr>`).join('');
     return `<div class="card"><div class="toolbar"><strong>حسابداری یکپارچه فعال است</strong>
       <button class="btn" onclick="window.AccountingView.openWarehouse()">انبار جدید</button>
       <button class="btn btn-secondary" onclick="window.AccountingView.openTransfer()">انتقال کالا</button>
