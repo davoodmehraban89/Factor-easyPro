@@ -1,8 +1,8 @@
 # ADR-003 — حاکمیت اجرایی Factor-easyPro با ساختار ۵+۱+۳
 
-**وضعیت:** Proposed — پیشنهاد مالک؛ هنوز تصویب یا به‌طور مستقل تأیید نشده است  
-**تاریخ:** 2026-10-30  
-**Issue:** [#142](https://github.com/davoodmehraban89/Factor-easyPro/issues/142)  
+**وضعیت:** Proposed — پیشنهاد مالک؛ هنوز تصویب یا به‌طور مستقل تأیید نشده است
+**تاریخ:** 2026-10-30
+**Issue:** [#142](https://github.com/davoodmehraban89/Factor-easyPro/issues/142)
 **وابستگی حفاظتی:** [#19](https://github.com/davoodmehraban89/Factor-easyPro/issues/19)
 
 ## زمینه و مرجع معتبر
