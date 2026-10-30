@@ -61,6 +61,19 @@ jobs:
         run: npm ci
       - name: Windows integration regression
         run: npm test
+      - name: Guarded SQL restore helper self-test (no SQL, no backup, zero writes)
+        shell: pwsh
+        run: |
+          $result = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File './scripts/a02-isolated-sql-restore.ps1' -Mode Test
+          if ($LASTEXITCODE -ne 0) { throw 'A02 isolated restore synthetic self-test failed' }
+          $report = ($result | Out-String | ConvertFrom-Json)
+          if ($report.status -ne 'selftest-passed' -or
+              $report.sqlConnectionOpened -ne $false -or
+              $report.backupOpened -ne $false -or
+              $report.databaseModified -ne $false -or
+              $report.canImport -ne $false) {
+            throw 'A02 unsafe self-test result'
+          }
       - name: Build Tauri installer
         run: npm exec tauri build
       - name: Inspect produced Windows x64 installer and checksum
