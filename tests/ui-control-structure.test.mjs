@@ -147,6 +147,21 @@ test('A03: expense table escapes imported values in HTML and inline action argum
   assert.ok(native.includes('Expense row identifier escaped the safe JS argument'));
 });
 
+test('A03: financial list views encode imported record IDs and textual values', () => {
+  const sources=['InvoicesView','ProductsView','ContactsView','TreasuryView','ChequesView'];
+  for(const name of sources){
+    const source=fs.readFileSync(path.join(root,'src','views',name+'.js'),'utf8');
+    assert.ok(source.includes('this._esc(JSON.stringify(String('),
+      name+' lacks HTML-safe JSON encoding for inline record arguments');
+    assert.doesNotMatch(source,/onclick="[^"]*\('\$\{[^}]+\.id\}'\)/,
+      name+' still interpolates raw IDs into JavaScript event handlers');
+    assert.doesNotMatch(source,/<option value="\$\{(?:[a-zA-Z]+)\.id\}"/,
+      name+' still interpolates raw IDs into option attributes');
+  }
+  const expenses=fs.readFileSync(path.join(root,'src','views','ExpensesView.js'),'utf8');
+  assert.ok(expenses.includes('this._esc(JSON.stringify(String(e.id ??')));
+});
+
 test('Q01: Escape is handled once for nested financial dialogs and shortcut target is topmost', () => {
   const shortcuts = fs.readFileSync(path.join(root,'src','core','KeyboardShortcuts.js'),'utf8');
   const modal = fs.readFileSync(path.join(root,'src','core','Modal.js'),'utf8');
