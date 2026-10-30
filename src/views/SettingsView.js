@@ -420,11 +420,11 @@ class SettingsViewImpl {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)">
           <div class="form-group" style="margin-bottom:0">
             <label class="form-label">تعداد صفرهای کلید +</label>
-            <input type="text" inputmode="numeric" class="form-control" id="scPlusZeros" value="${Formatters.toPersianDigits(s.plusZeros)}" />
+            <input type="text" inputmode="numeric" class="form-control" id="scPlusZeros" aria-label="تعداد صفرهای میانبر مثبت" value="${Formatters.toPersianDigits(s.plusZeros)}" />
           </div>
           <div class="form-group" style="margin-bottom:0">
             <label class="form-label">تعداد صفرهای کلید −</label>
-            <input type="text" inputmode="numeric" class="form-control" id="scMinusZeros" value="${Formatters.toPersianDigits(s.minusZeros)}" />
+            <input type="text" inputmode="numeric" class="form-control" id="scMinusZeros" aria-label="تعداد صفرهای میانبر منفی" value="${Formatters.toPersianDigits(s.minusZeros)}" />
           </div>
         </div>
 
@@ -1067,7 +1067,7 @@ class SettingsViewImpl {
         <p style="font-size:12px;color:var(--danger);margin-bottom:16px">
           لطفاً برای تأیید، کلمه‌ی <code style="background:var(--danger);color:#fff;padding:2px 8px;border-radius:4px">حذف</code> رو تایپ کنید
         </p>
-        <input type="text" class="form-control" id="wipeConfirm" placeholder="حذف" style="text-align:center;max-width:200px;margin:0 auto" />
+        <input type="text" class="form-control" id="wipeConfirm" aria-label="متن تایید پاک کردن داده‌ها" placeholder="حذف" style="text-align:center;max-width:200px;margin:0 auto" />
       </div>
     `;
     const footer = `

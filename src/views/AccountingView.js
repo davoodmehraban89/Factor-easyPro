@@ -255,7 +255,7 @@ class AccountingViewImpl {
     const rows = result.rows.map(r => `<tr><td>${html(r.code)}</td><td>${html(r.name)}</td>
       <td>${Formatters.number(r.debit)}</td><td>${Formatters.number(r.credit)}</td><td>${Formatters.number(r.balance)}</td></tr>`).join('');
     return `<div class="card"><div class="toolbar"><strong>تراز آزمایشی اسناد قطعی</strong>
-      <select class="form-control" style="max-width:210px" onchange="window.AccountingView.setTrialPeriod(this.value)">${opts}</select></div>
+      <select class="form-control" style="max-width:210px" aria-label="دوره تراز آزمایشی" onchange="window.AccountingView.setTrialPeriod(this.value)">${opts}</select></div>
       <div class="table-wrap"><table><thead><tr><th>کد</th><th>حساب</th><th>گردش بدهکار</th><th>گردش بستانکار</th><th>مانده بدهکار - بستانکار</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="5">گردشی وجود ندارد.</td></tr>'}</tbody>
       <tfoot><tr><th colspan="2">جمع</th><th>${Formatters.number(result.totals.debit)}</th><th>${Formatters.number(result.totals.credit)}</th><th>۰</th></tr></tfoot>
@@ -440,10 +440,10 @@ class AccountingViewImpl {
   }
   journalRow(line = {}) {
     return `<tr class="ac-journal-line">
-      <td><select class="form-control ac-line-account">${this.accountOptions(line.accountId)}</select></td>
-      <td><input class="form-control ac-line-debit" inputmode="text" placeholder="۰" value="${html(line.debit ?? '0')}"></td>
-      <td><input class="form-control ac-line-credit" inputmode="text" placeholder="۰" value="${html(line.credit ?? '0')}"></td>
-      <td><input class="form-control ac-line-note" value="${html(line.description || '')}"></td>
+      <td><select class="form-control ac-line-account" aria-label="حساب ردیف سند">${this.accountOptions(line.accountId)}</select></td>
+      <td><input class="form-control ac-line-debit" aria-label="مبلغ بدهکار ردیف" inputmode="text" placeholder="۰" value="${html(line.debit ?? '0')}"></td>
+      <td><input class="form-control ac-line-credit" aria-label="مبلغ بستانکار ردیف" inputmode="text" placeholder="۰" value="${html(line.credit ?? '0')}"></td>
+      <td><input class="form-control ac-line-note" aria-label="شرح ردیف سند" value="${html(line.description || '')}"></td>
       <td><button class="btn btn-secondary" onclick="this.closest('tr').remove()">حذف</button></td>
     </tr>`;
   }
@@ -594,7 +594,7 @@ class AccountingViewImpl {
   }
   openWarehouse() {
     Modal.open({title:'ایجاد انبار',size:'sm',closeOnBackdrop:false,
-      body:'<label class="form-label">نام انبار</label><input id="acWhName" class="form-control">',
+      body:'<label class="form-label" for="acWhName">نام انبار</label><input id="acWhName" class="form-control">',
       footer:'<button class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button><button class="btn" onclick="window.AccountingView.saveWarehouse()">ثبت انبار</button>'});
   }
   async saveWarehouse() {
@@ -636,8 +636,8 @@ class AccountingViewImpl {
       const warehouses=await Retail.warehouses();
       const options=warehouses.map(w=>`<option value="${html(w.id)}">${html(w.name)}</option>`).join('');
       Modal.open({title:'شروع شمارش انبار',size:'sm',closeOnBackdrop:false,
-        body:`<label class="form-label">انبار</label><select class="form-control" id="acStWarehouse">${options}</select>
-          <label class="form-label">تاریخ شمسی</label><input class="form-control" id="acStDate" value="${safeDate()}">
+        body:`<label class="form-label" for="acStWarehouse">انبار</label><select class="form-control" id="acStWarehouse">${options}</select>
+          <label class="form-label" for="acStDate">تاریخ شمسی</label><input class="form-control" id="acStDate" value="${safeDate()}">
           <p style="margin-top:12px">موجودی مبنا ثابت ثبت می‌شود؛ برای تأیید، شمارش همه اقلام ضروری است.</p>`,
         footer:'<button class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button><button class="btn" onclick="window.AccountingView.createStocktake()">ایجاد جلسه</button>'});
     }catch(e){Toast.error(e.message)}

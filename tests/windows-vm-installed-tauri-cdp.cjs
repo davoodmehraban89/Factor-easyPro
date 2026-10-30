@@ -413,6 +413,8 @@ async function connect(url) {
         'Every nonclicked control must have a machine-readable reason');
       assert.ok(audit.fieldsInspected >= 15, 'Visible form-field inventory unexpectedly small');
       assert.ok(Number.isInteger(audit.fieldsMissingProgrammaticLabel), 'No programmatic label coverage reported');
+      assert.ok(audit.fieldsMissingProgrammaticLabel <= 5,
+        'Financial field accessible labels regressed: '+audit.fieldsMissingProgrammaticLabel);
       assert.ok(audit.safeClickCount >= 15, 'Safe interaction coverage unexpectedly low');
       assert.equal(audit.customerDataUsed, false);
       assert.equal(audit.financialActionsNotBulkClicked, true);

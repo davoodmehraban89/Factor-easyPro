@@ -199,11 +199,11 @@ class InvoiceFormViewImpl {
 
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
             <span style="flex:1;font-size:12.5px">تخفیف کلی</span>
-            <select class="form-control" id="invDiscType" style="width:80px;min-height:34px" onchange="window.InvoiceFormView._onDiscTypeChange()">
+            <select class="form-control" id="invDiscType" aria-label="نوع تخفیف کل فاکتور" style="width:80px;min-height:34px" onchange="window.InvoiceFormView._onDiscTypeChange()">
               <option value="fixed" ${d.discountType === 'fixed' ? 'selected' : ''}>مبلغ</option>
               <option value="percent" ${d.discountType === 'percent' ? 'selected' : ''}>درصد</option>
             </select>
-            <input type="text" inputmode="numeric" class="form-control" id="invDiscInput" style="width:110px;min-height:34px" value="${NumberInput.format(d.discountInput || 0)}" oninput="window.InvoiceFormView._recalc()" />
+            <input type="text" inputmode="numeric" class="form-control" id="invDiscInput" aria-label="مقدار تخفیف کل فاکتور" style="width:110px;min-height:34px" value="${NumberInput.format(d.discountInput || 0)}" oninput="window.InvoiceFormView._recalc()" />
           </div>
 
           <div id="vatRow" style="display:${d.kind === 'non_formal' ? 'none' : 'flex'};gap:8px;align-items:center;margin-bottom:10px">
@@ -211,13 +211,13 @@ class InvoiceFormViewImpl {
               <input type="checkbox" id="invVatEnabled" ${d.vatEnabled ? 'checked' : ''} onchange="window.InvoiceFormView._recalc()" />
               مالیات ارزش افزوده
             </label>
-            <input type="text" inputmode="numeric" class="form-control" id="invVatRate" style="width:80px;min-height:34px" value="${NumberInput.format(d.vatRate || 10)}" oninput="window.InvoiceFormView._recalc()" />
+            <input type="text" inputmode="numeric" class="form-control" id="invVatRate" aria-label="درصد مالیات بر ارزش افزوده" style="width:80px;min-height:34px" value="${NumberInput.format(d.vatRate || 10)}" oninput="window.InvoiceFormView._recalc()" />
             <span style="font-size:12.5px;color:var(--text-muted)">٪</span>
           </div>
 
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
             <span style="flex:1;font-size:12.5px">روش پرداخت</span>
-            <select class="form-control" id="invPayment" style="min-height:34px" onchange="window.InvoiceFormView._onPaymentChange()">
+            <select class="form-control" id="invPayment" aria-label="وضعیت پرداخت فاکتور" style="min-height:34px" onchange="window.InvoiceFormView._onPaymentChange()">
               <option value="cash" ${d.paymentMethod === 'cash' ? 'selected' : ''}>نقدی</option>
               <option value="credit" ${d.paymentMethod === 'credit' ? 'selected' : ''}>نسیه</option>
               <option value="partial" ${d.paymentMethod === 'partial' ? 'selected' : ''}>پرداخت جزئی</option>
@@ -298,17 +298,17 @@ class InvoiceFormViewImpl {
       <td>
         <div style="position:relative;min-width:190px">
           <input type="hidden" class="row-product" value="${this._esc(item.productId || '')}" />
-          <input type="text" class="form-control row-product-search" autocomplete="off" value="${this._esc(selectedProductLabel)}" placeholder="جستجوی کالا یا کد" onfocus="window.InvoiceFormView._showProductOptions(${idx})" oninput="window.InvoiceFormView._showProductOptions(${idx}, true)" />
+          <input type="text" class="form-control row-product-search" aria-label="جستجوی کالای ردیف فاکتور" autocomplete="off" value="${this._esc(selectedProductLabel)}" placeholder="جستجوی کالا یا کد" onfocus="window.InvoiceFormView._showProductOptions(${idx})" oninput="window.InvoiceFormView._showProductOptions(${idx}, true)" />
           <div class="row-product-options" style="display:none;position:absolute;z-index:10010;top:100%;right:0;left:0;max-height:220px;overflow:auto;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 20px #0002"></div>
         </div>
       </td>
-      <td><input type="text" class="form-control row-unit" style="min-height:36px;text-align:center" value="${this._esc(item.unit)}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'unit', this.value)" /></td>
-      <td><input type="text" inputmode="numeric" class="form-control row-qty" style="min-height:36px;text-align:center" value="${NumberInput.format(item.qty)}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'qty', this.value)" /></td>
-      <td><input type="text" inputmode="numeric" class="form-control row-price" style="min-height:36px;text-align:left" value="${NumberInput.format(item.price)}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'price', this.value)" /></td>
+      <td><input type="text" class="form-control row-unit" aria-label="واحد کالای ردیف" style="min-height:36px;text-align:center" value="${this._esc(item.unit)}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'unit', this.value)" /></td>
+      <td><input type="text" inputmode="numeric" class="form-control row-qty" aria-label="تعداد ردیف فاکتور" style="min-height:36px;text-align:center" value="${NumberInput.format(item.qty)}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'qty', this.value)" /></td>
+      <td><input type="text" inputmode="numeric" class="form-control row-price" aria-label="قیمت واحد ردیف فاکتور" style="min-height:36px;text-align:left" value="${NumberInput.format(item.price)}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'price', this.value)" /></td>
       <td>
         <div style="display:flex;gap:4px">
-          <input type="text" inputmode="numeric" class="form-control row-disc" style="min-height:36px;text-align:left;flex:1" value="${NumberInput.format(item.discountType === 'percent' ? (item.discountInput || 0) : (item.discount || 0))}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'discount', this.value)" />
-          <select class="form-control" style="min-height:36px;width:60px;padding:0 6px;text-align:center;font-size:12px" onchange="window.InvoiceFormView._onDiscTypeRowChange(${idx}, this.value)">
+          <input type="text" inputmode="numeric" class="form-control row-disc" aria-label="تخفیف ردیف فاکتور" style="min-height:36px;text-align:left;flex:1" value="${NumberInput.format(item.discountType === 'percent' ? (item.discountInput || 0) : (item.discount || 0))}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'discount', this.value)" />
+          <select class="form-control" style="min-height:36px;width:60px;padding:0 6px;text-align:center;font-size:12px" aria-label="نوع تخفیف ردیف" onchange="window.InvoiceFormView._onDiscTypeRowChange(${idx}, this.value)">
             <option value="fixed" ${item.discountType === 'fixed' ? 'selected' : ''}>مبلغ</option>
             <option value="percent" ${item.discountType === 'percent' ? 'selected' : ''}>٪</option>
           </select>
