@@ -133,42 +133,7 @@ try{
   $privateManifest=Get-Content -LiteralPath $plainManifest -Raw | ConvertFrom-Json
   Require ($privateManifest.format -eq 'factor-easypro-a02-schema-manifest' -and
     $privateManifest.formatVersion -eq 1 -and
-    $privateManifest.schemaFingerprintSha256 -cmatch '^[0-9a-f]{64}  $phase='synthetic-reconciliation'
-  $row=QuerySql $conn ('SELECT COUNT_BIG(*) AS C,SUM(amount) AS T FROM ['+$restored+'].dbo.A02Synthetic;')
-  Require ($row.Rows.Count -eq 1 -and [long]$row.Rows[0]['C'] -eq 2 -and
-    [long]$row.Rows[0]['T'] -eq 80235) 'A02_RESTORED_SYNTHETIC_TOTALS_MISMATCH'
-  [pscustomobject]@{
-    status='synthetic-localdb-restore-verified';ownerBackupUsed=$false
-    headerVerified=$true;fileListVerified=$true;verifyOnlyPassed=$true
-    restoreExecuted=$true;dbccPassed=$true;syntheticRecords=2
-    syntheticTotal=80235;schemaOnlyInventoryVerified=$true
-    privateManifestRoundTripVerified=$true
-    financialMigrationPerformed=$false;canImport=$false
-  }|ConvertTo-Json -Compress
-}catch{
-  # Only a bounded phase and exception *type* are public; never emit raw SQL,
-  # paths, backup bytes, identity, or exception messages.
-  $kind=$_.Exception.GetType().Name
-  Write-Error ('A02_SYNTHETIC_LOCALDB_RESTORE_FAILED phase='+$phase+' type='+$kind)
-  exit 2
-}finally{
-  if($null -ne $conn){
-    try{
-      foreach($name in @($restored,$source)){
-        ExecSql $conn ('IF DB_ID('+(Literal $name)+') IS NOT NULL BEGIN '+
-          'ALTER DATABASE ['+$name+'] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; '+
-          'DROP DATABASE ['+$name+']; END;')
-      }
-    }catch{}
-    $conn.Dispose()
-  }
-  if($created){
-    try{& $localdb stop $instance -k | Out-Null}catch{}
-    try{& $localdb delete $instance | Out-Null}catch{}
-  }
-  if([IO.Directory]::Exists($folder)){try{[IO.Directory]::Delete($folder,$true)}catch{}}
-}
- -and
+    $privateManifest.schemaFingerprintSha256 -cmatch '^[0-9a-f]{64}$' -and
     $privateManifest.tables.Count -eq 1 -and
     $privateManifest.tables[0].name -eq 'A02Synthetic' -and
     $privateManifest.tables[0].columns.Count -eq 2 -and
@@ -201,6 +166,7 @@ try{
     headerVerified=$true;fileListVerified=$true;verifyOnlyPassed=$true
     restoreExecuted=$true;dbccPassed=$true;syntheticRecords=2
     syntheticTotal=80235;schemaOnlyInventoryVerified=$true
+    privateManifestRoundTripVerified=$true
     financialMigrationPerformed=$false;canImport=$false
   }|ConvertTo-Json -Compress
 }catch{
