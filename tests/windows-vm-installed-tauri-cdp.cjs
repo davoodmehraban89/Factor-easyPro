@@ -372,6 +372,93 @@ async function connect(url) {
       }
     }
     if (mode === 'fresh') {
+      // Q01: click every safe, visible route/tab/form opener in the installed
+      // WebView2 (not only a preview). Financial writes remain separately
+      // guarded by the real synthetic functional matrix already run above.
+      const auditSource = fs.readFileSync(
+        path.join(__dirname, 'windows-vm-ui-interaction-audit-browser.js'), 'utf8');
+      const audit = await cdp.evaluate(auditSource, 240000);
+      assert.equal(audit.environment, 'installed-Windows-Tauri-WebView2-synthetic-VM');
+      assert.equal(audit.routesVisited, 10);
+      assert.equal(audit.shellResults.keyboardReachableSidebarLinks, 10);
+      assert.equal(audit.shellResults.sidebarCollapseClickAndPersistence, true);
+      assert.equal(audit.shellResults.themeToggleClickAndPersistence, true);
+      assert.equal(audit.shellResults.activeRouteAriaCurrent, true);
+      assert.equal(audit.shellResults.modalKeyboard.nestedDialogIsolation, true);
+      assert.equal(audit.shellResults.modalKeyboard.escapeClosesWithoutConfirm, true);
+      assert.equal(audit.shellResults.modalKeyboard.focusReturnsToTrigger, true);
+      assert.equal(audit.shellResults.modalKeyboard.enterOnFocusedCancelDoesNotSave, true);
+      assert.equal(audit.shellResults.modalKeyboard.enterOnInputDoesNotSubmit, true);
+      assert.equal(audit.shellResults.modalKeyboard.tabAndShiftTabStayInsideTopDialog, true);
+      assert.equal(audit.shellResults.modalKeyboard.cancelDoesNotConfirmAndRestoresFocus, true);
+      assert.equal(audit.shellResults.modalKeyboard.syntheticConfirmRunsExactlyOnce, true);
+      assert.equal(audit.shellResults.toastResults.importantErrorsRemain, true);
+      assert.equal(audit.shellResults.toastResults.dismissButtonsWork, true);
+      assert.ok(audit.inventoryCount >= 25, 'Too few visible controls discovered');
+      assert.ok(audit.uniqueActionCount >= 20 &&
+        audit.uniqueActionCount <= audit.inventoryCount,
+        'Unique action signatures have an invalid or unexpectedly small count');
+      assert.ok(audit.uniqueActionClicked <= audit.uniqueActionCount &&
+        audit.uniqueActionUnverified <= audit.uniqueActionCount,
+        'Unique action status totals exceed unique action signatures');
+      assert.equal(audit.duplicateInstanceCount,
+        audit.inventoryCount-audit.uniqueActionCount);
+      assert.ok(audit.controls.every(x=>x.status!=='not-clicked' || !!x.reason),
+        'Every nonclicked control must have a machine-readable reason');
+      assert.ok(audit.fieldsInspected >= 15, 'Visible form-field inventory unexpectedly small');
+      assert.ok(Number.isInteger(audit.fieldsMissingProgrammaticLabel), 'No programmatic label coverage reported');
+      assert.ok(audit.safeClickCount >= 15, 'Safe interaction coverage unexpectedly low');
+      assert.equal(audit.customerDataUsed, false);
+      assert.equal(audit.financialActionsNotBulkClicked, true);
+      assert.equal(audit.everyActionVerified, false,
+        'A safe-navigation sweep cannot claim every financial action is verified');
+      report.nativeControlAudit = {
+        routesVisited: audit.routesVisited, shellResults: audit.shellResults,
+        inventoryCount: audit.inventoryCount,
+        uniqueActionCount: audit.uniqueActionCount,
+        uniqueActionClicked: audit.uniqueActionClicked,
+        uniqueActionUnverified: audit.uniqueActionUnverified,
+        uniqueActionDisabled: audit.uniqueActionDisabled,
+        uniqueActionFailed: audit.uniqueActionFailed,
+        duplicateInstanceCount: audit.duplicateInstanceCount,
+        unclassifiedInstances: audit.unclassifiedInstances,
+        safeClickCount: audit.safeClickCount, skippedCount: audit.skippedCount,
+        accessibilityNameGaps: audit.accessibilityNameGaps,
+        fieldsInspected: audit.fieldsInspected,
+        fieldsMissingProgrammaticLabel: audit.fieldsMissingProgrammaticLabel,
+        fieldCoverageByRoute: audit.fieldCoverageByRoute,
+        brokenHandlerCount: audit.brokenHandlerCount,
+        problems: audit.problems.length, byRoute: audit.byRoute,
+        evidenceFile: 'fresh-native-ui-control-click-audit.json',
+        claim: 'safe-clicks-and-inventory-only-not-every-button-verified'
+      };
+      fs.writeFileSync(path.join(path.dirname(reportPath),
+        report.nativeControlAudit.evidenceFile),
+        JSON.stringify(audit, null, 2), { flag: 'wx' });
+      // The Markdown matrix is for owner/QA review and includes every
+      // remaining unique action with its route, reason and handler.
+      const gapReport=require('../scripts/q01-native-action-gap-report.cjs').buildReport(audit);
+      report.nativeControlAudit.gapReportFile='q01-native-unverified-controls.md';
+      fs.writeFileSync(path.join(path.dirname(reportPath),
+        report.nativeControlAudit.gapReportFile),gapReport,{flag:'wx'});
+      const routeScreenshots = [];
+      for (const route of audit.routeNames) {
+        await cdp.evaluate('FINORA.Router.go(' + JSON.stringify(route) + ')', 20000);
+        const screen = await cdp.command('Page.captureScreenshot', {
+          format: 'png', captureBeyondViewport: false, fromSurface: true
+        }, 20000);
+        assert.ok(screen?.data, 'Screenshot missing for route ' + route);
+        const image = Buffer.from(screen.data, 'base64');
+        assert.ok(image.length > 1000 && image.subarray(1,4).toString('ascii') === 'PNG',
+          'Bad native WebView2 PNG for route ' + route);
+        const filename = 'q01-ui-' + route + '.png';
+        fs.writeFileSync(path.join(path.dirname(reportPath), filename), image, { flag: 'wx' });
+        routeScreenshots.push(filename);
+      }
+      report.nativeControlAudit.routeScreenshots = routeScreenshots;
+      await cdp.evaluate('FINORA.Router.go("dashboard")');
+    }
+    if (mode === 'fresh') {
       // A07: emulate a disconnected WebView2 network on the REAL installed app.
       // This is stronger than jsdom/offline browser preview but not an OS
       // Wi-Fi disable, physical power loss, or a disconnected customer device.

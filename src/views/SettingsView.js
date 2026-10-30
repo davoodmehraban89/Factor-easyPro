@@ -130,14 +130,14 @@ class SettingsViewImpl {
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">نحوه شماره‌گذاری</label>
+          <label class="form-label" for="invoiceNumberingMode">نحوه شماره‌گذاری</label>
           <select class="form-control" id="invoiceNumberingMode">
             <option value="auto" ${s.numberingMode === 'auto' ? 'selected' : ''}>خودکار</option>
             <option value="manual" ${s.numberingMode === 'manual' ? 'selected' : ''}>دستی</option>
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">شماره بعدی فاکتور</label>
+          <label class="form-label" for="invoiceNextNumber">شماره بعدی فاکتور</label>
           <input class="form-control" id="invoiceNextNumber" type="number" min="1" value="${Number(s.nextNumber) || 1}" />
         </div>
         <button class="btn" onclick="window.SettingsView.saveInvoiceSettings()">💾 ذخیره تنظیمات فاکتور</button>
