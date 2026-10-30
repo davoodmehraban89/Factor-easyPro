@@ -291,10 +291,13 @@
   // never be interpreted as HTML or create a DOM node with event handlers.
   const hostileMessage='<img src=x onerror="window.Q01_INJECTED=true">';
   FINORA.Modal.confirm({title:'Q01 text-only confirmation',
-    message:hostileMessage,onConfirm:()=>{syntheticConfirmed++;}});
+    message:hostileMessage,confirmText:hostileMessage,cancelText:hostileMessage,
+    onConfirm:()=>{syntheticConfirmed++;}});
   await wait(25);
   const safeConfirm=FINORA.Modal.stack[FINORA.Modal.stack.length-1]?.card;
   if (!safeConfirm || safeConfirm.querySelector('[data-confirm-message]')?.textContent!==hostileMessage ||
+      safeConfirm.querySelector('[data-action="confirm"]')?.textContent!==hostileMessage ||
+      safeConfirm.querySelector('[data-action="cancel"]')?.textContent!==hostileMessage ||
       safeConfirm.querySelector('img') || window.Q01_INJECTED) {
     throw Error('Confirmation message was interpreted as executable HTML');
   }
