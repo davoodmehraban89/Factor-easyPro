@@ -31,24 +31,49 @@ function New-SafeBackupCommands([string]$AbsolutePath) {
     }
 }
 
+function Assert-LocalDrivePathShape([string]$PathValue) {
+    # IsPathRooted alone accepts '\relative-to-current-drive', which is
+    # ambiguous. Require a fully qualified local DOS drive and safe segments.
+    if ([string]::IsNullOrWhiteSpace($PathValue) -or
+        $PathValue -notmatch '^[A-Za-z]:\\' -or
+        $PathValue -match '[/\x00-\x1f]' -or
+        $PathValue.Substring(2).Contains(':')) {
+        throw 'BACKUP_LOCAL_DRIVE_PATH_REQUIRED'
+    }
+    foreach ($segment in $PathValue.Substring(3).Split('\')) {
+        if ([string]::IsNullOrWhiteSpace($segment) -or
+            $segment -eq '.' -or $segment -eq '..' -or
+            $segment.EndsWith(' ') -or $segment.EndsWith('.')) {
+            throw 'BACKUP_AMBIGUOUS_PATH_BLOCKED'
+        }
+    }
+}
+
 function Assert-PrivateLocalBackupFile([string]$PathValue) {
-    if ([string]::IsNullOrWhiteSpace($PathValue)) {
-        throw 'BACKUP_FILE_REQUIRED'
-    }
-    if (-not [System.IO.Path]::IsPathRooted($PathValue)) {
-        throw 'BACKUP_ABSOLUTE_PATH_REQUIRED'
-    }
+    Assert-LocalDrivePathShape $PathValue
     $fullPath = [System.IO.Path]::GetFullPath($PathValue)
-    if ($fullPath.StartsWith('\\') -or $fullPath.StartsWith('//') -or
-        $fullPath -match '^\\\\\?\\' -or $fullPath.Substring(2).Contains(':')) {
-        throw 'BACKUP_NONLOCAL_OR_ALTERNATE_STREAM_BLOCKED'
+    # Reject drive letters mapped to a network share. Local USB media is
+    # allowed, but the SQL Server service must still be able to read it.
+    $drive = New-Object System.IO.DriveInfo($fullPath.Substring(0, 1))
+    if ($drive.DriveType -ne [System.IO.DriveType]::Fixed -and
+        $drive.DriveType -ne [System.IO.DriveType]::Removable) {
+        throw 'BACKUP_NETWORK_DRIVE_BLOCKED'
     }
     $info = New-Object System.IO.FileInfo($fullPath)
     if (-not $info.Exists) {
         throw 'BACKUP_FILE_NOT_FOUND'
     }
+    # Reject a reparse-point file OR any parent directory junction/symlink.
+    # Prevents source redirection from a trusted path to an arbitrary target.
     if (($info.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
         throw 'BACKUP_REPARSE_POINT_BLOCKED'
+    }
+    $parent = $info.Directory
+    while ($null -ne $parent) {
+        if (($parent.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'BACKUP_PARENT_REPARSE_POINT_BLOCKED'
+        }
+        $parent = $parent.Parent
     }
     if ($info.Length -le 0 -or $info.Length -gt 4GB) {
         throw 'BACKUP_SIZE_OUTSIDE_PREFLIGHT_LIMIT'
@@ -89,6 +114,18 @@ if ($SelfTest) {
         "'" + $testPath.Replace("'", "''") + "'")) {
         throw 'SELFTEST_SQL_LITERAL_MISMATCH'
     }
+    foreach ($badPath in @(
+        'relative\copy.bak', '\rooted\copy.bak',
+        '\\server\share\copy.bak', 'C:\safe\..\copy.bak',
+        'C:\safe\.\copy.bak', 'C:\safe\copy.bak:ADS',
+        'C:/safe/copy.bak', 'C:\safe\name.\copy.bak'
+    )) {
+        $rejected = $false
+        try { Assert-LocalDrivePathShape $badPath }
+        catch { $rejected = $true }
+        if (-not $rejected) { throw 'SELFTEST_UNSAFE_PATH_ACCEPTED' }
+    }
+    Assert-LocalDrivePathShape 'C:\Private\copy.bak'
     @{ status = 'selftest-passed'; sourceRead = $false; connectionOpened = $false;
        databaseModified = $false; canImport = $false } |
         ConvertTo-Json -Compress
