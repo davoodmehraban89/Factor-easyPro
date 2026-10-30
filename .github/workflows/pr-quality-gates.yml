@@ -138,6 +138,21 @@ jobs:
               $report.canImport -ne $false) {
             throw 'A02 synthetic LocalDB restore did not satisfy safety/reconciliation contract'
           }
+      - name: Owner-local Holoo pipeline safety selftest (synthetic only)
+        shell: pwsh
+        run: |
+          $output = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File './scripts/a02-private-owner-local-lab.ps1' -Mode Test
+          if ($LASTEXITCODE -ne 0) { throw 'A02 private lab synthetic safety test failed' }
+          $report = ($output | Out-String | ConvertFrom-Json)
+          if ($report.status -ne 'private-lab-synthetic-orchestration-passed' -or
+              $report.checks -ne 4 -or
+              $report.ownerBackupUsed -ne $false -or
+              $report.sqlServerInstalled -ne $false -or
+              $report.restoreExecuted -ne $false -or
+              $report.financialMigrationPerformed -ne $false -or
+              $report.canImport -ne $false) {
+            throw 'A02 private lab may have breached synthetic no-write contract'
+          }
       - name: Build Tauri installer
         run: npm exec tauri build
       - name: Inspect produced Windows x64 installer and checksum
