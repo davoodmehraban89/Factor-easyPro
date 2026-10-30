@@ -53,22 +53,14 @@ try{
   $phase='start-instance'
   & $localdb start $instance | Out-Null
   Require ($LASTEXITCODE -eq 0) 'A02_LOCALDB_START_FAILED'
-  $phase='connection-string-build'
-  $b=[System.Data.SqlClient.SqlConnectionStringBuilder]::new()
-  $phase='connection-string-datasource'
-  $b.DataSource='(localdb)\'+$instance
-  $phase='connection-string-catalog'
-  $b.InitialCatalog='master'
-  $phase='connection-string-security'
-  $b.IntegratedSecurity=$true
-  $phase='connection-string-timeout'
-  $b.ConnectTimeout=30
-  $phase='connection-string-encryption'
-  $b.Encrypt=$false
-  $phase='connection-string-pooling'
-  $b.Pooling=$false
+  # Only an internally generated alphanumeric LocalDB instance is used.
+  # Use a literal, fully assembled connection string rather than property
+  # assignments on a .NET Framework builder (Windows runner compatibility).
+  $phase='connection-string-assemble'
+  $connectionString='Data Source=(localdb)\\'+$instance+
+      ';Initial Catalog=master;Integrated Security=True;Connect Timeout=30;Encrypt=False;Pooling=False;'
   $phase='connection-object'
-  $conn=[System.Data.SqlClient.SqlConnection]::new($b.ToString())
+  $conn=[System.Data.SqlClient.SqlConnection]::new($connectionString)
   $phase='connection-open'
   $conn.Open()
   $phase='create-synthetic-database'
