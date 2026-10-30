@@ -385,7 +385,7 @@
     const scratch=document.createElement('div');
     scratch.innerHTML=expenseView.renderContent();
     if(scratch.querySelector('img') || scratch.querySelector('script') ||
-        scratch.querySelector('select[aria-label="سرفصل سند"] option')?.value!==hostileCategory ||
+        ![...scratch.querySelectorAll('select[aria-label="سرفصل سند"] option')].some(o=>o.value===hostileCategory) ||
         !scratch.textContent.includes(hostileCell)) {
       throw Error('Untrusted expense list fields created executable markup or corrupted category value');
     }
