@@ -195,7 +195,7 @@ test('A02: Excel imports reject destructive replacement before touching master d
   assert.ok(importModeSelect, 'Excel import mode selector missing');
   assert.doesNotMatch(importModeSelect,/<option value="replace"/,
     'destructive Excel option must not be offered; the backup restore option is separate');
-  assert.match(settings,/window\.__importKind !== kind/);
+  assert.match(settings,/pending\?\.kind !== kind/);
   assert.match(settings,/data-excel-import-submit/);
   assert.doesNotMatch(settings,/_confirmImport\(\$\{JSON\.stringify\(kind\)/,
     'untrusted filenames must never be embedded as executable inline HTML');
@@ -214,6 +214,18 @@ test('A03: company switch, posted journals and printable ledger encode untrusted
   assert.ok(ledger.includes('<title>صورت‌حساب ${this._esc(contact.name)}</title>'));
   assert.doesNotMatch(ledger,/cdn\.jsdelivr\.net/);
   assert.ok(ledger.split('this._esc(Formatters.toPersianDigits(r.date').length>=3);
+});
+
+test('A02: private Excel preview releases data on cancel and blocks concurrent import', () => {
+  const settings=fs.readFileSync(path.join(root,'src','views','SettingsView.js'),'utf8');
+  assert.ok(settings.includes('let pendingExcelImport = null'));
+  assert.ok(settings.includes('let excelImportBusy = false'));
+  assert.ok(settings.includes('if (excelImportBusy) return;'));
+  assert.ok(settings.includes('if (pendingExcelImport === pending) pendingExcelImport = null;'));
+  assert.ok(settings.includes('submitButton.disabled = true'));
+  assert.ok(settings.includes('onClose: () =>'));
+  assert.doesNotMatch(settings,/window\.__import(?:RawData|Kind)/,
+    'private workbook contents must never be exposed as global window properties');
 });
 
 test('Q01: Escape is handled once for nested financial dialogs and shortcut target is topmost', () => {
