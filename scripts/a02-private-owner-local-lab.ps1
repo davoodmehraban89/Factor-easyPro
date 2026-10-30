@@ -127,7 +127,8 @@ try{
   $database=[string]$restored.databaseName
   Require ($database -cmatch '^FinoraHoloo_[0-9a-f]{32}$' -and
     $restored.financialReconciled -eq $false -and
-    $restored.importPerformed -eq $false) 'A02_RESTORE_CONTRACT_INVALID'
+    $restored.importPerformed -eq $false -and
+    $restored.dbccCheckDbPassed -eq $true) 'A02_RESTORE_CONTRACT_INVALID'
 
   $script:Phase='private-schema-export'
   $schema=Invoke-JsonStep 'a02-isolated-schema-inventory.ps1' @(
@@ -143,7 +144,7 @@ try{
     isolatedDatabaseName=$database;stagedBackupPath=$script:BackupPath
     encryptedSchemaManifestPath=$ManifestOutputPath
     tableCount=$schema.tableCount;columnCount=$schema.columnCount
-    sqlBackupVerified=$true;restoreExecuted=$true
+    sqlBackupVerified=$true;restoreExecuted=$true;dbccCheckDbPassed=$true
     financialReconciled=$false;financialMigrationPerformed=$false;canImport=$false
   } | ConvertTo-Json -Compress
 }catch{
