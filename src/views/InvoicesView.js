@@ -28,9 +28,9 @@ class InvoicesViewImpl {
       <div class="toolbar">
         <div class="search-input-wrap">
           <span class="icon">🔍</span>
-          <input type="text" class="form-control" id="invSearch" placeholder="جستجو بر اساس شماره، طرف حساب یا توضیحات..." value="${this._esc(filter.search)}" oninput="window.InvoicesView._onSearch(this.value)" />
+          <input type="text" class="form-control" id="invSearch" aria-label="جستجوی فاکتورها" placeholder="جستجو بر اساس شماره، طرف حساب یا توضیحات..." value="${this._esc(filter.search)}" oninput="window.InvoicesView._onSearch(this.value)" />
         </div>
-        <select class="form-control" style="width:auto;min-width:140px" onchange="window.InvoicesView._onFilter('kind', this.value)">
+        <select class="form-control" style="width:auto;min-width:140px" aria-label="نوع فاکتور" onchange="window.InvoicesView._onFilter('kind', this.value)">
           <option value="">همه انواع</option>
           <option value="sale" ${filter.kind === 'sale' ? 'selected' : ''}>فروش</option>
           <option value="purchase" ${filter.kind === 'purchase' ? 'selected' : ''}>خرید</option>
@@ -38,7 +38,7 @@ class InvoicesViewImpl {
           <option value="purchase_return" ${filter.kind === 'purchase_return' ? 'selected' : ''}>برگشت از خرید</option>
           <option value="non_formal" ${filter.kind === 'non_formal' ? 'selected' : ''}>غیررسمی</option>
         </select>
-        <select class="form-control" style="width:auto;min-width:130px" onchange="window.InvoicesView._onFilter('paymentStatus', this.value)">
+        <select class="form-control" style="width:auto;min-width:130px" aria-label="وضعیت پرداخت فاکتور" onchange="window.InvoicesView._onFilter('paymentStatus', this.value)">
           <option value="">همه وضعیت‌ها</option>
           <option value="paid" ${filter.paymentStatus === 'paid' ? 'selected' : ''}>تسویه‌شده</option>
           <option value="partial" ${filter.paymentStatus === 'partial' ? 'selected' : ''}>پرداخت جزئی</option>
