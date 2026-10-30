@@ -196,16 +196,40 @@
   const stack=[...document.querySelectorAll('.modal-card[role="dialog"]')];
   if(stack.length!==2 || stack[0].getAttribute('aria-hidden')!=='true' ||
     !stack[1].contains(document.activeElement)) throw Error('nested dialog focus/isolation failed');
+  // Simulate pressing Enter on a focused CANCEL button in an actual installed
+  // WebView2 dialog. The global shortcut MUST NOT hijack it as "confirm".
+  const nestedCancel=stack[1].querySelector('[data-action="cancel"]');
+  if(!nestedCancel)throw Error('synthetic nested dialog cancel button missing');
+  nestedCancel.focus();
+  const enterOnCancel=new KeyboardEvent('keydown',
+    {key:'Enter',code:'Enter',bubbles:true,cancelable:true});
+  nestedCancel.dispatchEvent(enterOnCancel);
+  await wait(20);
+  if(enterOnCancel.defaultPrevented || unexpectedConfirm ||
+      document.querySelectorAll('.modal-card').length!==2){
+    throw Error('Enter on focused Cancel was hijacked as financial confirmation');
+  }
   document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
   await wait(15);
   if(document.querySelectorAll('.modal-card').length!==1 ||
     !outer.contains(document.activeElement) || unexpectedConfirm) throw Error('Escape did not dismiss nested confirm safely');
+  const focusedField=document.getElementById('q01ModalField');
+  if(!focusedField)throw Error('synthetic outer input missing');
+  focusedField.focus();
+  const enterInField=new KeyboardEvent('keydown',
+    {key:'Enter',code:'Enter',bubbles:true,cancelable:true});
+  focusedField.dispatchEvent(enterInField);
+  await wait(20);
+  if(enterInField.defaultPrevented || !outer.isConnected){
+    throw Error('Enter inside form input unexpectedly submitted/dismissed dialog');
+  }
   document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
   await wait(15);
   if(document.querySelector('.modal-backdrop') || document.activeElement!==modalTrigger ||
     unexpectedConfirm) throw Error('Escape did not restore focus to original control');
   const modalKeyboard={roleAndLabel:true,nestedDialogIsolation:true,
-    escapeClosesWithoutConfirm:true,focusReturnsToTrigger:true};
+    escapeClosesWithoutConfirm:true,focusReturnsToTrigger:true,
+    enterOnFocusedCancelDoesNotSave:true,enterOnInputDoesNotSubmit:true};
   // Notification flood: transient success/info messages should never
   // cover the dashboard. Important errors remain until explicitly dismissed.
   for(let n=0;n<9;n++) FINORA.Toast.info('Q01 synthetic notice '+n);
