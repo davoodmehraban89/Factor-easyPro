@@ -14,6 +14,7 @@ import { ExcelController } from '../controllers/ExcelController.js';
 import { inspectSettlementConsistency } from '../core/FinancialDiagnosticsService.js';
 import { AuditService } from '../core/AuditService.js';
 import { LicenseService } from '../core/LicenseService.js';
+import { probeHolooBackupZip } from '../core/HolooBackupProbe.mjs';
 
 let cache = { company: {}, stats: {}, invoiceSettings: { numberingMode: 'auto', nextNumber: 1 } };
 
@@ -32,6 +33,7 @@ class SettingsViewImpl {
         ${this._renderExcelCard()}
         ${this._renderShortcutsCard()}
         ${this._renderBackupCard()}
+        ${Auth.isAdmin() ? this._renderHolooBackupCard() : ''}
         ${Auth.isAdmin() ? this._renderLicenseCard() : ''}
         ${this._renderStatsCard()}
         ${Auth.isAdmin() ? this._renderHealthCard() : ''}
@@ -470,6 +472,115 @@ class SettingsViewImpl {
     });
   }
 
+
+  // A02: local ZIP metadata intake only; it cannot restore SQL Server databases.
+  _renderHolooBackupCard() {
+    return [
+      '<div class="card settings-card">',
+      '  <div class="settings-card-header">',
+      '    <div class="settings-card-icon">📦</div>',
+      '    <div>',
+      '      <h3 class="settings-card-title">آماده‌سازی انتقال از هلو (آزمایشی)</h3>',
+      '      <p class="settings-card-desc">تشخیص اولیه فایل ZIP، بدون ارسال یا ثبت داده</p>',
+      '    </div>',
+      '  </div>',
+      '  <p style="font-size:12px;line-height:1.9;color:var(--text-muted)">این مرحله فقط ساختار بسته ZIP را شناسایی می‌کند. بازیابی SQL Server، انتقال اطلاعات و تأیید صحت حسابداری هنوز پیاده‌سازی نشده‌اند.</p>',
+      '  <button class="btn btn-secondary" onclick="window.SettingsView.openHolooBackupProbe()">انتخاب بکاپ هلو و بررسی اولیه</button>',
+      '  <button class="btn btn-secondary" style="margin-top:8px" onclick="window.SettingsView.checkHolooMigrationReadiness()">بررسی پیش‌نیازهای رایانه برای انتقال از هلو</button>',
+      '</div>'
+    ].join('');
+  }
+
+  // Native read-only system diagnostics; never installs or configures SQL Server.
+  async checkHolooMigrationReadiness() {
+    if (!Auth.isAdmin()) {
+      Toast.error('فقط مدیر می‌تواند پیش‌نیازهای مهاجرت را بررسی کند');
+      return;
+    }
+    const invoke = globalThis.__TAURI_INTERNALS__?.invoke;
+    if (typeof invoke !== 'function') {
+      Toast.warning('بررسی پیش‌نیازها فقط در نسخه نصب‌شده ویندوز امکان‌پذیر است');
+      return;
+    }
+    try {
+      const report = await invoke('migration_system_readiness');
+      const fmtCount = value => Number.isInteger(value) && value >= 0
+        ? (value === 0 ? 'یافت نشد' : Formatters.number(value) + ' مورد شناسایی شد')
+        : 'امکان تشخیص وجود ندارد';
+      const body = [
+        '<p>این بررسی فقط وضعیت رایانه را می‌خواند؛ چیزی نصب یا تغییر داده نمی‌شود.</p>',
+        '<div style="font-size:12.5px;line-height:2.2">',
+        '<div>ویندوز ۶۴ بیتی: <strong>' + (report.windowsX64 ? 'شناسایی شد' : 'شناسایی نشد') + '</strong></div>',
+        '<div>نمونه‌های SQL Server: <strong>' + fmtCount(report.sqlInstanceCount) + '</strong></div>',
+        '<div>نسخه‌های LocalDB: <strong>' + fmtCount(report.localdbVersionCount) + '</strong></div>',
+        '<div>فضای آزاد درایو داده کاربر: <strong>' +
+          (Number.isSafeInteger(report.freeGibAtUserAppData)
+            ? Formatters.number(report.freeGibAtUserAppData) + ' گیگابایت'
+            : 'قابل تشخیص نیست') + '</strong></div>',
+        '</div>',
+        '<div class="backup-warning" style="margin-top:12px">',
+        '⚠️ شناسایی SQL به معنی سازگاری آن با بکاپ هلو نیست. ',
+        'هنوز SQL Server نصب نشده، فایل هلو بازیابی نشده و ورود اطلاعات مالی فعال نیست.',
+        '</div>'
+      ].join('');
+      Modal.open({
+        title: 'وضعیت پیش‌نیازهای مهاجرت هلو — فقط خواندنی',
+        body,
+        footer: '<button class="btn" onclick="FINORA.Modal.close()">بستن</button>',
+        size: 'md'
+      });
+    } catch {
+      // Avoid exposing native exception text or local configuration details.
+      Toast.error('بررسی پیش‌نیازها انجام نشد؛ هیچ تغییری در سیستم ایجاد نشد');
+    }
+  }
+
+  openHolooBackupProbe() {
+    if (!Auth.isAdmin()) {
+      Toast.error('فقط مدیر می‌تواند بررسی بکاپ هلو را آغاز کند');
+      return;
+    }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.zip';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const report = await probeHolooBackupZip(file);
+        Modal.open({
+          title: 'پیش‌بررسی بکاپ هلو — فقط خواندنی',
+          body: [
+            '<p>ساختار اولیه یک فایل ZIP تک‌ورودی شناسایی شد.</p>',
+            '<div style="font-size:12px;line-height:2">',
+            '<div>فایل: <strong>' + this._esc(file.name) + '</strong></div>',
+            '<div>محتوای بسته: <strong>' + this._esc(report.entryName) + '</strong></div>',
+            '<div>حجم فایل داخلی: <strong>' + Formatters.number(report.uncompressedSize) + '</strong> بایت</div>',
+            '</div>',
+            '<div class="backup-warning" style="margin-top:12px">',
+            '⚠️ این نتیجه به معنای صحت بکاپ SQL Server یا امکان انتقال اطلاعات مالی نیست. ',
+            'برای ادامه باید فایل در محیط ایزوله بازیابی و ساختار جداول و مانده‌ها تطبیق داده شود. ',
+            'تا آن زمان هیچ داده‌ای وارد نرم‌افزار نمی‌شود.',
+            '</div>'
+          ].join(''),
+          footer: '<button class="btn" onclick="FINORA.Modal.close()">متوجه شدم</button>',
+          size: 'md'
+        });
+      } catch (error) {
+        const messages = {
+          HOLOO_FILE_REQUIRED: 'فایل انتخاب‌شده معتبر نیست',
+          HOLOO_NOT_ZIP: 'فایل ZIP شناسایی نشد',
+          HOLOO_ENCRYPTED_ZIP: 'بسته رمزگذاری‌شده پشتیبانی نمی‌شود',
+          HOLOO_ZIP_SINGLE_ENTRY_REQUIRED: 'ساختار بسته با نمونه تک‌فایلی مورد انتظار سازگار نیست',
+          HOLOO_ZIP_TOO_LARGE: 'فایل برای پیش‌بررسی محلی بیش از حد بزرگ است'
+        };
+        Toast.error('بکاپ قابل پیش‌بررسی نیست: ' +
+          (messages[error.message] || 'ساختار ZIP نامعتبر یا پشتیبانی‌نشده است'));
+      }
+    };
+    input.click();
+  }
+
   // ============================================================
   // کارت بکاپ
   // ============================================================
@@ -767,6 +878,7 @@ class SettingsViewImpl {
       + this._renderExcelCard()
       + this._renderShortcutsCard()
       + this._renderBackupCard()
+      + (Auth.isAdmin() ? this._renderHolooBackupCard() : '')
       + (Auth.isAdmin() ? this._renderLicenseCard() : '')
       + this._renderStatsCard()
       + (Auth.isAdmin() ? this._renderHealthCard() : '')
