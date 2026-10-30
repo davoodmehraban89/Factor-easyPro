@@ -336,7 +336,50 @@
   namedField.labels[0].click(); await wait(15);
   if (document.activeElement!==namedField) throw Error('Linked modal field label did not focus its field');
   FINORA.Modal.close();
+  // Read-only synthetic XSS exercise: no customer records are persisted.
+  const expenseController=window.ExpenseController;
+  const expenseView=window.ExpensesView;
+  const origGetAll=expenseController.getAll;
+  const origGetCategories=expenseController.getCategories;
+  const origGetStats=expenseController.getStats;
+  const origEditExpense=expenseView.editExpense;
+  const hostileCategory='"><\/option><\/select><img src=x onerror="window.Q01_EXPENSE_HTML_ATTACK=true">';
+  const hostileId="exp-test');window.Q01_EXPENSE_ID_ATTACK=true;//";
+  const hostileCell='<img src=x onerror="window.Q01_EXPENSE_HTML_ATTACK=true">';
+  let clickedExpenseId=null;
+  try {
+    expenseController.getAll=async()=>[{id:hostileId,kind:'expense',
+      category:hostileCategory,description:hostileCell,
+      date:hostileCell,refNumber:hostileCell,method:hostileCell,amount:100}];
+    expenseController.getCategories=async()=>[hostileCategory];
+    expenseController.getStats=async()=>({totalIncome:0,totalExpense:100,balance:-100,count:1});
+    await expenseView.reload();
+    const scratch=document.createElement('div');
+    scratch.innerHTML=expenseView.renderContent();
+    if(scratch.querySelector('img') || scratch.querySelector('script') ||
+        scratch.querySelector('option')?.value!==hostileCategory ||
+        !scratch.textContent.includes(hostileCell)) {
+      throw Error('Untrusted expense list fields created executable markup or corrupted category value');
+    }
+    expenseView.editExpense=(id)=>{clickedExpenseId=id;};
+    const edit=scratch.querySelector('button[title="ویرایش"]');
+    if(!edit) throw Error('Synthetic expense action missing');
+    edit.click();
+    if(clickedExpenseId!==hostileId || window.Q01_EXPENSE_ID_ATTACK ||
+        window.Q01_EXPENSE_HTML_ATTACK) {
+      throw Error('Expense row identifier escaped the safe JS argument or executed markup');
+    }
+  } finally {
+    expenseController.getAll=origGetAll;
+    expenseController.getCategories=origGetCategories;
+    expenseController.getStats=origGetStats;
+    expenseView.editExpense=origEditExpense;
+    await expenseView.reload();
+    delete window.Q01_EXPENSE_ID_ATTACK;
+    delete window.Q01_EXPENSE_HTML_ATTACK;
+  }
   const modalKeyboard={roleAndLabel:true,nestedDialogIsolation:true,
+    expenseUnsafeHtmlEscaped:true,
     modalFormLabelsLinked:true,
     confirmationTextEscaped:true,visibleInputAutoFocused:true,
     escapeClosesWithoutConfirm:true,focusReturnsToTrigger:true,
