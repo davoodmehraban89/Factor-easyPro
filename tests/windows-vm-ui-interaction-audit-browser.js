@@ -173,9 +173,22 @@
     unexpectedConfirm) throw Error('Escape did not restore focus to original control');
   const modalKeyboard={roleAndLabel:true,nestedDialogIsolation:true,
     escapeClosesWithoutConfirm:true,focusReturnsToTrigger:true};
+  // Notification flood: transient success/info messages should never
+  // cover the dashboard. Important errors remain until explicitly dismissed.
+  for(let n=0;n<9;n++) FINORA.Toast.info('Q01 synthetic notice '+n);
+  const transient=document.querySelectorAll('.toast-success, .toast-info');
+  if(transient.length>3)throw Error('transient notifications cover too much of the UI');
+  const beforeErrors=document.querySelectorAll('.toast-error').length;
+  FINORA.Toast.error('Q01 synthetic persistent error');
+  if(document.querySelectorAll('.toast-error').length!==beforeErrors+1){
+    throw Error('important financial error notification disappeared');
+  }
+  document.querySelectorAll('.toast .toast-close').forEach(button=>button.click());
+  const toastResults={transientLimit:3,importantErrorsRemain:true,
+    dismissButtonsWork:document.querySelectorAll('.toast').length===0};
   const shellResults={keyboardReachableSidebarLinks:navLinks.length,
     sidebarCollapseClickAndPersistence:true,themeToggleClickAndPersistence:true,
-    activeRouteAriaCurrent:true,modalKeyboard};
+    activeRouteAriaCurrent:true,modalKeyboard,toastResults};
   for (const route of routes) {
     await go(route);
     const active=[...document.querySelectorAll('#sidebarMenu [aria-current="page"]')];
