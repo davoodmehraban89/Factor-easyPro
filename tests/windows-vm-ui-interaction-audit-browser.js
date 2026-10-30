@@ -183,6 +183,10 @@
   // Cross-app dialog behavior: nested modal focus, Escape and focus return.
   const modalTrigger=hamburger;
   modalTrigger.focus();
+  if (getComputedStyle(modalTrigger).display === 'none' ||
+      document.activeElement !== modalTrigger) {
+    throw Error('Desktop sidebar toggle cannot receive keyboard focus before opening a dialog');
+  }
   let unexpectedConfirm=false;
   FINORA.Modal.open({title:'Q01 Synthetic outer dialog',
     body:'<input id="q01ModalField" value="synthetic" />',
@@ -248,7 +252,14 @@
   document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
   await wait(15);
   if(document.querySelector('.modal-backdrop') || document.activeElement!==modalTrigger ||
-    unexpectedConfirm) throw Error('Escape did not restore focus to original control');
+    unexpectedConfirm) {
+    const focused=document.activeElement;
+    throw Error('Escape did not restore focus to original control: ' + JSON.stringify({
+      remainingDialogs:document.querySelectorAll('.modal-backdrop').length,
+      focusedTag:focused?.tagName,focusedId:focused?.id,
+      expectedId:modalTrigger.id,unexpectedConfirm
+    }));
+  }
   // Open a fresh synthetic confirmation: a user clicking Cancel must NOT
   // execute the callback. Deliberate Confirm should execute exactly once.
   let syntheticConfirmed=0;
@@ -276,7 +287,38 @@
   if(syntheticConfirmed!==1 || FINORA.Modal.stack.length){
     throw Error('synthetic Confirm callback not exactly once or dialog not dismissed');
   }
+  // A confirmation message can contain user-provided contact names. It must
+  // never be interpreted as HTML or create a DOM node with event handlers.
+  const hostileMessage='<img src=x onerror="window.Q01_INJECTED=true">';
+  FINORA.Modal.confirm({title:'Q01 text-only confirmation',
+    message:hostileMessage,confirmText:hostileMessage,cancelText:hostileMessage,
+    onConfirm:()=>{syntheticConfirmed++;}});
+  await wait(25);
+  const safeConfirm=FINORA.Modal.stack[FINORA.Modal.stack.length-1]?.card;
+  if (!safeConfirm || safeConfirm.querySelector('[data-confirm-message]')?.textContent!==hostileMessage ||
+      safeConfirm.querySelector('[data-action="confirm"]')?.textContent!==hostileMessage ||
+      safeConfirm.querySelector('[data-action="cancel"]')?.textContent!==hostileMessage ||
+      safeConfirm.querySelector('img') || window.Q01_INJECTED) {
+    throw Error('Confirmation message was interpreted as executable HTML');
+  }
+  safeConfirm.querySelector('[data-action="cancel"]').click();
+  if (syntheticConfirmed!==1 || FINORA.Modal.stack.length) {
+    throw Error('Text-only confirmation Cancel executed a callback or leaked a dialog');
+  }
+  // A financial editor can start with an invisible radio or hidden ID field.
+  // Initial focus must land on the first VISIBLE input, not a hidden element.
+  FINORA.Modal.open({title:'Q01 visible-input focus regression',
+    body:'<input id="q01HiddenInput" style="display:none"><input id="q01VisibleInput">'});
+  await wait(25);
+  if (document.activeElement?.id !== 'q01VisibleInput') {
+    throw Error('Dialog initial focus landed outside first visible financial input');
+  }
+  FINORA.Modal.close();
+  if (document.activeElement!==modalTrigger) {
+    throw Error('Closing visible-input dialog did not restore keyboard focus');
+  }
   const modalKeyboard={roleAndLabel:true,nestedDialogIsolation:true,
+    confirmationTextEscaped:true,visibleInputAutoFocused:true,
     escapeClosesWithoutConfirm:true,focusReturnsToTrigger:true,
     enterOnFocusedCancelDoesNotSave:true,enterOnInputDoesNotSubmit:true,
     tabAndShiftTabStayInsideTopDialog:true,

@@ -79,6 +79,13 @@ test('Q01: menu controls remain keyboard-reachable with synchronized screen-read
   assert.match(main, /aria-expanded/);
   assert.match(router, /aria-current/);
   assert.match(styles, /:focus-visible/);
+  const desktopToggle = styles.match(/\.hamburger\s*\{([^}]*)\}/)?.[1];
+  assert.ok(desktopToggle, 'desktop sidebar toggle styles not found');
+  assert.match(desktopToggle, /display:\s*inline-flex\s*;/,
+    'the sidebar toggle must be visible/focusable on desktop as well as mobile');
+  assert.doesNotMatch(desktopToggle, /display:\s*none\s*;/);
+  const nativeAudit = fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
+  assert.match(nativeAudit, /Desktop sidebar toggle cannot receive keyboard focus/);
 });
 
 test('Q01: shared dialogs have ARIA naming, keyboard dismissal and focus restoration contracts', () => {
@@ -89,6 +96,17 @@ test('Q01: shared dialogs have ARIA naming, keyboard dismissal and focus restora
   assert.match(code, /event\.key === 'Escape'/);
   assert.match(code, /event\.key !== 'Tab'/);
   assert.match(code, /previousFocus\.focus/);
+  assert.match(code, /const focusables = this\._focusable\(modal\.card\)/,
+    'initial focus must skip hidden financial inputs');
+  assert.match(code, /focusables\.find\(el => el\.matches\('input, select, textarea'\)\)/);
+  assert.match(code, /\[data-confirm-message\]'\)\.textContent = String\(message \?\? ''\)/,
+    'untrusted confirmation messages must be assigned as text, not HTML');
+  assert.doesNotMatch(code, /\$\{message\}<\/p>/,
+    'financial confirmation message must never be interpolated into innerHTML');
+  assert.match(code, /cancelButton\.textContent = String\(cancelText \?\? ''\)/);
+  assert.match(code, /confirmButton\.textContent = String\(confirmText \?\? ''\)/);
+  assert.doesNotMatch(code, /\$\{(?:cancelText|confirmText)\}<\/button>/,
+    'confirmation button labels must never become executable markup');
   assert.match(code, /addEventListener\('keydown'/);
   assert.match(code, /removeEventListener\('keydown'/);
 });
@@ -121,6 +139,10 @@ test('Q01: installed WebView2 must click synthetic modal Cancel/Confirm and trap
     'cancelDoesNotConfirmAndRestoresFocus:true',
     'syntheticConfirmRunsExactlyOnce:true',
     'syntheticConfirmed!==0','syntheticConfirmed!==1',
+    'confirmationTextEscaped:true',
+    'visibleInputAutoFocused:true',
+    'Dialog initial focus landed outside first visible financial input',
+    'Confirmation message was interpreted as executable HTML',
     'tabForward.defaultPrevented','tabBackward.defaultPrevented'
   ]) assert.ok(audit.includes(check),'native modal control evidence missing: '+check);
   for(const check of [

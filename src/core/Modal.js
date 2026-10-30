@@ -118,9 +118,12 @@ class ModalManager {
     }
     queueMicrotask(() => {
       if (this.stack[this.stack.length - 1] !== modal || !modal.card.isConnected) return;
-      const focusTarget = modal.card.querySelector('[autofocus]') ||
-        modal.card.querySelector('input:not([disabled]), select:not([disabled]), textarea:not([disabled])') ||
-        this._focusable(modal.card)[0] || modal.card;
+      // Prefer a VISIBLE input. A hidden radio/record-ID input can be the
+      // first field in financial forms; focusing it leaves the dialog unfocused.
+      const focusables = this._focusable(modal.card);
+      const focusTarget = focusables.find(el => el.hasAttribute('autofocus')) ||
+        focusables.find(el => el.matches('input, select, textarea')) ||
+        focusables[0] || modal.card;
       focusTarget.focus({ preventScroll: true });
     });
     return modal;
@@ -148,15 +151,22 @@ class ModalManager {
   }
 
   confirm({ title, message, confirmText = 'تأیید', cancelText = 'انصراف', danger = false, onConfirm }) {
-    const body = `<p style="font-size:13.5px;line-height:1.8">${message}</p>`;
+    // Confirmations always render their message as text; financial record names
+    // and externally imported labels must never become executable markup.
+    const body = '<p data-confirm-message style="font-size:13.5px;line-height:1.8"></p>';
     const footer = `
-      <button class="btn btn-secondary" data-action="cancel">${cancelText}</button>
-      <button class="btn ${danger ? 'btn-danger' : ''}" data-action="confirm">${confirmText}</button>
+      <button type="button" class="btn btn-secondary" data-action="cancel"></button>
+      <button type="button" class="btn ${danger ? 'btn-danger' : ''}" data-action="confirm"></button>
     `;
     const modal = this.open({ title, body, footer, size: 'sm' });
+    modal.card.querySelector('[data-confirm-message]').textContent = String(message ?? '');
     const footerEl = modal.card.querySelector('.modal-footer');
-    footerEl.querySelector('[data-action="cancel"]').onclick = () => this.close();
-    footerEl.querySelector('[data-action="confirm"]').onclick = () => {
+    const cancelButton = footerEl.querySelector('[data-action="cancel"]');
+    const confirmButton = footerEl.querySelector('[data-action="confirm"]');
+    cancelButton.textContent = String(cancelText ?? '');
+    confirmButton.textContent = String(confirmText ?? '');
+    cancelButton.onclick = () => this.close();
+    confirmButton.onclick = () => {
       this.close();
       if (onConfirm) onConfirm();
     };
