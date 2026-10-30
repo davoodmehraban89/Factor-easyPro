@@ -283,9 +283,37 @@
   const confirmDialog=FINORA.Modal.stack[FINORA.Modal.stack.length-1]?.card;
   const confirmClick=confirmDialog?.querySelector('[data-action="confirm"]');
   if(!confirmClick)throw Error('synthetic Confirm action missing');
-  confirmClick.click();await wait(25);
+  confirmClick.click();
+  confirmClick.click(); // deliberately dispatch a stale second click
+  await wait(25);
   if(syntheticConfirmed!==1 || FINORA.Modal.stack.length){
     throw Error('synthetic Confirm callback not exactly once or dialog not dismissed');
+  }
+  FINORA.Modal.confirm({title:'Q01 stale cancelled confirmation',
+    message:'No persistent changes permitted',onConfirm:()=>{syntheticConfirmed++;}});
+  await wait(25);
+  const staleCancelDialog=FINORA.Modal.stack[FINORA.Modal.stack.length-1]?.card;
+  const staleConfirm=staleCancelDialog?.querySelector('[data-action="confirm"]');
+  staleCancelDialog?.querySelector('[data-action="cancel"]')?.click();
+  staleConfirm?.click();
+  if(syntheticConfirmed!==1 || FINORA.Modal.stack.length){
+    throw Error('A cancelled confirmation was executed by a stale button');
+  }
+  FINORA.Modal.confirm({title:'Q01 hidden parent confirmation',
+    message:'Must remain inert while nested',onConfirm:()=>{syntheticConfirmed++;}});
+  await wait(25);
+  const hiddenParent=FINORA.Modal.stack[FINORA.Modal.stack.length-1]?.card;
+  FINORA.Modal.confirm({title:'Q01 active child confirmation',
+    message:'Cancel first',onConfirm:()=>{syntheticConfirmed++;}});
+  await wait(25);
+  hiddenParent?.querySelector('[data-action="confirm"]')?.click();
+  if(syntheticConfirmed!==1 || FINORA.Modal.stack.length!==2){
+    throw Error('Hidden parent confirmation changed ledger decision while child was active');
+  }
+  FINORA.Modal.stack[1].card.querySelector('[data-action="cancel"]').click();
+  hiddenParent.querySelector('[data-action="cancel"]').click();
+  if(FINORA.Modal.stack.length!==0 || syntheticConfirmed!==1){
+    throw Error('Nested financial confirmations were not safely cancelled');
   }
   // A confirmation message can contain user-provided contact names. It must
   // never be interpreted as HTML or create a DOM node with event handlers.
@@ -416,7 +444,8 @@
     escapeClosesWithoutConfirm:true,focusReturnsToTrigger:true,
     enterOnFocusedCancelDoesNotSave:true,enterOnInputDoesNotSubmit:true,
     tabAndShiftTabStayInsideTopDialog:true,
-    cancelDoesNotConfirmAndRestoresFocus:true,syntheticConfirmRunsExactlyOnce:true};
+    cancelDoesNotConfirmAndRestoresFocus:true,syntheticConfirmRunsExactlyOnce:true,
+    staleFinancialConfirmIgnored:true};
   // Notification flood: transient success/info messages should never
   // cover the dashboard. Important errors remain until explicitly dismissed.
   for(let n=0;n<9;n++) FINORA.Toast.info('Q01 synthetic notice '+n);
