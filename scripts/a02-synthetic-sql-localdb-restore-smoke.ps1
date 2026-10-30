@@ -42,29 +42,36 @@ $instance='FinoraA02_'+$token
 $source='A02Source_'+$token
 $restored='A02Restore_'+$token
 $folder=Join-Path ([IO.Path]::GetTempPath()) ('FinoraA02_SQL_'+$token)
-$localdb=$null;$created=$false;$conn=$null
+$localdb=$null;$created=$false;$conn=$null;$phase='find-localdb'
 try{
   $localdb=FindLocalDB
+  $phase='create-instance'
   $null=[IO.Directory]::CreateDirectory($folder)
   & $localdb create $instance | Out-Null
   Require ($LASTEXITCODE -eq 0) 'A02_LOCALDB_CREATE_FAILED'
   $created=$true
+  $phase='start-instance'
   & $localdb start $instance | Out-Null
   Require ($LASTEXITCODE -eq 0) 'A02_LOCALDB_START_FAILED'
+  $phase='connect-master'
   $b=[System.Data.SqlClient.SqlConnectionStringBuilder]::new()
   $b.DataSource='(localdb)\'+$instance
   $b.InitialCatalog='master';$b.IntegratedSecurity=$true
   $b.ConnectTimeout=30;$b.Encrypt=$false;$b.Pooling=$false
   $conn=[System.Data.SqlClient.SqlConnection]::new($b.ToString())
   $conn.Open()
+  $phase='create-synthetic-database'
   ExecSql $conn ('CREATE DATABASE ['+$source+'];')
   ExecSql $conn ('CREATE TABLE ['+$source+'].dbo.A02Synthetic(id int NOT NULL PRIMARY KEY,amount bigint NOT NULL);'+
     'INSERT INTO ['+$source+'].dbo.A02Synthetic(id,amount) VALUES(1,12345),(2,67890);')
+  $phase='create-synthetic-backup'
   $bak=Join-Path $folder 'synthetic_copy_only.bak'
   ExecSql $conn ('BACKUP DATABASE ['+$source+'] TO DISK = '+(Literal $bak)+' WITH INIT,COPY_ONLY;')
   Require ([IO.File]::Exists($bak)) 'A02_BACKUP_NOT_CREATED'
+  $phase='headeronly'
   $header=QuerySql $conn ('RESTORE HEADERONLY FROM DISK = '+(Literal $bak))
   Require ($header.Rows.Count -eq 1 -and [int]$header.Rows[0]['BackupType'] -eq 1) 'A02_HEADER_INVALID'
+  $phase='filelistonly'
   $files=QuerySql $conn ('RESTORE FILELISTONLY FROM DISK = '+(Literal $bak))
   Require ($files.Rows.Count -ge 2) 'A02_FILELIST_INVALID'
   $moves=@();$data=0;$logs=0
@@ -79,10 +86,14 @@ try{
   }
   Require ($data -gt 0 -and $logs -gt 0) 'A02_DATA_AND_LOG_REQUIRED'
   $from='FROM DISK = '+(Literal $bak)+' WITH FILE = 1, '+($moves -join ', ')
+  $phase='verifyonly'
   ExecSql $conn ('RESTORE VERIFYONLY '+$from+';')
+  $phase='restore-new-db'
   ExecSql $conn ('IF DB_ID('+(Literal $restored)+") IS NOT NULL THROW 51001, 'A02_SYNTHETIC_COLLISION', 1;"+
     [Environment]::NewLine+'RESTORE DATABASE ['+$restored+'] '+$from+', RECOVERY;')
+  $phase='dbcc-checkdb'
   ExecSql $conn ('DBCC CHECKDB(['+$restored+']) WITH NO_INFOMSGS;')
+  $phase='synthetic-reconciliation'
   $row=QuerySql $conn ('SELECT COUNT_BIG(*) AS C,SUM(amount) AS T FROM ['+$restored+'].dbo.A02Synthetic;')
   Require ($row.Rows.Count -eq 1 -and [long]$row.Rows[0]['C'] -eq 2 -and
     [long]$row.Rows[0]['T'] -eq 80235) 'A02_RESTORED_SYNTHETIC_TOTALS_MISMATCH'
@@ -93,7 +104,10 @@ try{
     syntheticTotal=80235;financialMigrationPerformed=$false;canImport=$false
   }|ConvertTo-Json -Compress
 }catch{
-  Write-Error 'A02_SYNTHETIC_LOCALDB_RESTORE_FAILED'
+  # Only a bounded phase and exception *type* are public; never emit raw SQL,
+  # paths, backup bytes, identity, or exception messages.
+  $kind=$_.Exception.GetType().Name
+  Write-Error ('A02_SYNTHETIC_LOCALDB_RESTORE_FAILED phase='+$phase+' type='+$kind)
   exit 2
 }finally{
   if($null -ne $conn){
