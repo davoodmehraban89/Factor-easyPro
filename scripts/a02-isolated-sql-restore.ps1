@@ -417,6 +417,10 @@ SELECT TRY_CAST(SERVERPROPERTY('ProductMajorVersion') AS int) AS Major,
     if ($online.Rows.Count -ne 1 -or [string]$online.Rows[0]['state_desc'] -ne 'ONLINE') {
         throw 'A02_ISOLATED_DATABASE_NOT_ONLINE'
     }
+    # Restore success and ONLINE alone do not prove database page integrity.
+    # CHECKDB is run only on the new, randomly named isolated database.
+    Invoke-SqlCommand $connection ('DBCC CHECKDB([' + $plan.DatabaseName +
+        ']) WITH NO_INFOMSGS;') 3600
     $schema = Invoke-SqlRows $connection (
         'SELECT (SELECT COUNT(*) FROM [' + $plan.DatabaseName +
         '].sys.tables) AS TableCount, (SELECT COUNT(*) FROM [' +
@@ -429,6 +433,7 @@ SELECT TRY_CAST(SERVERPROPERTY('ProductMajorVersion') AS int) AS Major,
         expressDataLimitBytes = if ($expressLimitBytes -gt 0) { $expressLimitBytes } else { $null }
         tableCount = [int]$schema.Rows[0]['TableCount']
         columnCount = [int]$schema.Rows[0]['ColumnCount']
+        dbccCheckDbPassed = $true
         canImport = $false; financialReconciled = $false
         importPerformed = $false
     } | ConvertTo-Json -Compress
