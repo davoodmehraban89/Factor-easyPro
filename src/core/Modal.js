@@ -21,6 +21,10 @@ class ModalManager {
     const top = this.stack[this.stack.length - 1];
     if (!top) return;
     if (event.key === 'Escape') {
+      // Respect the user's keyboard setting. When enabled, this is the
+      // single owner of Escape for stacked dialogs; close only the top one.
+      const shortcuts = window.KeyboardShortcuts?.settings;
+      if (shortcuts?.enabled && shortcuts.escapeCloses === false) return;
       event.preventDefault();
       event.stopPropagation();
       this.close();
