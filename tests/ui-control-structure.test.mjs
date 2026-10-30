@@ -89,3 +89,12 @@ test('Q01: shared dialogs have ARIA naming, keyboard dismissal and focus restora
   assert.match(code, /addEventListener\('keydown'/);
   assert.match(code, /removeEventListener\('keydown'/);
 });
+
+test('Q01: Escape is handled once for nested financial dialogs and shortcut target is topmost', () => {
+  const shortcuts = fs.readFileSync(path.join(root,'src','core','KeyboardShortcuts.js'),'utf8');
+  const modal = fs.readFileSync(path.join(root,'src','core','Modal.js'),'utf8');
+  assert.match(shortcuts, /window\.FINORA\?\.Modal\?\.stack\?\.length/);
+  assert.match(shortcuts, /backdrops\[backdrops\.length - 1\]/);
+  assert.match(modal, /shortcuts\.escapeCloses === false/);
+  assert.match(modal, /this\.close\(\)/);
+});
