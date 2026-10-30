@@ -77,3 +77,15 @@ test('Q01: menu controls remain keyboard-reachable with synchronized screen-read
   assert.match(router, /aria-current/);
   assert.match(styles, /:focus-visible/);
 });
+
+test('Q01: shared dialogs have ARIA naming, keyboard dismissal and focus restoration contracts', () => {
+  const code = fs.readFileSync(path.join(root, 'src','core','Modal.js'),'utf8');
+  assert.match(code, /setAttribute\('role', 'dialog'\)/);
+  assert.match(code, /setAttribute\('aria-modal', 'true'\)/);
+  assert.match(code, /setAttribute\('aria-labelledby', titleId\)/);
+  assert.match(code, /event\.key === 'Escape'/);
+  assert.match(code, /event\.key !== 'Tab'/);
+  assert.match(code, /previousFocus\.focus/);
+  assert.match(code, /addEventListener\('keydown'/);
+  assert.match(code, /removeEventListener\('keydown'/);
+});
