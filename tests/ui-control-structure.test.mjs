@@ -173,7 +173,7 @@ test('Q01: remaining financial grid, reporting and settings inputs announce thei
     ['InvoiceFormView',['aria-label="جستجوی کالای ردیف فاکتور"','aria-label="نوع تخفیف ردیف"','aria-label="وضعیت پرداخت فاکتور"']],
     ['AccountingView',['aria-label="حساب ردیف سند"','aria-label="مبلغ بدهکار ردیف"','aria-label="مبلغ بستانکار ردیف"','aria-label="شرح ردیف سند"','for="acStWarehouse"']],
     ['TreasuryView',['aria-label="جستجوی تراکنش‌های خزانه"']],
-    ['ChequesView',['aria-label="جستجوی چک"']],
+    ['ChequesView',['aria-label="جستجوی چک"','aria-label="نوع چک"','aria-label="وضعیت چک"']],
     ['SettingsView',['aria-label="تعداد صفرهای میانبر مثبت"','aria-label="متن تایید پاک کردن داده‌ها"']]
   ];
   for(const [name,labels] of cases){
