@@ -200,4 +200,17 @@ test('Q01: unverified-action Markdown respects deduplicated click evidence and f
   assert.doesNotMatch(md,/\| لغو \| clicked/,'clicked actions do not belong in gap list');
   assert.throws(()=>buildReport({...synthetic,everyActionVerified:true}),/UNVERIFIED_INPUT/);
   assert.throws(()=>buildReport({...synthetic,inventoryCount:500}),/COUNT_MISMATCH/);
+  assert.throws(()=>buildReport({...synthetic,duplicateInstanceCount:0}),/COUNT_MISMATCH/);
+  assert.throws(()=>buildReport({...synthetic,uniqueActionClicked:2}),/STATUS_MISMATCH/);
+  assert.throws(()=>buildReport({...synthetic,uniqueActionUnverified:0}),/STATUS_MISMATCH/);
+  assert.throws(()=>buildReport({...synthetic,uniqueActionDisabled:1}),/STATUS_MISMATCH/);
+  assert.throws(()=>buildReport({...synthetic,uniqueActionFailed:1}),/STATUS_MISMATCH/);
+  assert.throws(()=>buildReport({...synthetic,uniqueActions:[
+    {...synthetic.uniqueActions[0],status:'unknown'},synthetic.uniqueActions[1]
+  ]}),/STATUS_MISMATCH/);
+  const broken={...synthetic,uniqueActionClicked:0,uniqueActions:[
+    {...synthetic.uniqueActions[0],status:'broken-handler'},
+    {...synthetic.uniqueActions[1],status:'not-clicked'}
+  ],uniqueActionUnverified:1};
+  assert.match(buildReport(broken),/امضاهای با هندلر نامعتبر \\| 1/);
 });

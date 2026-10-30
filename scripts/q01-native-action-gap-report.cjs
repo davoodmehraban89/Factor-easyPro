@@ -19,11 +19,35 @@ function buildReport(audit){
     audit.everyActionVerified!==false||audit.customerDataUsed!==false){
     throw Error('Q01_NATIVE_AUDIT_UNVERIFIED_INPUT');
   }
-  if(audit.uniqueActionCount!==audit.uniqueActions.length||
-    audit.inventoryCount!==audit.controls.length){
+  if(!Number.isSafeInteger(audit.uniqueActionCount)||
+    !Number.isSafeInteger(audit.inventoryCount)||
+    !Number.isSafeInteger(audit.duplicateInstanceCount)||
+    audit.uniqueActionCount<0||audit.inventoryCount<0||
+    audit.duplicateInstanceCount<0||
+    audit.uniqueActionCount!==audit.uniqueActions.length||
+    audit.inventoryCount!==audit.controls.length||
+    audit.duplicateInstanceCount!==audit.inventoryCount-audit.uniqueActionCount){
     throw Error('Q01_NATIVE_AUDIT_COUNT_MISMATCH');
   }
   const actions=audit.uniqueActions;
+  // A generated report must not trust summary counters independently of the
+  // source actions. Otherwise a failed handler could be hidden behind a
+  // claimed green "clicked" count without changing the underlying evidence.
+  const statusNames=['clicked','not-clicked','disabled','failed','broken-handler'];
+  const statuses=Object.fromEntries(statusNames.map(name=>[name,0]));
+  for(const action of actions){
+    if(!action||typeof action!=='object'||
+      !Object.hasOwn(statuses,action.status)){
+      throw Error('Q01_NATIVE_AUDIT_STATUS_MISMATCH');
+    }
+    statuses[action.status]++;
+  }
+  if(audit.uniqueActionClicked!==statuses.clicked||
+    audit.uniqueActionUnverified!==statuses['not-clicked']||
+    audit.uniqueActionDisabled!==statuses.disabled||
+    audit.uniqueActionFailed!==statuses.failed){
+    throw Error('Q01_NATIVE_AUDIT_STATUS_MISMATCH');
+  }
   const pending=actions.filter(x=>x.status!=='clicked');
   const errors=(audit.problems||[]).filter(x=>x);
   const lines=[
@@ -39,6 +63,7 @@ function buildReport(audit){
     '| امضاهای کلیک‌نشده | '+audit.uniqueActionUnverified+' |',
     '| امضاهای غیرفعال | '+audit.uniqueActionDisabled+' |',
     '| امضاهای دارای شکست آزمون | '+audit.uniqueActionFailed+' |',
+    '| امضاهای با هندلر نامعتبر | '+statuses['broken-handler']+' |',
     '| موارد تکراری در تب‌ها | '+audit.duplicateInstanceCount+' |',
     '| هشدارهای مشاهده‌شده | '+errors.length+' |',
     '',
