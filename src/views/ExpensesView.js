@@ -96,19 +96,19 @@ class ExpensesViewImpl {
       <div class="toolbar">
         <div class="search-input-wrap">
           <span class="icon">🔍</span>
-          <input type="text" class="form-control" id="expSearch" placeholder="جستجو در سرفصل، شرح یا شماره پیگیری..." value="${this._esc(filter.search)}" oninput="window.ExpensesView._onSearch(this.value)" />
+          <input type="text" class="form-control" id="expSearch" aria-label="جستجوی اسناد هزینه و درآمد" placeholder="جستجو در سرفصل، شرح یا شماره پیگیری..." value="${this._esc(filter.search)}" oninput="window.ExpensesView._onSearch(this.value)" />
         </div>
-        <select class="form-control" style="width:auto;min-width:130px" onchange="window.ExpensesView._onFilter('kind', this.value)">
+        <select class="form-control" style="width:auto;min-width:130px" aria-label="نوع سند" onchange="window.ExpensesView._onFilter('kind', this.value)">
           <option value="">همه انواع</option>
           <option value="expense" ${filter.kind === 'expense' ? 'selected' : ''}>هزینه</option>
           <option value="income" ${filter.kind === 'income' ? 'selected' : ''}>درآمد</option>
         </select>
-        <select class="form-control" style="width:auto;min-width:150px" onchange="window.ExpensesView._onFilter('category', this.value)">
+        <select class="form-control" style="width:auto;min-width:150px" aria-label="سرفصل سند" onchange="window.ExpensesView._onFilter('category', this.value)">
           <option value="">همه سرفصل‌ها</option>
           ${categoryOptions}
         </select>
-        <input type="text" class="form-control" style="width:130px" placeholder="از تاریخ" value="${this._esc(filter.dateFrom)}" onchange="window.ExpensesView._onFilter('dateFrom', this.value)" />
-        <input type="text" class="form-control" style="width:130px" placeholder="تا تاریخ" value="${this._esc(filter.dateTo)}" onchange="window.ExpensesView._onFilter('dateTo', this.value)" />
+        <input type="text" class="form-control" style="width:130px" placeholder="از تاریخ" aria-label="تاریخ شروع جستجو" value="${this._esc(filter.dateFrom)}" onchange="window.ExpensesView._onFilter('dateFrom', this.value)" />
+        <input type="text" class="form-control" style="width:130px" placeholder="تا تاریخ" aria-label="تاریخ پایان جستجو" value="${this._esc(filter.dateTo)}" onchange="window.ExpensesView._onFilter('dateTo', this.value)" />
         <button class="btn btn-secondary btn-inline" onclick="window.ExpensesView._clearFilters()">↺ پاک کردن فیلتر</button>
         <button class="btn" onclick="window.ExpensesView.openExpenseModal()">➕ سند جدید</button>
       </div>
