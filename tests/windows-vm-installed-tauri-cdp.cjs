@@ -414,7 +414,7 @@ async function connect(url) {
         assert.ok(image.length > 1000 && image.subarray(1,4).toString('ascii') === 'PNG',
           'Bad native WebView2 PNG for route ' + route);
         const filename = 'q01-ui-' + route + '.png';
-        fs.writeFileSync(path.join(path.dirname(reportPath), filename, image, { flag: 'wx' }));
+        fs.writeFileSync(path.join(path.dirname(reportPath), filename), image, { flag: 'wx' });
         routeScreenshots.push(filename);
       }
       report.nativeControlAudit.routeScreenshots = routeScreenshots;
