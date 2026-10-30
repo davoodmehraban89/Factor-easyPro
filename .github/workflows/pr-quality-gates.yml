@@ -61,6 +61,21 @@ jobs:
         run: npm ci
       - name: Windows integration regression
         run: npm test
+      - name: Parse every A02 PowerShell script without executing owner data
+        shell: pwsh
+        run: |
+          $output = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File './scripts/a02-powershell-parse-gate.ps1'
+          if ($LASTEXITCODE -ne 0) { throw 'A02 PowerShell parser gate failed' }
+          $report = ($output | Out-String | ConvertFrom-Json)
+          if ($report.status -ne 'a02-all-powershell-parser-gates-passed' -or
+              $report.checkedScripts -lt 7 -or
+              $report.malformedSyntheticScriptRejected -ne $true -or
+              $report.scriptsExecuted -ne $false -or
+              $report.ownerBackupUsed -ne $false -or
+              $report.sqlConnected -ne $false -or
+              $report.canImport -ne $false) {
+            throw 'A02 PowerShell parser control contract invalid'
+          }
       - name: A02 SQL backup preflight selftest (read-only; no SQL instance/data)
         shell: pwsh
         run: |
