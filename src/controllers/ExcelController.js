@@ -465,13 +465,14 @@ class ExcelControllerImpl {
     if (rows.length === 0) throw new Error('شیت کالاها خالی است');
 
     const mode = options.mode || 'merge';
-    const existing = await DataScope.list('products');
-
-    if (mode === 'replace') {
-      for (const p of existing) {
-        await StorageService.delete('products', p.id);
-      }
+    // A multi-store accounting system must never delete referenced master data
+    // then import row-by-row: one malformed row/crash can destroy existing
+    // invoices, ledgers and company references. Replacement is deliberately
+    // disabled until a transactional, referentially-safe migration exists.
+    if (mode !== 'merge') {
+      throw new Error('جایگزینی گروهی اطلاعات پشتیبانی نمی‌شود؛ اطلاعات موجود حفظ شدند. فقط حالت ادغام مجاز است.');
     }
+    const existing = await DataScope.list('products');
 
     let added = 0, skipped = 0;
     for (const row of rows) {
@@ -523,13 +524,14 @@ class ExcelControllerImpl {
     if (rows.length === 0) throw new Error('شیت اشخاص خالی است');
 
     const mode = options.mode || 'merge';
-    const existing = await DataScope.list('contacts');
-
-    if (mode === 'replace') {
-      for (const c of existing) {
-        await StorageService.delete('contacts', c.id);
-      }
+    // A multi-store accounting system must never delete referenced master data
+    // then import row-by-row: one malformed row/crash can destroy existing
+    // invoices, ledgers and company references. Replacement is deliberately
+    // disabled until a transactional, referentially-safe migration exists.
+    if (mode !== 'merge') {
+      throw new Error('جایگزینی گروهی اطلاعات پشتیبانی نمی‌شود؛ اطلاعات موجود حفظ شدند. فقط حالت ادغام مجاز است.');
     }
+    const existing = await DataScope.list('contacts');
 
     let added = 0, skipped = 0;
     for (const row of rows) {

@@ -184,6 +184,23 @@ test('Q01: remaining financial grid, reporting and settings inputs announce thei
   assert.ok(runner.includes('audit.fieldsMissingProgrammaticLabel <= 5'));
 });
 
+test('A02: Excel imports reject destructive replacement before touching master data', () => {
+  const controller=fs.readFileSync(path.join(root,'src','controllers','ExcelController.js'),'utf8');
+  const settings=fs.readFileSync(path.join(root,'src','views','SettingsView.js'),'utf8');
+  assert.equal((controller.match(/if \(mode !== 'merge'\)/g)||[]).length,2,
+    'both contact and product imports must fail closed');
+  assert.doesNotMatch(controller,/if \(mode === 'replace'\)/,
+    'nontransactional delete-then-import must never be reachable');
+  const importModeSelect=settings.split('id="importMode">')[1]?.split('</select>')[0];
+  assert.ok(importModeSelect, 'Excel import mode selector missing');
+  assert.doesNotMatch(importModeSelect,/<option value="replace"/,
+    'destructive Excel option must not be offered; the backup restore option is separate');
+  assert.match(settings,/window\.__importKind !== kind/);
+  assert.match(settings,/data-excel-import-submit/);
+  assert.doesNotMatch(settings,/_confirmImport\(\$\{JSON\.stringify\(kind\)/,
+    'untrusted filenames must never be embedded as executable inline HTML');
+});
+
 test('Q01: Escape is handled once for nested financial dialogs and shortcut target is topmost', () => {
   const shortcuts = fs.readFileSync(path.join(root,'src','core','KeyboardShortcuts.js'),'utf8');
   const modal = fs.readFileSync(path.join(root,'src','core','Modal.js'),'utf8');
