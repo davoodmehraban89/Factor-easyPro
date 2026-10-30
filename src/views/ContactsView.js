@@ -55,20 +55,20 @@ class ContactsViewImpl {
       <div class="toolbar">
         <div class="search-input-wrap">
           <span class="icon">🔍</span>
-          <input type="text" class="form-control" id="contactSearch" placeholder="جستجو بر اساس نام، تلفن یا کد ملی..." value="${this._esc(currentSearch)}" oninput="window.ContactsView._onSearch(this.value)" />
+          <input type="text" class="form-control" id="contactSearch" aria-label="جستجوی اشخاص" placeholder="جستجو بر اساس نام، تلفن یا کد ملی..." value="${this._esc(currentSearch)}" oninput="window.ContactsView._onSearch(this.value)" />
         </div>
-        <select class="form-control" style="width:auto;min-width:130px" id="roleFilter" onchange="window.ContactsView._onFilterRole(this.value)">
+        <select class="form-control" style="width:auto;min-width:130px" id="roleFilter" aria-label="نقش شخص" onchange="window.ContactsView._onFilterRole(this.value)">
           <option value="all" ${currentRoleFilter === 'all' ? 'selected' : ''}>همه نقش‌ها</option>
           <option value="customer" ${currentRoleFilter === 'customer' ? 'selected' : ''}>مشتری</option>
           <option value="supplier" ${currentRoleFilter === 'supplier' ? 'selected' : ''}>تامین‌کننده</option>
           <option value="both" ${currentRoleFilter === 'both' ? 'selected' : ''}>هر دو</option>
         </select>
-        <select class="form-control" style="width:auto;min-width:120px" id="typeFilter" onchange="window.ContactsView._onFilterType(this.value)">
+        <select class="form-control" style="width:auto;min-width:120px" id="typeFilter" aria-label="نوع شخص" onchange="window.ContactsView._onFilterType(this.value)">
           <option value="all" ${currentTypeFilter === 'all' ? 'selected' : ''}>همه انواع</option>
           <option value="natural" ${currentTypeFilter === 'natural' ? 'selected' : ''}>حقیقی</option>
           <option value="legal" ${currentTypeFilter === 'legal' ? 'selected' : ''}>حقوقی</option>
         </select>
-        <select class="form-control" style="width:auto;min-width:140px" onchange="window.ContactsView._onFilterBalance(this.value)">
+        <select class="form-control" style="width:auto;min-width:140px" aria-label="فیلتر مانده اشخاص" onchange="window.ContactsView._onFilterBalance(this.value)">
           <option value="" ${currentBalanceFilter === '' ? 'selected' : ''}>همه مانده‌ها</option>
           <option value="debtor" ${currentBalanceFilter === 'debtor' ? 'selected' : ''}>فقط بدهکاران</option>
           <option value="creditor" ${currentBalanceFilter === 'creditor' ? 'selected' : ''}>فقط بستانکاران</option>
