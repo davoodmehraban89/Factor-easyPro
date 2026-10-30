@@ -111,6 +111,19 @@ test('Q01: shared dialogs have ARIA naming, keyboard dismissal and focus restora
   assert.match(code, /removeEventListener\('keydown'/);
 });
 
+test('A01: confirmation buttons are one-shot and reject stale/hidden financial actions', () => {
+  const modal=fs.readFileSync(path.join(root,'src','core','Modal.js'),'utf8');
+  const native=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
+  const windowsRunner=fs.readFileSync(path.join(root,'tests','windows-vm-installed-tauri-cdp.cjs'),'utf8');
+  assert.ok(modal.includes('let settled = false'));
+  assert.ok(modal.includes('this.stack[this.stack.length - 1] === modal'));
+  assert.equal(modal.split('if (settled || !isActive()) return;').length - 1, 2);
+  assert.ok(native.includes('staleConfirm?.click()'));
+  assert.ok(native.includes('hiddenParent?.querySelector'));
+  assert.ok(native.includes('staleFinancialConfirmIgnored:true'));
+  assert.ok(windowsRunner.includes('modalKeyboard.staleFinancialConfirmIgnored'));
+});
+
 test('Q01: form labels are only associated within unambiguous modal groups', () => {
   const modal=fs.readFileSync(path.join(root,'src','core','Modal.js'),'utf8');
   const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
