@@ -79,6 +79,13 @@ test('Q01: menu controls remain keyboard-reachable with synchronized screen-read
   assert.match(main, /aria-expanded/);
   assert.match(router, /aria-current/);
   assert.match(styles, /:focus-visible/);
+  const desktopToggle = styles.match(/\.hamburger\s*\{([^}]*)\}/)?.[1];
+  assert.ok(desktopToggle, 'desktop sidebar toggle styles not found');
+  assert.match(desktopToggle, /display:\s*inline-flex\s*;/,
+    'the sidebar toggle must be visible/focusable on desktop as well as mobile');
+  assert.doesNotMatch(desktopToggle, /display:\s*none\s*;/);
+  const nativeAudit = fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
+  assert.match(nativeAudit, /Desktop sidebar toggle cannot receive keyboard focus/);
 });
 
 test('Q01: shared dialogs have ARIA naming, keyboard dismissal and focus restoration contracts', () => {
@@ -89,6 +96,10 @@ test('Q01: shared dialogs have ARIA naming, keyboard dismissal and focus restora
   assert.match(code, /event\.key === 'Escape'/);
   assert.match(code, /event\.key !== 'Tab'/);
   assert.match(code, /previousFocus\.focus/);
+  assert.match(code, /\[data-confirm-message\]'\)\.textContent = String\(message \?\? ''\)/,
+    'untrusted confirmation messages must be assigned as text, not HTML');
+  assert.doesNotMatch(code, /\$\{message\}<\/p>/,
+    'financial confirmation message must never be interpolated into innerHTML');
   assert.match(code, /addEventListener\('keydown'/);
   assert.match(code, /removeEventListener\('keydown'/);
 });
@@ -121,6 +132,8 @@ test('Q01: installed WebView2 must click synthetic modal Cancel/Confirm and trap
     'cancelDoesNotConfirmAndRestoresFocus:true',
     'syntheticConfirmRunsExactlyOnce:true',
     'syntheticConfirmed!==0','syntheticConfirmed!==1',
+    'confirmationTextEscaped:true',
+    'Confirmation message was interpreted as executable HTML',
     'tabForward.defaultPrevented','tabBackward.defaultPrevented'
   ]) assert.ok(audit.includes(check),'native modal control evidence missing: '+check);
   for(const check of [
