@@ -152,14 +152,18 @@ class ModalManager {
     // and externally imported labels must never become executable markup.
     const body = '<p data-confirm-message style="font-size:13.5px;line-height:1.8"></p>';
     const footer = `
-      <button class="btn btn-secondary" data-action="cancel">${cancelText}</button>
-      <button class="btn ${danger ? 'btn-danger' : ''}" data-action="confirm">${confirmText}</button>
+      <button type="button" class="btn btn-secondary" data-action="cancel"></button>
+      <button type="button" class="btn ${danger ? 'btn-danger' : ''}" data-action="confirm"></button>
     `;
     const modal = this.open({ title, body, footer, size: 'sm' });
     modal.card.querySelector('[data-confirm-message]').textContent = String(message ?? '');
     const footerEl = modal.card.querySelector('.modal-footer');
-    footerEl.querySelector('[data-action="cancel"]').onclick = () => this.close();
-    footerEl.querySelector('[data-action="confirm"]').onclick = () => {
+    const cancelButton = footerEl.querySelector('[data-action="cancel"]');
+    const confirmButton = footerEl.querySelector('[data-action="confirm"]');
+    cancelButton.textContent = String(cancelText ?? '');
+    confirmButton.textContent = String(confirmText ?? '');
+    cancelButton.onclick = () => this.close();
+    confirmButton.onclick = () => {
       this.close();
       if (onConfirm) onConfirm();
     };
