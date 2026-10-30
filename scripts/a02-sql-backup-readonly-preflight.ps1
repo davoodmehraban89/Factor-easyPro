@@ -168,6 +168,18 @@ try {
         # Multiple backup sets need explicit FILE number/version handling.
         throw 'BACKUP_SET_COUNT_UNSUPPORTED'
     }
+    # A02 only supports a single full-database backup set at position 1.
+    # Do not mistake a log, differential or partial backup for a restorable
+    # standalone database image.
+    if ([int]$header.Rows[0]['BackupType'] -ne 1 -or
+        [int]$header.Rows[0]['Position'] -ne 1) {
+        throw 'BACKUP_NOT_STANDALONE_FULL_DATABASE'
+    }
+    if ($header.Columns.Contains('IsDamaged') -and
+        $header.Rows[0]['IsDamaged'] -ne [System.DBNull]::Value -and
+        [bool]$header.Rows[0]['IsDamaged']) {
+        throw 'BACKUP_HEADER_REPORTS_DAMAGED'
+    }
     $sourceMajor = [int]$header.Rows[0]['SoftwareVersionMajor']
     if ($sourceMajor -lt 9 -or $sourceMajor -gt $serverMajor) {
         throw 'SQL_BACKUP_VERSION_INCOMPATIBLE'
