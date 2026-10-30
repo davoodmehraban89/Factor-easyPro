@@ -165,7 +165,10 @@ SELECT fk.object_id AS ForeignKeyId,fk.name AS ForeignKeyName,
        pc.name AS ParentColumn,rs.name AS ReferencedSchema,
        rt.name AS ReferencedTable,rc.name AS ReferencedColumn,
        fkc.constraint_column_id AS Ordinal,
-       fk.is_disabled AS IsDisabled,fk.is_not_trusted AS IsNotTrusted
+       fk.is_disabled AS IsDisabled,fk.is_not_trusted AS IsNotTrusted,
+       fk.delete_referential_action_desc AS DeleteAction,
+       fk.update_referential_action_desc AS UpdateAction,
+       fk.is_not_for_replication AS IsNotForReplication
 FROM sys.foreign_keys AS fk
 JOIN sys.foreign_key_columns AS fkc ON fkc.constraint_object_id=fk.object_id
 JOIN sys.tables AS pt ON pt.object_id=fk.parent_object_id
@@ -195,7 +198,7 @@ FROM sys.databases AS d WHERE d.name=DB_NAME();
       try{[void]$adapter.Fill($result)}finally{$adapter.Dispose();$cmd.Dispose()}
       Set-Variable -Name $spec.Name -Value $result -Scope Local
     }
-    if($columnTable.Rows.Count -lt 2 -or $columnTable.Rows.Count -gt 200000 -or
+    if($columnTable.Rows.Count -lt 1 -or $columnTable.Rows.Count -gt 200000 -or
        $metaTable.Rows.Count -ne 1){throw 'A02_SCHEMA_SIZE_OR_METADATA_INVALID'}
     $tableMap=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal);$tableOrder=[Collections.Generic.List[string]]::new()
     foreach($r in $columnTable.Rows){
@@ -221,7 +224,7 @@ FROM sys.databases AS d WHERE d.name=DB_NAME();
         fileStream=([int]$r['IsFileStream'] -eq 1)
       })
     }
-    $indexMap=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal);$indexOrder=[Collections.Generic.List[string]]::new()
+    $indexMap=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
     foreach($r in $indexTable.Rows){
       $tableKey=(Frame ([string]$r['SchemaName']))+(Frame ([string]$r['TableName']))
       $idxKey=$tableKey+(Frame ([string]$r['IndexId']))
@@ -235,7 +238,6 @@ FROM sys.databases AS d WHERE d.name=DB_NAME();
           keyColumns=[Collections.Generic.List[object]]::new()
           includedColumns=[Collections.Generic.List[string]]::new()
         }
-        $indexOrder.Add($idxKey)
         $tableMap[$tableKey].indexes.Add($indexMap[$idxKey])
       }
       if([int]$r['IsIncludedColumn'] -eq 1){
@@ -247,7 +249,7 @@ FROM sys.databases AS d WHERE d.name=DB_NAME();
         })
       }
     }
-    $foreignMap=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal);$foreignOrder=[Collections.Generic.List[string]]::new()
+    $foreignMap=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
     foreach($r in $foreignTable.Rows){
       $parentKey=(Frame ([string]$r['ParentSchema']))+(Frame ([string]$r['ParentTable']))
       $fkKey=$parentKey+(Frame ([string]$r['ForeignKeyId']))
@@ -259,9 +261,10 @@ FROM sys.databases AS d WHERE d.name=DB_NAME();
           referencedTable=[string]$r['ReferencedTable']
           disabled=([int]$r['IsDisabled'] -eq 1)
           notTrusted=([int]$r['IsNotTrusted'] -eq 1)
+          deleteAction=[string]$r['DeleteAction'];updateAction=[string]$r['UpdateAction']
+          notForReplication=([int]$r['IsNotForReplication'] -eq 1)
           columns=[Collections.Generic.List[object]]::new()
         }
-        $foreignOrder.Add($fkKey)
         $tableMap[$parentKey].foreignKeys.Add($foreignMap[$fkKey])
       }
       $foreignMap[$fkKey].columns.Add([pscustomobject]@{
@@ -323,11 +326,115 @@ function Read-EncryptedManifest([string]$path){
     $cipher,$script:ManifestEntropy,[Security.Cryptography.DataProtectionScope]::CurrentUser)
   $json=[Text.Encoding]::UTF8.GetString($plain)
   $manifest=$json | ConvertFrom-Json
+  if($null -eq $manifest.tables){throw 'A02_PRIVATE_MANIFEST_TABLES_MISSING'}
+  $schemaObject=[ordered]@{tables=$manifest.tables}
+  $canonical=ConvertTo-Json -InputObject $schemaObject -Depth 20 -Compress
+  $sha=[Security.Cryptography.SHA256]::Create()
+  try{
+    $actualFingerprint=[BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical))).Replace('-','').ToLowerInvariant()
+  }finally{$sha.Dispose()}
+  if($actualFingerprint -cne [string]$manifest.schemaFingerprintSha256){
+    throw 'A02_PRIVATE_MANIFEST_FINGERPRINT_MISMATCH'
+  }
   if($manifest.format -cne 'factor-easypro-a02-schema-manifest' -or
      [int]$manifest.formatVersion -ne 1 -or
-     [string]$manifest.schemaFingerprintSha256 -cnotmatch '^[0-9a-f]{64}$' -or
+     [string]$manifest.schemaFingerprintSha256 -cnotmatch '^[0-9a-f]{64}
+     $manifest.userRowsRead -ne $false -or
+     $manifest.databaseModified -ne $false -or
+     $manifest.canImport -ne $false){
+    throw 'A02_PRIVATE_MANIFEST_CONTRACT_INVALID'
+  }
+  return ,$plain
+}
+
+if($Mode -eq 'Test'){
+  Assert-Target 'FINORAMIG' 'FinoraHoloo_0123456789abcdef0123456789abcdef'
+  Assert-Target 'FinoraA02_0123456789ab' 'A02Restore_0123456789ab'
+  foreach($pair in @(@('FINORAMIG','master'),@('FINORAMIG','Holoo1'),
+      @('master','FinoraHoloo_0123456789abcdef0123456789abcdef'),
+      @('FinoraA02_0123456789ab','A02Restore_aaaaaaaaaaaa'))){
+    $blocked=$false
+    try{Assert-Target $pair[0] $pair[1]}catch{$blocked=$true}
+    if(-not $blocked){throw 'A02_UNSAFE_TARGET_ACCEPTED'}
+  }
+  $rows=@(
+    [pscustomobject]@{SchemaName='dbo';TableName='Synthetic';ColumnName='id';DataType='int';Ordinal=1;MaxLength=4;Precision=10;Scale=0;IsNullable=0;IsIdentity=0;IsComputed=0},
+    [pscustomobject]@{SchemaName='dbo';TableName='Synthetic';ColumnName='amount';DataType='bigint';Ordinal=2;MaxLength=8;Precision=19;Scale=0;IsNullable=0;IsIdentity=0;IsComputed=0}
+  )
+  $h=Fingerprint $rows;[array]::Reverse($rows)
+  if((Fingerprint $rows) -cne $h){throw 'A02_FINGERPRINT_NOT_ORDER_INDEPENDENT'}
+  $rows[0].ColumnName='changed'
+  if((Fingerprint $rows) -ceq $h){throw 'A02_FINGERPRINT_NOT_CHANGE_SENSITIVE'}
+  [pscustomobject]@{
+    status='schema-fingerprint-selftest-passed';sqlOpened=$false
+    userRowsRead=$false;databaseModified=$false;canImport=$false
+  }|ConvertTo-Json -Compress
+  return
+}
+
+if($Mode -eq 'DecryptManifest'){
+  try{
+    if([string]::IsNullOrWhiteSpace($InputPath) -or [string]::IsNullOrWhiteSpace($OutputPath)){
+      throw 'A02_PRIVATE_MANIFEST_PATHS_REQUIRED'
+    }
+    $plain=Read-EncryptedManifest $InputPath
+    Write-RestrictedFile $OutputPath $plain
+    [pscustomobject]@{status='private-schema-manifest-decrypted';plaintextFileAclRestricted=$true;userRowsRead=$false;databaseModified=$false;canImport=$false}|ConvertTo-Json -Compress
+  }catch{Write-Error 'A02_PRIVATE_MANIFEST_DECRYPT_FAILED';exit 2}
+  return
+}
+
+$conn=$null
+try{
+  Assert-Target $InstanceName $DatabaseName
+  $source=if($InstanceName -ceq 'FINORAMIG'){'lpc:.\FINORAMIG'}else{'(localdb)\'+$InstanceName}
+  $connectionString='Data Source='+$source+';Initial Catalog=master;Integrated Security=True;Connect Timeout=15;Encrypt=False;Pooling=False;'
+  $conn=[Data.SqlClient.SqlConnection]::new($connectionString);$conn.Open()
+  $check=$conn.CreateCommand()
+  $check.CommandText='SELECT state_desc FROM sys.databases WHERE name=@db;'
+  [void]$check.Parameters.Add('@db',[Data.SqlDbType]::NVarChar,128)
+  $check.Parameters['@db'].Value=$DatabaseName
+  $status=$check.ExecuteScalar();$check.Dispose()
+  if($null -eq $status -or [string]$status -cne 'ONLINE'){throw 'A02_RESTORE_NOT_ONLINE'}
+  $conn.ChangeDatabase($DatabaseName)
+  $manifest=Get-SchemaData $conn
+  if($Mode -eq 'Inspect'){
+    [pscustomobject]@{
+      status='isolated-schema-inventoried'
+      fingerprintSha256=$manifest.schemaFingerprintSha256
+      tableCount=$manifest.tableCount;columnCount=$manifest.columnCount
+      primaryKeyCount=$manifest.primaryKeyCount;foreignKeyCount=$manifest.foreignKeyCount
+      userRowsRead=$false;databaseModified=$false;canImport=$false
+    }|ConvertTo-Json -Compress
+  }else{
+    if([string]::IsNullOrWhiteSpace($OutputPath)){throw 'A02_PRIVATE_OUTPUT_PATH_REQUIRED'}
+    $json=ConvertTo-Json -InputObject $manifest -Depth 20
+    $plain=[Text.Encoding]::UTF8.GetBytes($json)
+    if($plain.Length -gt 33554432){throw 'A02_PRIVATE_MANIFEST_TOO_LARGE'}
+    Add-Type -AssemblyName System.Security -ErrorAction Stop
+    $cipher=[Security.Cryptography.ProtectedData]::Protect(
+      $plain,$script:ManifestEntropy,[Security.Cryptography.DataProtectionScope]::CurrentUser)
+    $header=[Text.Encoding]::ASCII.GetBytes($script:ManifestHeader)
+    $payload=New-Object byte[] ($header.Length+1+$cipher.Length)
+    [Buffer]::BlockCopy($header,0,$payload,0,$header.Length)
+    $payload[$header.Length]=10
+    [Buffer]::BlockCopy($cipher,0,$payload,$header.Length+1,$cipher.Length)
+    Write-RestrictedFile $OutputPath $payload
+    [pscustomobject]@{
+      status='private-schema-manifest-encrypted'
+      tableCount=$manifest.tableCount;columnCount=$manifest.columnCount
+      primaryKeyCount=$manifest.primaryKeyCount;foreignKeyCount=$manifest.foreignKeyCount
+      dpapiScope='CurrentUser';fileAclRestricted=$true
+      userRowsRead=$false;databaseModified=$false;canImport=$false
+    }|ConvertTo-Json -Compress
+  }
+}catch{
+  Write-Error 'A02_SCHEMA_INVENTORY_OR_PRIVATE_EXPORT_FAILED'
+  exit 2
+}finally{if($null -ne $conn){$conn.Dispose()}}
+ -or
      [int]$manifest.tableCount -lt 1 -or
-     [int]$manifest.columnCount -lt 2 -or
+     [int]$manifest.columnCount -lt 1 -or
      $manifest.userRowsRead -ne $false -or
      $manifest.databaseModified -ne $false -or
      $manifest.canImport -ne $false){
