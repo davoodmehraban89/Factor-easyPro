@@ -108,6 +108,90 @@ try{
     $validFingerprint -and $inventory.userRowsRead -eq $false -and
     $inventory.databaseModified -eq $false -and $inventory.canImport -eq $false)
   Require $accepted 'A02_SCHEMA_INVENTORY_CONTRACT_FAILED'
+  $phase='private-schema-manifest-dpapi-roundtrip'
+  $encryptedManifest=Join-Path $folder 'synthetic_schema.dpapi'
+  $plainManifest=Join-Path $folder 'synthetic_schema.private.json'
+  $manifestOutput=@(& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $inventoryScript -Mode PrivateManifest -InstanceName $instance -DatabaseName $restored -OutputPath $encryptedManifest)
+  Require ($LASTEXITCODE -eq 0) 'A02_PRIVATE_SCHEMA_MANIFEST_CREATE_FAILED'
+  $manifestStatus=($manifestOutput | Out-String | ConvertFrom-Json)
+  Require ($manifestStatus.status -eq 'private-schema-manifest-encrypted' -and
+    $manifestStatus.tableCount -eq 1 -and $manifestStatus.columnCount -eq 2 -and
+    $manifestStatus.primaryKeyCount -eq 1 -and $manifestStatus.foreignKeyCount -eq 0 -and
+    $manifestStatus.dpapiScope -eq 'CurrentUser' -and
+    $manifestStatus.fileAclRestricted -eq $true -and
+    $manifestStatus.userRowsRead -eq $false -and
+    $manifestStatus.databaseModified -eq $false -and
+    $manifestStatus.canImport -eq $false) 'A02_PRIVATE_SCHEMA_MANIFEST_CREATE_CONTRACT_FAILED'
+  $decryptOutput=@(& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $inventoryScript -Mode DecryptManifest -InputPath $encryptedManifest -OutputPath $plainManifest)
+  Require ($LASTEXITCODE -eq 0) 'A02_PRIVATE_SCHEMA_MANIFEST_DECRYPT_FAILED'
+  $decryptStatus=($decryptOutput | Out-String | ConvertFrom-Json)
+  Require ($decryptStatus.status -eq 'private-schema-manifest-decrypted' -and
+    $decryptStatus.plaintextFileAclRestricted -eq $true -and
+    $decryptStatus.userRowsRead -eq $false -and
+    $decryptStatus.databaseModified -eq $false -and
+    $decryptStatus.canImport -eq $false) 'A02_PRIVATE_SCHEMA_MANIFEST_DECRYPT_CONTRACT_FAILED'
+  $privateManifest=Get-Content -LiteralPath $plainManifest -Raw | ConvertFrom-Json
+  Require ($privateManifest.format -eq 'factor-easypro-a02-schema-manifest' -and
+    $privateManifest.formatVersion -eq 1 -and
+    $privateManifest.schemaFingerprintSha256 -cmatch '^[0-9a-f]{64}  $phase='synthetic-reconciliation'
+  $row=QuerySql $conn ('SELECT COUNT_BIG(*) AS C,SUM(amount) AS T FROM ['+$restored+'].dbo.A02Synthetic;')
+  Require ($row.Rows.Count -eq 1 -and [long]$row.Rows[0]['C'] -eq 2 -and
+    [long]$row.Rows[0]['T'] -eq 80235) 'A02_RESTORED_SYNTHETIC_TOTALS_MISMATCH'
+  [pscustomobject]@{
+    status='synthetic-localdb-restore-verified';ownerBackupUsed=$false
+    headerVerified=$true;fileListVerified=$true;verifyOnlyPassed=$true
+    restoreExecuted=$true;dbccPassed=$true;syntheticRecords=2
+    syntheticTotal=80235;schemaOnlyInventoryVerified=$true
+    privateManifestRoundTripVerified=$true
+    financialMigrationPerformed=$false;canImport=$false
+  }|ConvertTo-Json -Compress
+}catch{
+  # Only a bounded phase and exception *type* are public; never emit raw SQL,
+  # paths, backup bytes, identity, or exception messages.
+  $kind=$_.Exception.GetType().Name
+  Write-Error ('A02_SYNTHETIC_LOCALDB_RESTORE_FAILED phase='+$phase+' type='+$kind)
+  exit 2
+}finally{
+  if($null -ne $conn){
+    try{
+      foreach($name in @($restored,$source)){
+        ExecSql $conn ('IF DB_ID('+(Literal $name)+') IS NOT NULL BEGIN '+
+          'ALTER DATABASE ['+$name+'] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; '+
+          'DROP DATABASE ['+$name+']; END;')
+      }
+    }catch{}
+    $conn.Dispose()
+  }
+  if($created){
+    try{& $localdb stop $instance -k | Out-Null}catch{}
+    try{& $localdb delete $instance | Out-Null}catch{}
+  }
+  if([IO.Directory]::Exists($folder)){try{[IO.Directory]::Delete($folder,$true)}catch{}}
+}
+ -and
+    $privateManifest.tables.Count -eq 1 -and
+    $privateManifest.tables[0].name -eq 'A02Synthetic' -and
+    $privateManifest.tables[0].columns.Count -eq 2 -and
+    $privateManifest.tables[0].indexes.Count -eq 1 -and
+    $privateManifest.tables[0].indexes[0].primaryKey -eq $true -and
+    $privateManifest.tables[0].indexes[0].keyColumns[0].name -eq 'id' -and
+    $privateManifest.userRowsRead -eq $false -and
+    $privateManifest.databaseModified -eq $false -and
+    $privateManifest.canImport -eq $false) 'A02_PRIVATE_SCHEMA_MANIFEST_CONTENT_INVALID'
+  $cipherBytes=[IO.File]::ReadAllBytes($encryptedManifest)
+  $cipherText=[Text.Encoding]::UTF8.GetString($cipherBytes)
+  Require (-not $cipherText.Contains('A02Synthetic') -and
+    -not $cipherText.Contains('amount')) 'A02_PRIVATE_SCHEMA_MANIFEST_NOT_ENCRYPTED'
+  $acl=Get-Acl -LiteralPath $plainManifest
+  Require ($acl.AreAccessRulesProtected) 'A02_PRIVATE_SCHEMA_PLAINTEXT_ACL_NOT_PROTECTED'
+  $allowedSids=@([Security.Principal.WindowsIdentity]::GetCurrent().User.Value,'S-1-5-18','S-1-5-32-544') | Select-Object -Unique
+  $aclRules=@($acl.GetAccessRules($true,$false,[Security.Principal.SecurityIdentifier]))
+  Require ($aclRules.Count -eq $allowedSids.Count) 'A02_PRIVATE_SCHEMA_ACL_RULE_COUNT_INVALID'
+  foreach($rule in $aclRules){
+    Require ($rule.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and
+      $rule.FileSystemRights -eq [Security.AccessControl.FileSystemRights]::FullControl -and
+      $rule.IdentityReference.Value -in $allowedSids) 'A02_PRIVATE_SCHEMA_ACL_RULE_INVALID'
+  }
   $phase='synthetic-reconciliation'
   $row=QuerySql $conn ('SELECT COUNT_BIG(*) AS C,SUM(amount) AS T FROM ['+$restored+'].dbo.A02Synthetic;')
   Require ($row.Rows.Count -eq 1 -and [long]$row.Rows[0]['C'] -eq 2 -and
