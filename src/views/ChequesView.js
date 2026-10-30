@@ -120,14 +120,14 @@ class ChequesViewImpl {
       <div class="toolbar">
         <div class="search-input-wrap">
           <span class="icon">🔍</span>
-          <input type="text" class="form-control" placeholder="جستجو بر اساس طرف حساب، صیادی یا بانک..." value="${this._esc(filter.search)}" oninput="window.ChequesView._onSearch(this.value)" />
+          <input type="text" class="form-control" placeholder="جستجو بر اساس طرف حساب، صیادی یا بانک..." aria-label="جستجوی چک" value="${this._esc(filter.search)}" oninput="window.ChequesView._onSearch(this.value)" />
         </div>
-        <select class="form-control" style="width:auto;min-width:130px" onchange="window.ChequesView._onFilter('direction', this.value)">
+        <select class="form-control" style="width:auto;min-width:130px" aria-label="فیلتر وضعیت یا نوع چک" onchange="window.ChequesView._onFilter('direction', this.value)">
           <option value="">همه انواع</option>
           <option value="inbound" ${filter.direction === 'inbound' ? 'selected' : ''}>دریافتی</option>
           <option value="outbound" ${filter.direction === 'outbound' ? 'selected' : ''}>پرداختی</option>
         </select>
-        <select class="form-control" style="width:auto;min-width:130px" onchange="window.ChequesView._onFilter('status', this.value)">
+        <select class="form-control" style="width:auto;min-width:130px" aria-label="فیلتر وضعیت یا نوع چک" onchange="window.ChequesView._onFilter('status', this.value)">
           <option value="">همه وضعیت‌ها</option>
           <option value="pending" ${filter.status === 'pending' ? 'selected' : ''}>در جریان</option>
           <option value="cleared" ${filter.status === 'cleared' ? 'selected' : ''}>وصول شده</option>
