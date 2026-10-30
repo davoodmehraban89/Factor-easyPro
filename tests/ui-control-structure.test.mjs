@@ -158,3 +158,18 @@ test('Q01: financial mutations are not mislabeled safe by the static control cat
     fs.rmSync(dir,{recursive:true,force:true});
   }
 });
+
+test('Q01: native click audit separates unique action signatures from repeated tab instances', () => {
+  const audit = fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
+  const native = fs.readFileSync(path.join(root,'tests','windows-vm-installed-tauri-cdp.cjs'),'utf8');
+  for(const key of ['uniqueActionCount','uniqueActionClicked','uniqueActionUnverified',
+    'duplicateInstanceCount','unclassifiedInstances','uniqueActions',
+    'same-control-clicked-in-another-tab-context',
+    'not-reached-or-not-classified-needs-manual-test']){
+    assert.ok(audit.includes(key),'missing unique action audit evidence: '+key);
+  }
+  assert.ok(native.includes('audit.uniqueActionCount <= audit.inventoryCount'),
+    'native runner must not confuse 470 UI instances with unique buttons');
+  assert.ok(native.includes("x.status!=='not-clicked' || !!x.reason"),
+    'every unclicked action occurrence must have a reason');
+});
