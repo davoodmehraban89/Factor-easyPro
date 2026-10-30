@@ -38,20 +38,22 @@
   )].filter(isVisible);
   function auditFields(root, route, section) {
     if (!root) return;
+    let fieldIndex = 0;
     for (const field of root.querySelectorAll(
       'input:not([type="hidden"]), select, textarea'
     )) {
+      const ordinal = fieldIndex++;
       if (!isVisible(field)) continue;
       const labels=field.labels ? [...field.labels] : [];
       const explicit=!!field.getAttribute('aria-label') ||
         !!field.getAttribute('aria-labelledby') ||
         !!field.closest('label') || labels.length > 0;
       const id=field.id||'';
-      const key=[route,section,field.tagName.toLowerCase(),id,
+      const key=[route,section,ordinal,field.tagName.toLowerCase(),id,
         field.getAttribute('name')||'',field.getAttribute('type')||''].join('|');
       if (fields.has(key)) continue;
       fields.set(key,{
-        route,section,id,tag:field.tagName.toLowerCase(),
+        route,section,ordinal,id,tag:field.tagName.toLowerCase(),
         type:field.getAttribute('type')||'',
         label:labels.map(x=>x.textContent.trim().slice(0,75)).join(' / ') ||
           field.getAttribute('aria-label') || '',
