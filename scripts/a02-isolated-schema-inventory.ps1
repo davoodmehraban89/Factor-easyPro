@@ -133,8 +133,7 @@ SELECT s.name AS SchemaName,t.name AS TableName,c.name AS ColumnName,
        c.precision AS Precision,c.scale AS Scale,c.is_nullable AS IsNullable,
        c.is_identity AS IsIdentity,c.is_computed AS IsComputed,
        c.collation_name AS CollationName,c.is_rowguidcol AS IsRowGuid,
-       c.is_sparse AS IsSparse,c.is_filestream AS IsFileStream,
-       c.generated_always_type AS GeneratedAlwaysType
+       c.is_sparse AS IsSparse,c.is_filestream AS IsFileStream
 FROM sys.tables AS t
 JOIN sys.schemas AS s ON s.schema_id=t.schema_id
 JOIN sys.columns AS c ON c.object_id=t.object_id
@@ -198,7 +197,7 @@ FROM sys.databases AS d WHERE d.name=DB_NAME();
     }
     if($columnTable.Rows.Count -lt 2 -or $columnTable.Rows.Count -gt 200000 -or
        $metaTable.Rows.Count -ne 1){throw 'A02_SCHEMA_SIZE_OR_METADATA_INVALID'}
-    $tableMap=@{};$tableOrder=[Collections.Generic.List[string]]::new()
+    $tableMap=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal);$tableOrder=[Collections.Generic.List[string]]::new()
     foreach($r in $columnTable.Rows){
       $schema=[string]$r['SchemaName'];$name=[string]$r['TableName']
       $key=(Frame $schema)+(Frame $name)
@@ -220,10 +219,9 @@ FROM sys.databases AS d WHERE d.name=DB_NAME();
         collation=if($r['CollationName'] -is [DBNull]){$null}else{[string]$r['CollationName']}
         rowGuid=([int]$r['IsRowGuid'] -eq 1);sparse=([int]$r['IsSparse'] -eq 1)
         fileStream=([int]$r['IsFileStream'] -eq 1)
-        generatedAlwaysType=[int]$r['GeneratedAlwaysType']
       })
     }
-    $indexMap=@{};$indexOrder=[Collections.Generic.List[string]]::new()
+    $indexMap=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal);$indexOrder=[Collections.Generic.List[string]]::new()
     foreach($r in $indexTable.Rows){
       $tableKey=(Frame ([string]$r['SchemaName']))+(Frame ([string]$r['TableName']))
       $idxKey=$tableKey+(Frame ([string]$r['IndexId']))
@@ -249,7 +247,7 @@ FROM sys.databases AS d WHERE d.name=DB_NAME();
         })
       }
     }
-    $foreignMap=@{};$foreignOrder=[Collections.Generic.List[string]]::new()
+    $foreignMap=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal);$foreignOrder=[Collections.Generic.List[string]]::new()
     foreach($r in $foreignTable.Rows){
       $parentKey=(Frame ([string]$r['ParentSchema']))+(Frame ([string]$r['ParentTable']))
       $fkKey=$parentKey+(Frame ([string]$r['ForeignKeyId']))
