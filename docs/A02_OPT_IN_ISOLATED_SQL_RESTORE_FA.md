@@ -24,6 +24,7 @@
 - حداکثر ۱۶ فایل در `FILELISTONLY`، فقط انواع D و L، نام منطقی یکتا؛ طرح برای FILESTREAM و قالب‌های خاص پشتیبانی نشده و بسته می‌شود
 - محل فایل‌های مقصد از پیش‌فرض‌های **خود موتور SQL Server** گرفته می‌شود؛ برای هر فایل نام تازه شامل شناسه تصادفی ۱۲۸ بیتی ساخته می‌شود
 - کنترل نبود دیتابیس و فایل مقصد، کنترل نبود مسیر در `sys.master_files` و فضای آزاد حداقل حجم فایل‌ها **به‌علاوه دو گیگابایت** برای هر درایو؛ سپس `VERIFYONLY WITH MOVE`
+- تشخیص Edition با `SERVERPROPERTY('EngineEdition')` و کنترل سقف Express پیش از `VERIFYONLY` و هر Restore: SQL Server Express 2022 و نسخه‌های قبل حداکثر ۱۰ گیگابایت مجموع فایل‌های داده؛ Express 2025 (17.x) حداکثر ۵۰ گیگابایت. مجموع فایل‌های D در `FILELISTONLY` سنجیده می‌شود و فایل‌های L جداگانه برای فضای دیسک کنترل می‌شوند. نسخه Express ناشناخته در آینده **fail closed** می‌شود؛ اندازه ZIP یا `.bak` جایگزین اندازه فایل‌های دیتابیس نیست.
 - حالت Restore تنها با عبارت دقیق `I_AUTHORIZE_A_NEW_ISOLATED_SQL_DATABASE` فعال می‌شود. هیچ `WITH REPLACE`، `DROP DATABASE`، `ALTER DATABASE` یا واردسازی مالی در مسیر برنامه وجود ندارد.
 - قبل از Restore کنترل برخورد نام/مسیر یک بار دیگر انجام می‌شود. با این حال کنترل‌های نرم‌افزاری به‌تنهایی **انحصار واقعی نمونه SQL یا حذف کامل شرایط مسابقه (TOCTOU)** را اثبات نمی‌کنند.
 - SHA-256 محتوای بکاپ (بدون انتشار/چاپ هش) پیش از بررسی SQL ثبت و پس از VERIFYONLY و بلافاصله پیش از RESTORE دوباره محاسبه می‌شود تا جابه‌جایی فایل در این فاصله متوقف شود؛ همچنان قفل انحصاری سیستم‌فایل نیست.
@@ -59,5 +60,6 @@ powershell.exe -NoProfile -NonInteractive -File .\scripts\a02-isolated-sql-resto
 - وضعیت `A02 accepted: false` تا پایان همه مراحل؛ **هیچ ادعای انتقال یک‌کلیکی یا Restore موفق واقعی مجاز نیست.**
 
 مستند رسمی: https://learn.microsoft.com/en-us/sql/t-sql/statements/restore-statements-verifyonly-transact-sql و https://learn.microsoft.com/en-us/sql/t-sql/statements/restore-statements-arguments-transact-sql
+سقف نسخه‌ها: https://learn.microsoft.com/en-us/sql/sql-server/editions-and-components-of-sql-server-2025?view=sql-server-ver17 و https://learn.microsoft.com/en-us/sql/sql-server/editions-and-components-of-sql-server-2022?view=sql-server-ver17
 
 پیگیری کلی: Issue #146؛ PRهای مقدماتی #145، #147 و #148.
