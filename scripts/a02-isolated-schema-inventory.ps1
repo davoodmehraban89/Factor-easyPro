@@ -338,7 +338,9 @@ function Read-EncryptedManifest([string]$path){
   }
   if($manifest.format -cne 'factor-easypro-a02-schema-manifest' -or
      [int]$manifest.formatVersion -ne 1 -or
-     [string]$manifest.schemaFingerprintSha256 -cnotmatch '^[0-9a-f]{64}
+     [string]$manifest.schemaFingerprintSha256 -cnotmatch '^[0-9a-f]{64}$' -or
+     [int]$manifest.tableCount -lt 1 -or
+     [int]$manifest.columnCount -lt 1 -or
      $manifest.userRowsRead -ne $false -or
      $manifest.databaseModified -ne $false -or
      $manifest.canImport -ne $false){
