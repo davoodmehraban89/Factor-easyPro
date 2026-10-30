@@ -105,14 +105,18 @@ class KeyboardShortcutsImpl {
       return;
     }
 
-    // ────── Enter → تأیید (فقط داخل مودال، نه در textarea) ──────
-    if (e.key === 'Enter' && !e.shiftKey && this.settings.enterConfirms) {
+    // ────── Plain Enter: preserve keyboard semantics of focused controls ──────
+    // The previous global handler could SAVE a financial form when focus was
+    // on "Cancel" or a select/autocomplete field. Let native Enter activate
+    // buttons, links, dropdowns and inputs. Ctrl+Enter remains the deliberate
+    // confirm shortcut; plain Enter only confirms when the dialog surface
+    // itself (not a form control or editable child) has focus.
+    if (e.key === 'Enter' && !e.shiftKey && this.settings.enterConfirms && modal) {
       const active = document.activeElement;
-      if (active && active.tagName === 'TEXTAREA') return;
-      if (modal) {
-        e.preventDefault();
-        this._clickPrimaryButton(modal);
-      }
+      if (!active || !modal.contains(active)) return;
+      if (active !== modal.querySelector('.modal-card')) return;
+      e.preventDefault();
+      this._clickPrimaryButton(modal);
       return;
     }
 
