@@ -68,8 +68,10 @@ class KeyboardShortcutsImpl {
   _onKeyDown(e) {
     if (!this.settings.enabled) return;
 
-    const modal = document.querySelector('.modal-backdrop.active') ||
-                  document.querySelector('.modal-backdrop');
+    // Always target the topmost dialog. The old query selected the first
+    // backdrop, so Enter/Ctrl+S could affect a hidden parent dialog.
+    const backdrops = document.querySelectorAll('.modal-backdrop');
+    const modal = backdrops[backdrops.length - 1] || null;
 
     // ────── Ctrl+S / Cmd+S ──────
     if (this._isCtrlS(e)) {
@@ -94,6 +96,9 @@ class KeyboardShortcutsImpl {
     // ────── Escape → بستن مودال ──────
     if (e.key === 'Escape' && this.settings.escapeCloses) {
       if (modal) {
+        // ModalManager owns stacked dialogs and already closes exactly one
+        // top dialog on Escape; a second click here closed both dialogs.
+        if (window.FINORA?.Modal?.stack?.length) return;
         e.preventDefault();
         this._clickCloseButton(modal);
       }
