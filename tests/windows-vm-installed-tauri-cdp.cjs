@@ -387,6 +387,11 @@ async function connect(url) {
       assert.equal(audit.shellResults.modalKeyboard.nestedDialogIsolation, true);
       assert.equal(audit.shellResults.modalKeyboard.escapeClosesWithoutConfirm, true);
       assert.equal(audit.shellResults.modalKeyboard.focusReturnsToTrigger, true);
+      assert.equal(audit.shellResults.modalKeyboard.enterOnFocusedCancelDoesNotSave, true);
+      assert.equal(audit.shellResults.modalKeyboard.enterOnInputDoesNotSubmit, true);
+      assert.equal(audit.shellResults.modalKeyboard.tabAndShiftTabStayInsideTopDialog, true);
+      assert.equal(audit.shellResults.modalKeyboard.cancelDoesNotConfirmAndRestoresFocus, true);
+      assert.equal(audit.shellResults.modalKeyboard.syntheticConfirmRunsExactlyOnce, true);
       assert.equal(audit.shellResults.toastResults.importantErrorsRemain, true);
       assert.equal(audit.shellResults.toastResults.dismissButtonsWork, true);
       assert.ok(audit.inventoryCount >= 25, 'Too few visible controls discovered');
