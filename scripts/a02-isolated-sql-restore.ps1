@@ -43,7 +43,7 @@ function Assert-LocalPathShape([string]$Value) {
 
 function Assert-LocalFilesystemSource([string]$Value) {
     $path = Assert-LocalPathShape $Value
-    $drive = New-Object System.IO.DriveInfo($path.Substring(0, 1))
+    $drive = [System.IO.DriveInfo]::new($path.Substring(0, 1))
     if ($drive.DriveType -ne [System.IO.DriveType]::Fixed -and
         $drive.DriveType -ne [System.IO.DriveType]::Removable) {
         throw 'A02_SOURCE_NOT_LOCAL_DISK'
@@ -87,7 +87,7 @@ function New-LocalRestorePlan(
     if ($null -eq $Files -or $Files.Count -lt 2 -or $Files.Count -gt 16) {
         throw 'A02_FILELIST_COUNT_UNSUPPORTED'
     }
-    $seen = New-Object 'System.Collections.Generic.HashSet[string]' (
+    $seen = [System.Collections.Generic.HashSet[string]]::new(
         [System.StringComparer]::OrdinalIgnoreCase
     )
     $moves = @()
@@ -174,12 +174,7 @@ function Invoke-SqlCommand($Connection, [string]$Sql, [int]$Timeout = 1800) {
 
 function Assert-PlanCollisionFree($Connection, $Plan) {
     # Only read system catalogs; no CREATE/DROP/ALTER.
-    $catalog = Invoke-SqlRows $Connection (
-        'SELECT name, physical_name FROM sys.master_files;' +
-        'SELECT name FROM sys.databases;'
-    )
-    # DataAdapter.Fill reads only its first result table. Query DB existence
-    # separately so a surprising result layout cannot silently pass.
+    $catalog = Invoke-SqlRows $Connection 'SELECT physical_name FROM sys.master_files'
     $names = Invoke-SqlRows $Connection 'SELECT name FROM sys.databases'
     try {
         foreach ($r in $names.Rows) {
@@ -215,7 +210,7 @@ function Assert-DestinationDiskSpace($Plan) {
         $required[$drive] += [long]$move.Bytes
     }
     foreach ($drive in $required.Keys) {
-        $info = New-Object System.IO.DriveInfo($drive)
+        $info = [System.IO.DriveInfo]::new($drive)
         if ($info.DriveType -ne [System.IO.DriveType]::Fixed -or
             -not $info.IsReady -or
             $info.AvailableFreeSpace -lt ($required[$drive] + 2GB)) {
