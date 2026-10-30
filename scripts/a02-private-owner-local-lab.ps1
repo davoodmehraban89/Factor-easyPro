@@ -6,9 +6,10 @@ automatic privilege elevation, ACL modification, or automatic DROP DATABASE.
 #>
 [CmdletBinding()]
 param(
- [ValidateSet('Test','StageAndInspect','RestoreAndInventory')]
+ [ValidateSet('Test','Stage','InspectStaged','RestoreAndInventory')]
  [string]$Mode='Test',
  [string]$SourceZip='',
+ [string]$StagedBackupPath='',
  [string]$ManifestOutputPath='',
  [string]$StagingConsent='',
  [string]$RestoreConsent=''
@@ -39,6 +40,36 @@ function Assert-ManifestDestination([string]$path){
   Require ($drive.IsReady -and $drive.DriveType -eq [IO.DriveType]::Fixed -and
     $drive.AvailableFreeSpace -ge 100MB) 'A02_MANIFEST_DISK_INSUFFICIENT'
 }
+function Assert-StagedBackup([string]$value){
+  Require (-not [string]::IsNullOrWhiteSpace($value) -and
+    $value -match '^[A-Za-z]:\\' -and
+    $value -notmatch '[/\x00-\x1f<>"|?*]' -and
+    -not $value.Substring(2).Contains(':')) 'A02_STAGED_BACKUP_PATH_INVALID'
+  foreach($part in $value.Substring(3).Split('\')){
+    Require (-not [string]::IsNullOrWhiteSpace($part) -and
+      $part -ne '.' -and $part -ne '..' -and
+      -not $part.EndsWith(' ') -and -not $part.EndsWith('.')) 'A02_STAGED_BACKUP_AMBIGUOUS_PATH'
+  }
+  $full=[IO.Path]::GetFullPath($value)
+  $root=[IO.Path]::Combine([Environment]::GetFolderPath(
+    [Environment+SpecialFolder]::LocalApplicationData),
+    'FactorEasyPro','HolooMigrationStaging')
+  Require (-not [string]::IsNullOrWhiteSpace($root) -and
+    $full.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase)) 'A02_STAGED_BACKUP_NOT_IN_PRIVATE_STAGING'
+  $relative=$full.Substring($root.Length+1)
+  Require ($relative -cmatch '(?i)^stage_[0-9a-f]{32}\\HolooBackupCopy\.bak$') 'A02_STAGED_BACKUP_NOT_GENERATED_NAME'
+  $file=[IO.FileInfo]::new($full)
+  Require ($file.Exists -and $file.Length -gt 4 -and $file.Length -le 4GB) 'A02_STAGED_BACKUP_FILE_MISSING'
+  Require (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) 'A02_STAGED_BACKUP_REPARSE_FILE'
+  $drive=[IO.DriveInfo]::new($full.Substring(0,1))
+  Require ($drive.IsReady -and $drive.DriveType -eq [IO.DriveType]::Fixed) 'A02_STAGED_BACKUP_DRIVE_UNSAFE'
+  $parent=$file.Directory
+  while($null -ne $parent){
+    Require (($parent.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) 'A02_STAGED_BACKUP_REPARSE_PARENT'
+    $parent=$parent.Parent
+  }
+  return $full
+}
 function Invoke-JsonStep([string]$scriptName,[string[]]$args,[string]$expected){
   $file=Join-Path $PSScriptRoot $scriptName
   Require ([IO.File]::Exists($file)) 'A02_REQUIRED_HELPER_MISSING'
@@ -55,6 +86,7 @@ function Invoke-JsonStep([string]$scriptName,[string[]]$args,[string]$expected){
 
 if($Mode -eq 'Test'){
   Require ([string]::IsNullOrWhiteSpace($SourceZip) -and
+    [string]::IsNullOrWhiteSpace($StagedBackupPath) -and
     [string]::IsNullOrWhiteSpace($ManifestOutputPath) -and
     [string]::IsNullOrWhiteSpace($StagingConsent) -and
     [string]::IsNullOrWhiteSpace($RestoreConsent)) 'A02_SELFTEST_REQUIRES_SYNTHETIC_ONLY'
@@ -77,30 +109,51 @@ if($Mode -eq 'Test'){
 }
 
 try{
-  Require ($StagingConsent -ceq 'I_AUTHORIZE_PRIVATE_HOLOO_STAGING') 'A02_STAGING_CONSENT_REQUIRED'
-  Require (-not [string]::IsNullOrWhiteSpace($SourceZip)) 'A02_OWNER_ZIP_PATH_REQUIRED'
+  if($Mode -eq 'Stage'){
+    Require ($StagingConsent -ceq 'I_AUTHORIZE_PRIVATE_HOLOO_STAGING' -and
+      -not [string]::IsNullOrWhiteSpace($SourceZip)) 'A02_STAGING_CONSENT_AND_ZIP_REQUIRED'
+    Require ([string]::IsNullOrWhiteSpace($StagedBackupPath) -and
+      [string]::IsNullOrWhiteSpace($ManifestOutputPath) -and
+      [string]::IsNullOrWhiteSpace($RestoreConsent)) 'A02_STAGE_FORBIDS_RESTORE_ARGUMENTS'
+    $script:Phase='zip-envelope'
+    $probe=Invoke-JsonStep 'a02-private-holoo-zip-staging.ps1' @(
+      '-Mode','Probe','-SourceZip',$SourceZip
+    ) 'zip-envelope-identified'
+    Require ($probe.crcVerified -eq $false -and
+      $probe.databaseModified -eq $false) 'A02_ZIP_PROBE_INVALID'
+    $script:Phase='zip-stage-private'
+    $staged=Invoke-JsonStep 'a02-private-holoo-zip-staging.ps1' @(
+      '-Mode','Stage','-SourceZip',$SourceZip,'-ConsentPhrase',$StagingConsent
+    ) 'private-local-zip-staged-crc-and-tape-verified'
+    Require ($staged.crcVerified -eq $true -and
+      $staged.sqlTapeHeaderVerified -eq $true -and
+      $staged.sqlBackupVerified -eq $false -and
+      $staged.databaseModified -eq $false) 'A02_ZIP_STAGE_INCOMPLETE'
+    $script:BackupPath=Assert-StagedBackup ([string]$staged.stagedBackupPath)
+    [pscustomobject]@{
+      status='private-zip-staged-crc-verified'
+      stagedBackupPath=$script:BackupPath
+      archiveBytes=$probe.archiveBytes;backupBytes=$staged.backupBytes
+      crcVerified=$true;sqlBackupVerified=$false;restoreExecuted=$false
+      financialMigrationPerformed=$false;canImport=$false
+    } | ConvertTo-Json -Compress
+    return
+  }
+  # Never create a new ZIP/BAK copy at this stage. The operator can grant
+  # the named SQL service only the minimum read access to THIS existing copy
+  # in a private and approved environment before SQL preflight.
+  Require ([string]::IsNullOrWhiteSpace($SourceZip) -and
+    [string]::IsNullOrWhiteSpace($StagingConsent)) 'A02_RESTORED_STAGE_MUST_NOT_REEXTRACT'
+  $script:Phase='validate-staged-file'
+  $script:BackupPath=Assert-StagedBackup $StagedBackupPath
   if($Mode -eq 'RestoreAndInventory'){
     Require ($RestoreConsent -ceq 'I_AUTHORIZE_A_NEW_ISOLATED_SQL_DATABASE') 'A02_RESTORE_CONSENT_REQUIRED'
     $script:Phase='validate-manifest-destination'
     Assert-ManifestDestination $ManifestOutputPath
   }else{
-    Require ([string]::IsNullOrWhiteSpace($ManifestOutputPath) -and
-      [string]::IsNullOrWhiteSpace($RestoreConsent)) 'A02_INSPECT_FORBIDS_RESTORE_ARGS'
+    Require ([string]::IsNullOrWhiteSpace($RestoreConsent) -and
+      [string]::IsNullOrWhiteSpace($ManifestOutputPath)) 'A02_INSPECT_FORBIDS_RESTORE_ARGS'
   }
-
-  $script:Phase='zip-envelope'
-  $probe=Invoke-JsonStep 'a02-private-holoo-zip-staging.ps1' @('-Mode','Probe','-SourceZip',$SourceZip) 'zip-envelope-identified'
-  Require ($probe.databaseModified -eq $false -and $probe.crcVerified -eq $false) 'A02_ZIP_PROBE_INVALID'
-
-  $script:Phase='zip-stage-private'
-  $staged=Invoke-JsonStep 'a02-private-holoo-zip-staging.ps1' @(
-    '-Mode','Stage','-SourceZip',$SourceZip,'-ConsentPhrase',$StagingConsent
-  ) 'private-local-zip-staged-crc-and-tape-verified'
-  Require ($staged.crcVerified -eq $true -and $staged.sqlTapeHeaderVerified -eq $true -and
-    $staged.sqlBackupVerified -eq $false -and $staged.databaseModified -eq $false) 'A02_ZIP_STAGE_INCOMPLETE'
-  $script:BackupPath=[string]$staged.stagedBackupPath
-  Require (-not [string]::IsNullOrWhiteSpace($script:BackupPath)) 'A02_STAGED_BACKUP_PATH_MISSING'
-
   $script:Phase='sql-header-filelist-verifyonly'
   $check=Invoke-JsonStep 'a02-isolated-sql-restore.ps1' @(
     '-Mode','Inspect','-BackupPath',$script:BackupPath
@@ -108,10 +161,9 @@ try{
   Require ($check.restoreExecuted -eq $false -and
     $check.financialReconciled -eq $false -and
     $check.sourceSqlMajor -le $check.engineSqlMajor) 'A02_SQL_INSPECT_CONTRACT_INVALID'
-
-  if($Mode -eq 'StageAndInspect'){
+  if($Mode -eq 'InspectStaged'){
     [pscustomobject]@{
-      status='private-backup-staged-and-sql-verified'
+      status='private-staged-sql-verifyonly-passed'
       stagedBackupPath=$script:BackupPath
       sourceSqlMajor=$check.sourceSqlMajor;engineSqlMajor=$check.engineSqlMajor
       engineEdition=$check.engineEdition;fileCount=$check.fileCount
@@ -129,7 +181,6 @@ try{
     $restored.financialReconciled -eq $false -and
     $restored.importPerformed -eq $false -and
     $restored.dbccCheckDbPassed -eq $true) 'A02_RESTORE_CONTRACT_INVALID'
-
   $script:Phase='private-schema-export'
   $schema=Invoke-JsonStep 'a02-isolated-schema-inventory.ps1' @(
     '-Mode','PrivateManifest','-InstanceName','FINORAMIG',
@@ -148,8 +199,7 @@ try{
     financialReconciled=$false;financialMigrationPerformed=$false;canImport=$false
   } | ConvertTo-Json -Compress
 }catch{
-  # A failed restore can leave a NEW incomplete DB or plaintext staged backup.
-  # Never silently delete data or a SQL DB; leave inspection to the owner.
+  # Failed restore can leave a NEW incomplete DB. Never silently delete it.
   Write-Error ('A02_PRIVATE_LAB_BLOCKED_AT_'+$script:Phase.ToUpperInvariant().Replace('-','_')+
     '_NO_IMPORT_MANUAL_REVIEW_OF_PRIVATE_STAGING_AND_SQL_MAY_BE_REQUIRED')
   exit 2
