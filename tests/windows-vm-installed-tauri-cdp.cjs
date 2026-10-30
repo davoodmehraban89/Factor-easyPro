@@ -387,6 +387,9 @@ async function connect(url) {
       assert.equal(audit.shellResults.modalKeyboard.nestedDialogIsolation, true);
       assert.equal(audit.shellResults.modalKeyboard.escapeClosesWithoutConfirm, true);
       assert.equal(audit.shellResults.modalKeyboard.focusReturnsToTrigger, true);
+      assert.equal(audit.shellResults.modalKeyboard.visibleInputAutoFocused, true);
+      assert.equal(audit.problems.filter(x=>x.kind==='modal-a11y-missing').length, 0,
+        'An opened financial dialog failed to move keyboard focus inside itself');
       assert.equal(audit.shellResults.modalKeyboard.enterOnFocusedCancelDoesNotSave, true);
       assert.equal(audit.shellResults.modalKeyboard.enterOnInputDoesNotSubmit, true);
       assert.equal(audit.shellResults.modalKeyboard.tabAndShiftTabStayInsideTopDialog, true);
