@@ -96,6 +96,9 @@ test('Q01: shared dialogs have ARIA naming, keyboard dismissal and focus restora
   assert.match(code, /event\.key === 'Escape'/);
   assert.match(code, /event\.key !== 'Tab'/);
   assert.match(code, /previousFocus\.focus/);
+  assert.match(code, /const focusables = this\._focusable\(modal\.card\)/,
+    'initial focus must skip hidden financial inputs');
+  assert.match(code, /focusables\.find\(el => el\.matches\('input, select, textarea'\)\)/);
   assert.match(code, /\[data-confirm-message\]'\)\.textContent = String\(message \?\? ''\)/,
     'untrusted confirmation messages must be assigned as text, not HTML');
   assert.doesNotMatch(code, /\$\{message\}<\/p>/,
@@ -137,6 +140,8 @@ test('Q01: installed WebView2 must click synthetic modal Cancel/Confirm and trap
     'syntheticConfirmRunsExactlyOnce:true',
     'syntheticConfirmed!==0','syntheticConfirmed!==1',
     'confirmationTextEscaped:true',
+    'visibleInputAutoFocused:true',
+    'Dialog initial focus landed outside first visible financial input',
     'Confirmation message was interpreted as executable HTML',
     'tabForward.defaultPrevented','tabBackward.defaultPrevented'
   ]) assert.ok(audit.includes(check),'native modal control evidence missing: '+check);
