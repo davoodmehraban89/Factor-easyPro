@@ -110,8 +110,50 @@
       if (row) {row.status='failed';row.reason='UI click error';}
     } finally {dismiss();}
   }
+  // Explicit shell regression: semantic links, keyboard focus, active route,
+  // persistent sidebar collapse and reversible theme toggle.
+  const navLinks=[...document.querySelectorAll('#sidebarMenu a[data-page]')];
+  if (navLinks.length !== routes.length) throw Error('sidebar navigation count mismatch');
+  for(const link of navLinks) {
+    const route=link.dataset.page;
+    if(link.getAttribute('href')!=='#'+route || link.tabIndex<0 ||
+       !link.getAttribute('aria-label')) throw Error('sidebar link is not keyboard accessible: '+route);
+  }
+  const hamburger=document.getElementById('sidebarToggleBtn');
+  if(!hamburger || !hamburger.getAttribute('aria-label') ||
+     hamburger.getAttribute('aria-controls')!=='sidebarMenu') {
+    throw Error('sidebar accessible toggle missing');
+  }
+  const beforeCollapsed=document.getElementById('sidebar').classList.contains('collapsed');
+  hamburger.click();await wait(70);
+  const afterCollapsed=document.getElementById('sidebar').classList.contains('collapsed');
+  if (beforeCollapsed===afterCollapsed ||
+      localStorage.getItem('finora_pro_sidebar_collapsed')!==String(afterCollapsed) ||
+      hamburger.getAttribute('aria-expanded')!==String(!afterCollapsed)) {
+    throw Error('sidebar click did not persist synchronized collapsed and aria-expanded state');
+  }
+  hamburger.click();await wait(70);
+  if(document.getElementById('sidebar').classList.contains('collapsed')!==beforeCollapsed ||
+     localStorage.getItem('finora_pro_sidebar_collapsed')!==String(beforeCollapsed)) {
+    throw Error('sidebar click did not restore the prior saved state');
+  }
+  const themeButton=document.getElementById('themeToggleBtn');
+  const originalTheme=document.documentElement.getAttribute('data-theme');
+  if(!themeButton || !themeButton.getAttribute('title'))throw Error('theme button missing accessible name');
+  themeButton.click();await wait(50);
+  if(document.documentElement.getAttribute('data-theme')===originalTheme)throw Error('theme toggle was inert');
+  themeButton.click();await wait(50);
+  if(document.documentElement.getAttribute('data-theme')!==originalTheme ||
+     localStorage.getItem('finora_pro_theme')!==originalTheme)throw Error('theme setting not reversible/persisted');
+  const shellResults={keyboardReachableSidebarLinks:navLinks.length,
+    sidebarCollapseClickAndPersistence:true,themeToggleClickAndPersistence:true,
+    activeRouteAriaCurrent:true};
   for (const route of routes) {
     await go(route);
+    const active=[...document.querySelectorAll('#sidebarMenu [aria-current="page"]')];
+    if(active.length!==1 || active[0].dataset.page!==route){
+      throw Error('active route is not announced to screen readers: '+route);
+    }
     const tabs = inventory(route,'root').filter(el => !el.disabled && safeTab.test(handler(el)));
     // Evaluate each known safe top-level tab. The router is reset between
     // clicks to avoid mutating references after HTML rerendering.
@@ -209,6 +251,7 @@
   }
   return {
     environment:'installed-Windows-Tauri-WebView2-synthetic-VM',
+    shellResults,
     routesVisited:routes.length,routeNames:routes,
     inventoryCount:rows.length,
     safeClickCount:clicks.length,
