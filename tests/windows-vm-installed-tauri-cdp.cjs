@@ -380,6 +380,10 @@ async function connect(url) {
       const audit = await cdp.evaluate(auditSource, 240000);
       assert.equal(audit.environment, 'installed-Windows-Tauri-WebView2-synthetic-VM');
       assert.equal(audit.routesVisited, 10);
+      assert.equal(audit.shellResults.keyboardReachableSidebarLinks, 10);
+      assert.equal(audit.shellResults.sidebarCollapseClickAndPersistence, true);
+      assert.equal(audit.shellResults.themeToggleClickAndPersistence, true);
+      assert.equal(audit.shellResults.activeRouteAriaCurrent, true);
       assert.ok(audit.inventoryCount >= 25, 'Too few visible controls discovered');
       assert.ok(audit.safeClickCount >= 15, 'Safe interaction coverage unexpectedly low');
       assert.equal(audit.customerDataUsed, false);
@@ -387,7 +391,8 @@ async function connect(url) {
       assert.equal(audit.everyActionVerified, false,
         'A safe-navigation sweep cannot claim every financial action is verified');
       report.nativeControlAudit = {
-        routesVisited: audit.routesVisited, inventoryCount: audit.inventoryCount,
+        routesVisited: audit.routesVisited, shellResults: audit.shellResults,
+        inventoryCount: audit.inventoryCount,
         safeClickCount: audit.safeClickCount, skippedCount: audit.skippedCount,
         accessibilityNameGaps: audit.accessibilityNameGaps,
         brokenHandlerCount: audit.brokenHandlerCount,
