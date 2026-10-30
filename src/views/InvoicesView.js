@@ -73,8 +73,8 @@ class InvoicesViewImpl {
     if (el) el.innerHTML = this.renderTable();
   }
 
-  renderTable() {
-    if (cache.invoices.length === 0) {
+  renderTable(invoices = cache.invoices) {
+    if (invoices.length === 0) {
       return `
         <div class="table-wrap">
           <table><tbody>
@@ -90,7 +90,7 @@ class InvoicesViewImpl {
         </div>`;
     }
 
-    const rows = cache.invoices.map(inv => {
+    const rows = invoices.map(inv => {
       const statusBadge = inv.status === 'paid'
         ? '<span class="badge badge-success">تسویه‌شده</span>'
         : inv.status === 'partial'
@@ -137,8 +137,8 @@ class InvoicesViewImpl {
     }).join('');
 
     // خلاصه
-    const totalGrand = cache.invoices.reduce((s, i) => s + (Number(i.grandTotal) || 0), 0);
-    const totalRemaining = cache.invoices.reduce((s, i) => s + (Number(i.remaining) || 0), 0);
+    const totalGrand = invoices.reduce((s, i) => s + (Number(i.grandTotal) || 0), 0);
+    const totalRemaining = invoices.reduce((s, i) => s + (Number(i.remaining) || 0), 0);
 
     return `
       <div class="table-wrap">
