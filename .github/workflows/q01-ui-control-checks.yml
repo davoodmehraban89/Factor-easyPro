@@ -1,0 +1,48 @@
+name: Q01 — UI control contracts and frontend regression
+
+on:
+  pull_request:
+    paths:
+      - 'index.html'
+      - 'src/**'
+      - 'tests/ui-control-structure.test.mjs'
+      - 'tests/windows-vm-ui-interaction-audit-browser.js'
+      - 'tests/windows-vm-installed-tauri-cdp.cjs'
+      - '.github/workflows/q01-ui-control-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: q01-ui-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui-contract:
+    name: Test all registered UI handler references and frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Audit inline controls, sidebar route bindings and keyboard support
+        run: node --test tests/ui-control-structure.test.mjs
+      - name: Run all accounting and application regression tests
+        run: npm test
+      - name: Build production frontend
+        run: npm run build
+      - name: Explain coverage boundary
+        run: |
+          echo "Static UI references are NOT proof that buttons work." >> "$GITHUB_STEP_SUMMARY"
+          echo "Native Windows/WebView2 Q01 sweep is a separate real-click gate." >> "$GITHUB_STEP_SUMMARY"
+          echo "Destructive financial actions require independent synthetic workflows." >> "$GITHUB_STEP_SUMMARY"
