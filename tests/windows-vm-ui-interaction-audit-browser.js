@@ -186,9 +186,19 @@
   document.querySelectorAll('.toast .toast-close').forEach(button=>button.click());
   const toastResults={transientLimit:3,importantErrorsRemain:true,
     dismissButtonsWork:document.querySelectorAll('.toast').length===0};
+  await FINORA.Router.go('settings');
+  await wait(100);
+  for(const fieldId of ['invoiceNumberingMode','invoiceNextNumber']){
+    const label=document.querySelector('label[for="'+fieldId+'"]');
+    const field=document.getElementById(fieldId);
+    if(!label || !field) throw Error('invoice settings field label missing: '+fieldId);
+    label.click();await wait(20);
+    if(document.activeElement!==field) throw Error('clicking settings label did not focus: '+fieldId);
+  }
+  await FINORA.Router.go('dashboard');
   const shellResults={keyboardReachableSidebarLinks:navLinks.length,
     sidebarCollapseClickAndPersistence:true,themeToggleClickAndPersistence:true,
-    activeRouteAriaCurrent:true,modalKeyboard,toastResults};
+    activeRouteAriaCurrent:true,modalKeyboard,toastResults,settingsLabelFocus:true};
   for (const route of routes) {
     await go(route);
     const active=[...document.querySelectorAll('#sidebarMenu [aria-current="page"]')];
