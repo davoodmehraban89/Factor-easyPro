@@ -198,6 +198,26 @@
   const stack=[...document.querySelectorAll('.modal-card[role="dialog"]')];
   if(stack.length!==2 || stack[0].getAttribute('aria-hidden')!=='true' ||
     !stack[1].contains(document.activeElement)) throw Error('nested dialog focus/isolation failed');
+  // Check a real Tab/Shift+Tab wrap, which an accessibility contract
+  // cannot prove from source alone. Neither key may escape the top dialog.
+  const topControls=[...stack[1].querySelectorAll(
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])'
+  )].filter(el=>el.getClientRects().length>0 && getComputedStyle(el).visibility!=='hidden');
+  if(topControls.length<2)throw Error('nested modal focus order unexpectedly empty');
+  const firstModalControl=topControls[0],lastModalControl=topControls[topControls.length-1];
+  lastModalControl.focus();
+  const tabForward=new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true});
+  lastModalControl.dispatchEvent(tabForward);
+  if(!tabForward.defaultPrevented || document.activeElement!==firstModalControl){
+    throw Error('Tab escaped the top modal instead of wrapping to its first control');
+  }
+  firstModalControl.focus();
+  const tabBackward=new KeyboardEvent('keydown',
+    {key:'Tab',shiftKey:true,bubbles:true,cancelable:true});
+  firstModalControl.dispatchEvent(tabBackward);
+  if(!tabBackward.defaultPrevented || document.activeElement!==lastModalControl){
+    throw Error('Shift+Tab escaped the top modal instead of wrapping to its last control');
+  }
   // Simulate pressing Enter on a focused CANCEL button in an actual installed
   // WebView2 dialog. The global shortcut MUST NOT hijack it as "confirm".
   const nestedCancel=stack[1].querySelector('[data-action="cancel"]');
@@ -229,9 +249,38 @@
   await wait(15);
   if(document.querySelector('.modal-backdrop') || document.activeElement!==modalTrigger ||
     unexpectedConfirm) throw Error('Escape did not restore focus to original control');
+  // Open a fresh synthetic confirmation: a user clicking Cancel must NOT
+  // execute the callback. Deliberate Confirm should execute exactly once.
+  let syntheticConfirmed=0;
+  FINORA.Modal.confirm({title:'Q01 Cancel-button regression',
+    message:'No real account or customer data',
+    onConfirm:()=>{syntheticConfirmed++;}});
+  await wait(25);
+  const cancelDialog=FINORA.Modal.stack[FINORA.Modal.stack.length-1]?.card;
+  const cancelClick=cancelDialog?.querySelector('[data-action="cancel"]');
+  if(!cancelClick)throw Error('synthetic Cancel action missing');
+  cancelClick.focus();
+  cancelClick.click();await wait(25);
+  if(syntheticConfirmed!==0 || FINORA.Modal.stack.length ||
+      document.activeElement!==modalTrigger){
+    throw Error('Cancel click triggered financial confirm or failed to restore focus');
+  }
+  FINORA.Modal.confirm({title:'Q01 Confirm-button regression',
+    message:'Only increment a synthetic counter',
+    onConfirm:()=>{syntheticConfirmed++;}});
+  await wait(25);
+  const confirmDialog=FINORA.Modal.stack[FINORA.Modal.stack.length-1]?.card;
+  const confirmClick=confirmDialog?.querySelector('[data-action="confirm"]');
+  if(!confirmClick)throw Error('synthetic Confirm action missing');
+  confirmClick.click();await wait(25);
+  if(syntheticConfirmed!==1 || FINORA.Modal.stack.length){
+    throw Error('synthetic Confirm callback not exactly once or dialog not dismissed');
+  }
   const modalKeyboard={roleAndLabel:true,nestedDialogIsolation:true,
     escapeClosesWithoutConfirm:true,focusReturnsToTrigger:true,
-    enterOnFocusedCancelDoesNotSave:true,enterOnInputDoesNotSubmit:true};
+    enterOnFocusedCancelDoesNotSave:true,enterOnInputDoesNotSubmit:true,
+    tabAndShiftTabStayInsideTopDialog:true,
+    cancelDoesNotConfirmAndRestoresFocus:true,syntheticConfirmRunsExactlyOnce:true};
   // Notification flood: transient success/info messages should never
   // cover the dashboard. Important errors remain until explicitly dismissed.
   for(let n=0;n<9;n++) FINORA.Toast.info('Q01 synthetic notice '+n);
