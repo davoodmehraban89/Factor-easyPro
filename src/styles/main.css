@@ -265,7 +265,11 @@ a { color: inherit; }
   position: fixed; top: 20px; left: 20px;
   z-index: 2147483647;
   display: flex; flex-direction: column;
-  gap: 10px; max-width: 380px;
+  gap: 10px; max-width: min(380px, calc(100vw - 28px));
+  max-height: min(60vh, 520px);
+  overflow-y: auto; overflow-x: hidden;
+  padding: 2px 4px 6px;
+  overscroll-behavior: contain;
 }
 .toast {
   background: var(--card-bg);
