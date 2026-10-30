@@ -166,6 +166,24 @@ test('A03: financial list views encode imported record IDs and textual values', 
   assert.ok(expenses.includes('this._esc(JSON.stringify(String(e.id ??'));
 });
 
+test('Q01: remaining financial grid, reporting and settings inputs announce their function', () => {
+  const read=name=>fs.readFileSync(path.join(root,'src','views',name+'.js'),'utf8');
+  const cases=[
+    ['ReportsView',['aria-label="از تاریخ گزارش"','aria-label="تا تاریخ گزارش"']],
+    ['InvoiceFormView',['aria-label="جستجوی کالای ردیف فاکتور"','aria-label="نوع تخفیف ردیف"','aria-label="وضعیت پرداخت فاکتور"']],
+    ['AccountingView',['aria-label="حساب ردیف سند"','aria-label="مبلغ بدهکار ردیف"','aria-label="مبلغ بستانکار ردیف"','aria-label="شرح ردیف سند"','for="acStWarehouse"']],
+    ['TreasuryView',['aria-label="جستجوی تراکنش‌های خزانه"']],
+    ['ChequesView',['aria-label="جستجوی چک"']],
+    ['SettingsView',['aria-label="تعداد صفرهای میانبر مثبت"','aria-label="متن تایید پاک کردن داده‌ها"']]
+  ];
+  for(const [name,labels] of cases){
+    const source=read(name);
+    for(const label of labels)assert.ok(source.includes(label),name+' missing programmatic name: '+label);
+  }
+  const runner=fs.readFileSync(path.join(root,'tests','windows-vm-installed-tauri-cdp.cjs'),'utf8');
+  assert.ok(runner.includes('audit.fieldsMissingProgrammaticLabel <= 5'));
+});
+
 test('Q01: Escape is handled once for nested financial dialogs and shortcut target is topmost', () => {
   const shortcuts = fs.readFileSync(path.join(root,'src','core','KeyboardShortcuts.js'),'utf8');
   const modal = fs.readFileSync(path.join(root,'src','core','Modal.js'),'utf8');
