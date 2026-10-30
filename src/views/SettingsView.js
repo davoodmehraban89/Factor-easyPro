@@ -486,8 +486,53 @@ class SettingsViewImpl {
       '  </div>',
       '  <p style="font-size:12px;line-height:1.9;color:var(--text-muted)">این مرحله فقط ساختار بسته ZIP را شناسایی می‌کند. بازیابی SQL Server، انتقال اطلاعات و تأیید صحت حسابداری هنوز پیاده‌سازی نشده‌اند.</p>',
       '  <button class="btn btn-secondary" onclick="window.SettingsView.openHolooBackupProbe()">انتخاب بکاپ هلو و بررسی اولیه</button>',
+      '  <button class="btn btn-secondary" style="margin-top:8px" onclick="window.SettingsView.checkHolooMigrationReadiness()">بررسی پیش‌نیازهای رایانه برای انتقال از هلو</button>',
       '</div>'
     ].join('');
+  }
+
+  // Native read-only system diagnostics; never installs or configures SQL Server.
+  async checkHolooMigrationReadiness() {
+    if (!Auth.isAdmin()) {
+      Toast.error('فقط مدیر می‌تواند پیش‌نیازهای مهاجرت را بررسی کند');
+      return;
+    }
+    const invoke = globalThis.__TAURI_INTERNALS__?.invoke;
+    if (typeof invoke !== 'function') {
+      Toast.warning('بررسی پیش‌نیازها فقط در نسخه نصب‌شده ویندوز امکان‌پذیر است');
+      return;
+    }
+    try {
+      const report = await invoke('migration_system_readiness');
+      const fmtCount = value => Number.isInteger(value) && value >= 0
+        ? (value === 0 ? 'یافت نشد' : Formatters.number(value) + ' مورد شناسایی شد')
+        : 'امکان تشخیص وجود ندارد';
+      const body = [
+        '<p>این بررسی فقط وضعیت رایانه را می‌خواند؛ چیزی نصب یا تغییر داده نمی‌شود.</p>',
+        '<div style="font-size:12.5px;line-height:2.2">',
+        '<div>ویندوز ۶۴ بیتی: <strong>' + (report.windowsX64 ? 'شناسایی شد' : 'شناسایی نشد') + '</strong></div>',
+        '<div>نمونه‌های SQL Server: <strong>' + fmtCount(report.sqlInstanceCount) + '</strong></div>',
+        '<div>نسخه‌های LocalDB: <strong>' + fmtCount(report.localdbVersionCount) + '</strong></div>',
+        '<div>فضای آزاد درایو داده کاربر: <strong>' +
+          (Number.isSafeInteger(report.freeGibAtUserAppData)
+            ? Formatters.number(report.freeGibAtUserAppData) + ' گیگابایت'
+            : 'قابل تشخیص نیست') + '</strong></div>',
+        '</div>',
+        '<div class="backup-warning" style="margin-top:12px">',
+        '⚠️ شناسایی SQL به معنی سازگاری آن با بکاپ هلو نیست. ',
+        'هنوز SQL Server نصب نشده، فایل هلو بازیابی نشده و ورود اطلاعات مالی فعال نیست.',
+        '</div>'
+      ].join('');
+      Modal.open({
+        title: 'وضعیت پیش‌نیازهای مهاجرت هلو — فقط خواندنی',
+        body,
+        footer: '<button class="btn" onclick="FINORA.Modal.close()">بستن</button>',
+        size: 'md'
+      });
+    } catch {
+      // Avoid exposing native exception text or local configuration details.
+      Toast.error('بررسی پیش‌نیازها انجام نشد؛ هیچ تغییری در سیستم ایجاد نشد');
+    }
   }
 
   openHolooBackupProbe() {
