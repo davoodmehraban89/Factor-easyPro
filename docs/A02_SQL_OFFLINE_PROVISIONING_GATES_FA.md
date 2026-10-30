@@ -29,6 +29,7 @@
 - برنامه پیش از اجرای elevated setup، متن مجوز Microsoft را به کاربر ارائه کند؛ Windows UAC دور زده نمی‌شود.
 - نتیجه نصب با کد خروج، وضعیت reboot، سرویس و نسخه SQL بررسی شود؛ قطع برق/نصب ناقص باید بازیابی و retry ایمن داشته باشد.
 - Restore واقعی باید پس از نصب موفق، در نمونه اختصاصی و با کنترل نسخه بکاپ، محدودیت Express، فضای دیسک و رضایت جداگانه باشد.
+- کنترل سقف Express باید بر اساس نسخه موتور انجام شود: SQL Server 2022 و قبل از آن ۱۰GB برای مجموع فایل‌های داده؛ SQL Server 2025 (17.x) برابر ۵۰GB. اندازه فایل‌های داده از `RESTORE FILELISTONLY` خوانده می‌شود؛ فایل‌های log در سقف داده حساب نمی‌شوند ولی فضای دیسک مستقل لازم دارند. نسخه Express ناشناخته در آینده تا تأیید رسمی مسدود می‌ماند.
 
 **هیچ رسانه رسمی SQL Express یا هش مرجع هنوز به این مخزن افزوده نشده است.** تولیدکننده نباید هش ناشناخته یا لینک ساختگی در مستندات/کد قرار دهد. در CI تنها Test اجرا می‌شود و هیچ نصب SQL Server واقعی رخ نمی‌دهد.
 
@@ -48,6 +49,7 @@
 **گیت A02 همچنان بسته است**. این کار جایگزین آزمون بکاپ واقعی در رایانه خصوصی، بررسی C1/C2/C3 و تست نصب نسخه قابل انتشار نیست. تمام PRها در حالت پیش‌نویس باقی می‌مانند.
 
 مرجع رسمی Microsoft: https://learn.microsoft.com/en-us/sql/database-engine/install-windows/install-sql-server-from-the-command-prompt
+مرجع سقف نسخه‌ها: https://learn.microsoft.com/en-us/sql/sql-server/editions-and-components-of-sql-server-2025?view=sql-server-ver17 و https://learn.microsoft.com/en-us/sql/sql-server/editions-and-components-of-sql-server-2022?view=sql-server-ver17
 
 مرجع رسمی Tauri: https://v2.tauri.app/distribute/windows-installer/
 
