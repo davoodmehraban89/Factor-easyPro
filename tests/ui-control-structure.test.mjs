@@ -205,12 +205,12 @@ test('A03: company switch, posted journals and printable ledger encode untrusted
   const settings=fs.readFileSync(path.join(root,'src','views','SettingsView.js'),'utf8');
   const accounting=fs.readFileSync(path.join(root,'src','views','AccountingView.js'),'utf8');
   const ledger=fs.readFileSync(path.join(root,'src','views','ContactLedgerModal.js'),'utf8');
-  assert.ok(settings.includes('this._esc(JSON.stringify(String(c.id ??')));
-  assert.ok(accounting.includes('const actionArg = value => html(JSON.stringify(String(value ??')));
+  assert.ok(settings.includes('this._esc(JSON.stringify(String(c.id ??'));
+  assert.ok(accounting.includes('const actionArg = value => html(JSON.stringify(String(value ??'));
   assert.ok(!accounting.includes("'${html(j.id)}'"));
   assert.ok(!accounting.includes("'${html(p.id)}'"));
   assert.ok(!accounting.includes("'${html(s.id)}'"));
-  assert.ok(ledger.includes('this._esc(JSON.stringify(String(contactId ??')));
+  assert.ok(ledger.includes('this._esc(JSON.stringify(String(contactId ??'));
   assert.ok(ledger.includes('<title>صورت‌حساب ${this._esc(contact.name)}</title>'));
   assert.doesNotMatch(ledger,/cdn\.jsdelivr\.net/);
   assert.ok(ledger.split('this._esc(Formatters.toPersianDigits(r.date').length>=3);
