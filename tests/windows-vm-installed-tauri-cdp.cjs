@@ -384,6 +384,11 @@ async function connect(url) {
       assert.equal(audit.shellResults.sidebarCollapseClickAndPersistence, true);
       assert.equal(audit.shellResults.themeToggleClickAndPersistence, true);
       assert.equal(audit.shellResults.activeRouteAriaCurrent, true);
+      assert.equal(audit.shellResults.modalKeyboard.nestedDialogIsolation, true);
+      assert.equal(audit.shellResults.modalKeyboard.escapeClosesWithoutConfirm, true);
+      assert.equal(audit.shellResults.modalKeyboard.focusReturnsToTrigger, true);
+      assert.equal(audit.shellResults.toastResults.importantErrorsRemain, true);
+      assert.equal(audit.shellResults.toastResults.dismissButtonsWork, true);
       assert.ok(audit.inventoryCount >= 25, 'Too few visible controls discovered');
       assert.ok(audit.safeClickCount >= 15, 'Safe interaction coverage unexpectedly low');
       assert.equal(audit.customerDataUsed, false);
