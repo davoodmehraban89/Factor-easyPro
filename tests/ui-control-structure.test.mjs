@@ -132,6 +132,21 @@ test('Q01: primary search and filter controls have explicit accessible names', (
   }
 });
 
+test('A03: expense table escapes imported values in HTML and inline action arguments', () => {
+  const src=fs.readFileSync(path.join(root,'src','views','ExpensesView.js'),'utf8');
+  const native=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
+  for(const fragment of [
+    'this._esc(Formatters.toPersianDigits(e.date',
+    'this._esc(ExpenseController.getMethodLabel(e.method))',
+    'this._esc(e.refNumber ? Formatters.toPersianDigits(e.refNumber)',
+    'this._esc(JSON.stringify(String(e.id ??',
+    '<option value="${this._esc(c)}"'
+  ]) assert.ok(src.includes(fragment), 'unescaped expense HTML found: '+fragment);
+  assert.ok(native.includes('expenseUnsafeHtmlEscaped:true'));
+  assert.ok(native.includes('Untrusted expense list fields created executable markup'));
+  assert.ok(native.includes('Expense row identifier escaped the safe JS argument'));
+});
+
 test('Q01: Escape is handled once for nested financial dialogs and shortcut target is topmost', () => {
   const shortcuts = fs.readFileSync(path.join(root,'src','core','KeyboardShortcuts.js'),'utf8');
   const modal = fs.readFileSync(path.join(root,'src','core','Modal.js'),'utf8');

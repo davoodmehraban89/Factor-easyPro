@@ -70,18 +70,18 @@ class ExpensesViewImpl {
                   ${isIncome ? '📥 درآمد' : '📤 هزینه'}
                 </span>
               </td>
-              <td>${Formatters.toPersianDigits(e.date || '—')}</td>
+              <td>${this._esc(Formatters.toPersianDigits(e.date || '—'))}</td>
               <td><strong>${this._esc(e.category || '—')}</strong></td>
               <td>${this._esc(e.description || '—')}</td>
-              <td>${ExpenseController.getMethodLabel(e.method)}</td>
-              <td>${e.refNumber ? Formatters.toPersianDigits(e.refNumber) : '—'}</td>
+              <td>${this._esc(ExpenseController.getMethodLabel(e.method))}</td>
+              <td>${this._esc(e.refNumber ? Formatters.toPersianDigits(e.refNumber) : '—')}</td>
               <td style="font-weight:700;color:${isIncome ? 'var(--success)' : 'var(--danger)'}">
                 ${isIncome ? '+' : '-'}${Formatters.money(e.amount)}
               </td>
               <td>
                 <div class="row-actions">
-                  <button class="icon-btn-sm" title="ویرایش" onclick="window.ExpensesView.editExpense('${e.id}')">✏️</button>
-                  <button class="icon-btn-sm danger" title="حذف" onclick="window.ExpensesView.deleteExpense('${e.id}')">🗑️</button>
+                  <button class="icon-btn-sm" title="ویرایش" onclick="window.ExpensesView.editExpense(${this._esc(JSON.stringify(String(e.id ?? '')))})">✏️</button>
+                  <button class="icon-btn-sm danger" title="حذف" onclick="window.ExpensesView.deleteExpense(${this._esc(JSON.stringify(String(e.id ?? '')))})">🗑️</button>
                 </div>
               </td>
             </tr>
@@ -89,7 +89,7 @@ class ExpensesViewImpl {
         }).join('');
 
     const categoryOptions = cache.categories.map(c =>
-      `<option value="${c}" ${filter.category === c ? 'selected' : ''}>${this._esc(c)}</option>`
+      `<option value="${this._esc(c)}" ${filter.category === c ? 'selected' : ''}>${this._esc(c)}</option>`
     ).join('');
 
     return `
