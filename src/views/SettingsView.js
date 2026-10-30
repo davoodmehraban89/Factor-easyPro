@@ -898,7 +898,7 @@ class SettingsViewImpl {
   // ============================================================
   async openCompanySwitcher() {
     const companies = await globalThis.FINORA.Company.list();
-    const body = companies.map(c => `<button class="btn" style="width:100%;margin:4px 0" onclick="window.SettingsView.selectCompany('${c.id}')">${this._esc(c.name || 'شرکت')}</button>`).join('');
+    const body = companies.map(c => `<button class="btn" style="width:100%;margin:4px 0" onclick="window.SettingsView.selectCompany(${this._esc(JSON.stringify(String(c.id ?? '')))})">${this._esc(c.name || 'شرکت')}</button>`).join('');
     Modal.open({ title: 'تغییر شرکت فعال', body: body || '<div class="empty-mini">شرکتی یافت نشد</div>', footer: '', size: 'sm' });
   }
 
