@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
+import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -172,4 +173,31 @@ test('Q01: native click audit separates unique action signatures from repeated t
     'native runner must not confuse 470 UI instances with unique buttons');
   assert.ok(native.includes("x.status!=='not-clicked' || !!x.reason"),
     'every unclicked action occurrence must have a reason');
+});
+
+test('Q01: unverified-action Markdown respects deduplicated click evidence and fails closed', () => {
+  const require=createRequire(import.meta.url);
+  const { buildReport }=require(path.join(root,'scripts','q01-native-action-gap-report.cjs'));
+  const synthetic={
+    environment:'installed-Windows-Tauri-WebView2-synthetic-VM',
+    everyActionVerified:false,customerDataUsed:false,
+    uniqueActionCount:2,uniqueActionClicked:1,uniqueActionUnverified:1,
+    uniqueActionDisabled:0,uniqueActionFailed:0,
+    duplicateInstanceCount:1,inventoryCount:3,
+    controls:[{},{},{}],
+    uniqueActions:[
+      {route:'invoices',tag:'button',label:'ثبت نهایی',handler:'InvoiceForm.save()',
+        status:'not-clicked',whyNotVerified:'requires synthetic financial fixture'},
+      {route:'invoices',tag:'button',label:'لغو',handler:'Modal.close()',
+        status:'clicked',whyNotVerified:''}
+    ],
+    problems:[{route:'invoices',kind:'manual-review',label:'fixture needed'}]
+  };
+  const md=buildReport(synthetic);
+  assert.match(md,/ثبت نهایی/);
+  assert.match(md,/requires synthetic financial fixture/);
+  assert.match(md,/امضاهای کنترلی متمایز \| 2/);
+  assert.doesNotMatch(md,/\| لغو \| clicked/,'clicked actions do not belong in gap list');
+  assert.throws(()=>buildReport({...synthetic,everyActionVerified:true}),/UNVERIFIED_INPUT/);
+  assert.throws(()=>buildReport({...synthetic,inventoryCount:500}),/COUNT_MISMATCH/);
 });
