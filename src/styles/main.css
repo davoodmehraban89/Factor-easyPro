@@ -167,10 +167,9 @@ a { color: inherit; }
   background: none; border: none;
   font-size: 22px; color: var(--text);
   padding: 6px 10px; border-radius: 8px;
-  display: none;
+  display: inline-flex; align-items: center; justify-content: center;
 }
 .hamburger:hover { background: var(--bg); }
-@media (max-width: 900px) { .hamburger { display: block; } }
 
 .header-title { flex: 1; min-width: 0; }
 .header-title h2 {
