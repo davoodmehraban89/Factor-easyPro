@@ -109,3 +109,20 @@ test('Q01: pressing plain Enter on focused Cancel, buttons or inputs must not in
   assert.match(nativeAudit, /enterOnInputDoesNotSubmit:true/);
   assert.match(nativeAudit, /'Enter on focused Cancel was hijacked as financial confirmation'/);
 });
+
+test('Q01: installed WebView2 must click synthetic modal Cancel/Confirm and trap Tab both directions', () => {
+  const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
+  const native=fs.readFileSync(path.join(root,'tests','windows-vm-installed-tauri-cdp.cjs'),'utf8');
+  for (const check of [
+    'tabAndShiftTabStayInsideTopDialog:true',
+    'cancelDoesNotConfirmAndRestoresFocus:true',
+    'syntheticConfirmRunsExactlyOnce:true',
+    'syntheticConfirmed!==0','syntheticConfirmed!==1',
+    'tabForward.defaultPrevented','tabBackward.defaultPrevented'
+  ]) assert.ok(audit.includes(check),'native modal control evidence missing: '+check);
+  for(const check of [
+    'modalKeyboard.tabAndShiftTabStayInsideTopDialog',
+    'modalKeyboard.cancelDoesNotConfirmAndRestoresFocus',
+    'modalKeyboard.syntheticConfirmRunsExactlyOnce'
+  ]) assert.ok(native.includes(check),'installed native runner must assert: '+check);
+});
