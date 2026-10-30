@@ -414,11 +414,49 @@
   }
   await FINORA.Router.go('dashboard');
   const rows=[...all.values()];
+  // A route/tab may render the SAME action in multiple UI states. Counting
+  // each instance as a different button exaggerated the initial denominator.
+  // Unique action signatures omit the tab-context but retain route, visible
+  // name, inline handler and element type (including synthetic row IDs).
+  const uniqueGroups=new Map();
+  const actionKey=row=>JSON.stringify([row.route,row.tag,row.label,row.handler]);
+  for(const row of rows){
+    const key=actionKey(row);
+    if(!uniqueGroups.has(key))uniqueGroups.set(key,[]);
+    uniqueGroups.get(key).push(row);
+  }
+  const statusRank={clicked:4,failed:3,'broken-handler':2,disabled:1,'not-clicked':0};
+  const uniqueActions=[...uniqueGroups.values()].map(group=>{
+    const representative=group[0];
+    const dominant=[...group].sort((a,b)=>
+      (statusRank[b.status]??0)-(statusRank[a.status]??0))[0];
+    for(const occurrence of group){
+      if(occurrence.status==='not-clicked' && !occurrence.reason){
+        occurrence.reason=group.some(x=>x.status==='clicked')
+          ?'same-control-clicked-in-another-tab-context'
+          :'not-reached-or-not-classified-needs-manual-test';
+      }
+    }
+    return {
+      route:representative.route,tag:representative.tag,
+      label:representative.label,handler:representative.handler,
+      status:dominant.status,contexts:[...new Set(group.map(x=>x.section))],
+      instances:group.length,
+      whyNotVerified:dominant.status==='not-clicked'
+        ?[...new Set(group.map(x=>x.reason))].join('; ').slice(0,300)
+        :''
+    };
+  });
+  const unclassifiedInstances=rows.filter(r=>r.status==='not-clicked' &&
+    r.reason==='not-reached-or-not-classified-needs-manual-test').length;
   const byRoute={};
   for(const route of routes) {
     const slice=rows.filter(x=>x.route===route);
     byRoute[route]={
       discovered:slice.length,
+      uniqueActionSignatures:uniqueActions.filter(x=>x.route===route).length,
+      uniqueClicked:uniqueActions.filter(x=>x.route===route && x.status==='clicked').length,
+      uniqueNotVerified:uniqueActions.filter(x=>x.route===route && x.status==='not-clicked').length,
       clicked:slice.filter(x=>x.status==='clicked').length,
       notClicked:slice.filter(x=>x.status==='not-clicked').length,
       brokenHandlers:slice.filter(x=>x.status==='broken-handler').length,
@@ -430,6 +468,13 @@
     shellResults,
     routesVisited:routes.length,routeNames:routes,
     inventoryCount:rows.length,
+    uniqueActionCount:uniqueActions.length,
+    uniqueActionClicked:uniqueActions.filter(x=>x.status==='clicked').length,
+    uniqueActionUnverified:uniqueActions.filter(x=>x.status==='not-clicked').length,
+    uniqueActionDisabled:uniqueActions.filter(x=>x.status==='disabled').length,
+    uniqueActionFailed:uniqueActions.filter(x=>x.status==='failed').length,
+    unclassifiedInstances,
+    duplicateInstanceCount:rows.length-uniqueActions.length,
     safeClickCount:clicks.length,
     skippedCount:rows.filter(x=>x.status==='not-clicked').length,
     brokenHandlerCount:rows.filter(x=>x.status==='broken-handler').length,
@@ -444,6 +489,7 @@
     problems:failures,
     byRoute,
     controls:rows,
+    uniqueActions,
     clickEvidence:clicks,
     fieldEvidence:[...fields.values()],
     financialActionsNotBulkClicked:true,
