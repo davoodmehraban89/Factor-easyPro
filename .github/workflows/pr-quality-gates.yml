@@ -134,6 +134,7 @@ jobs:
               $report.syntheticRecords -ne 2 -or
               $report.syntheticTotal -ne 80235 -or
               $report.schemaOnlyInventoryVerified -ne $true -or
+              $report.privateManifestRoundTripVerified -ne $true -or
               $report.canImport -ne $false) {
             throw 'A02 synthetic LocalDB restore did not satisfy safety/reconciliation contract'
           }
