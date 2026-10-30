@@ -118,9 +118,12 @@ class ModalManager {
     }
     queueMicrotask(() => {
       if (this.stack[this.stack.length - 1] !== modal || !modal.card.isConnected) return;
-      const focusTarget = modal.card.querySelector('[autofocus]') ||
-        modal.card.querySelector('input:not([disabled]), select:not([disabled]), textarea:not([disabled])') ||
-        this._focusable(modal.card)[0] || modal.card;
+      // Prefer a VISIBLE input. A hidden radio/record-ID input can be the
+      // first field in financial forms; focusing it leaves the dialog unfocused.
+      const focusables = this._focusable(modal.card);
+      const focusTarget = focusables.find(el => el.hasAttribute('autofocus')) ||
+        focusables.find(el => el.matches('input, select, textarea')) ||
+        focusables[0] || modal.card;
       focusTarget.focus({ preventScroll: true });
     });
     return modal;
