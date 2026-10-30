@@ -64,7 +64,7 @@ function Invoke-SqlTable($Connection, [string]$Query) {
     $adapter = New-Object System.Data.SqlClient.SqlDataAdapter($command)
     try {
         [void]$adapter.Fill($table)
-        return $table
+        return ,$table
     } finally {
         $adapter.Dispose()
         $command.Dispose()
@@ -83,12 +83,11 @@ if ($SelfTest) {
         $commands.Verify -notlike 'RESTORE VERIFYONLY FROM DISK = N*') {
         throw 'SELFTEST_COMMAND_SCOPE_FAILED'
     }
-    if (($commands.Values | Where-Object {
-        $_ -match '(?i)\b(CREATE|DROP|ALTER|REPLACE|ATTACH|DETACH)\s+(DATABASE|TABLE)\b'
-    }).Count -gt 0) {
-        # Synthetic injection string is inside a quoted SQL literal; this
-        # test must instead establish proper doubled quote escape above.
-        throw 'SELFTEST_UNEXPECTED_SQL'
+    # The synthetic SQL-like text is deliberately part of the quoted
+    # filename; its embedded single quote has been escaped to two quotes.
+    if ($commands.Header -ne ('RESTORE HEADERONLY FROM DISK = N' +
+        "'" + $testPath.Replace("'", "''") + "'")) {
+        throw 'SELFTEST_SQL_LITERAL_MISMATCH'
     }
     @{ status = 'selftest-passed'; sourceRead = $false; connectionOpened = $false;
        databaseModified = $false; canImport = $false } |
