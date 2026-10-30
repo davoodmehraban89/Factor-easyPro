@@ -41,6 +41,45 @@ function Assert-ManifestDestination([string]$path){
   Require ($drive.IsReady -and $drive.DriveType -eq [IO.DriveType]::Fixed -and
     $drive.AvailableFreeSpace -ge 100MB) 'A02_MANIFEST_DISK_INSUFFICIENT'
 }
+function Assert-A02StagedAcl($descriptor){
+  $owner=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+  Require ($descriptor.AreAccessRulesProtected -and
+    $descriptor.GetOwner([Security.Principal.SecurityIdentifier]).Value -eq $owner) 'A02_STAGED_BACKUP_ACL_OWNER_OR_INHERITANCE_UNSAFE'
+  $trusted=@($owner,'S-1-5-18','S-1-5-32-544') | Select-Object -Unique
+  # Optional, explicitly operator-authorized read access only for the
+  # dedicated SQL service SID. Other extra trustees are not accepted.
+  $serviceSid=$null
+  try {
+    $serviceName=[Security.Principal.NTAccount]::new('NT SERVICE','MSSQL$FINORAMIG')
+    $serviceSid=$serviceName.Translate([Security.Principal.SecurityIdentifier]).Value
+  } catch { }
+  $seen=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+  $rules=@($descriptor.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))
+  Require ($rules.Count -ge $trusted.Count -and
+    $rules.Count -le ($trusted.Count+1)) 'A02_STAGED_BACKUP_ACL_UNEXPECTED_TRUSTEES'
+  foreach($rule in $rules){
+    $sid=$rule.IdentityReference.Value
+    Require (-not $rule.IsInherited -and
+      $rule.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and
+      $seen.Add($sid)) 'A02_STAGED_BACKUP_ACL_NONEXPLICIT_OR_DUPLICATE'
+    if($sid -in $trusted){
+      Require ($rule.FileSystemRights -eq [Security.AccessControl.FileSystemRights]::FullControl) 'A02_STAGED_BACKUP_CORE_ACCESS_CHANGED'
+    }else{
+      Require ($null -ne $serviceSid -and $sid -eq $serviceSid) 'A02_STAGED_BACKUP_EXTRA_TRUSTEE_UNSAFE'
+      $writeBits=(
+        [Security.AccessControl.FileSystemRights]::Write -bor
+        [Security.AccessControl.FileSystemRights]::Modify -bor
+        [Security.AccessControl.FileSystemRights]::Delete -bor
+        [Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+        [Security.AccessControl.FileSystemRights]::TakeOwnership
+      )
+      Require (($rule.FileSystemRights -band $writeBits) -eq 0) 'A02_SQL_SERVICE_MUST_BE_READ_ONLY'
+    }
+  }
+  foreach($sid in $trusted){
+    Require ($seen.Contains($sid)) 'A02_STAGED_BACKUP_CORE_ACCESS_MISSING'
+  }
+}
 function Assert-StagedBackup([string]$value){
   Require (-not [string]::IsNullOrWhiteSpace($value) -and
     $value -match '^[A-Za-z]:\\' -and
@@ -69,6 +108,8 @@ function Assert-StagedBackup([string]$value){
     Require (($parent.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) 'A02_STAGED_BACKUP_REPARSE_PARENT'
     $parent=$parent.Parent
   }
+  Assert-A02StagedAcl ($file.GetAccessControl())
+  Assert-A02StagedAcl ($file.Directory.GetAccessControl())
   return $full
 }
 function Invoke-JsonStep([string]$scriptName,[string[]]$stepArgs,[string]$expected){
@@ -155,6 +196,8 @@ try{
     ) 'private-local-zip-staged-crc-and-tape-verified'
     Require ($staged.crcVerified -eq $true -and
       $staged.sqlTapeHeaderVerified -eq $true -and
+      $staged.stageAclRestricted -eq $true -and
+      $staged.backupFileAclRestricted -eq $true -and
       $staged.sqlBackupVerified -eq $false -and
       $staged.databaseModified -eq $false) 'A02_ZIP_STAGE_INCOMPLETE'
     $script:BackupPath=Assert-StagedBackup ([string]$staged.stagedBackupPath)
@@ -164,7 +207,8 @@ try{
       stagedBackupPath=$script:BackupPath
       stagedBackupSha256=$stageDigest
       archiveBytes=$probe.archiveBytes;backupBytes=$staged.backupBytes
-      crcVerified=$true;sqlBackupVerified=$false;restoreExecuted=$false
+      crcVerified=$true;stageAclRestricted=$true;backupFileAclRestricted=$true
+      sqlBackupVerified=$false;restoreExecuted=$false
       financialMigrationPerformed=$false;canImport=$false
     } | ConvertTo-Json -Compress
     return
