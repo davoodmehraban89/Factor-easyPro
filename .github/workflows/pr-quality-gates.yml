@@ -75,6 +75,21 @@ jobs:
               $result.canImport -ne $false) {
             throw 'A02 SQL offline preflight selftest breached no-write contract'
           }
+      - name: Actual synthetic SQL LocalDB backup and isolated restore
+        shell: pwsh
+        run: |
+          $output = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File './scripts/a02-synthetic-sql-localdb-restore-smoke.ps1' -Mode Run
+          if ($LASTEXITCODE -ne 0) { throw 'A02 synthetic SQL LocalDB live restore failed' }
+          $report = ($output | Out-String | ConvertFrom-Json)
+          if ($report.status -ne 'synthetic-localdb-restore-verified' -or
+              $report.ownerBackupUsed -ne $false -or
+              $report.restoreExecuted -ne $true -or
+              $report.dbccPassed -ne $true -or
+              $report.syntheticRecords -ne 2 -or
+              $report.syntheticTotal -ne 80235 -or
+              $report.canImport -ne $false) {
+            throw 'A02 synthetic LocalDB restore did not satisfy safety/reconciliation contract'
+          }
       - name: Build Tauri installer
         run: npm exec tauri build
       - name: Inspect produced Windows x64 installer and checksum
