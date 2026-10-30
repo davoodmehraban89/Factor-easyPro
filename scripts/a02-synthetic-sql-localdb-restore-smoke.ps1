@@ -57,7 +57,7 @@ try{
   # Use a literal, fully assembled connection string rather than property
   # assignments on a .NET Framework builder (Windows runner compatibility).
   $phase='connection-string-assemble'
-  $connectionString='Data Source=(localdb)\\'+$instance+
+  $connectionString='Data Source=(localdb)\'+$instance+
       ';Initial Catalog=master;Integrated Security=True;Connect Timeout=30;Encrypt=False;Pooling=False;'
   $phase='connection-object'
   $conn=[System.Data.SqlClient.SqlConnection]::new($connectionString)
