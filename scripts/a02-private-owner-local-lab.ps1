@@ -169,14 +169,16 @@ try{
     } | ConvertTo-Json -Compress
     return
   }
-  # Never create a new ZIP/BAK copy at this stage. The operator can grant
-  # the named SQL service only the minimum read access to THIS existing copy
-  # in a private and approved environment before SQL preflight.
+  # Resume with the SAME guarded private copy. No second ZIP extraction.
   Require ([string]::IsNullOrWhiteSpace($SourceZip) -and
-    [string]::IsNullOrWhiteSpace($StagingConsent)) 'A02_RESTORED_STAGE_MUST_NOT_REEXTRACT'
+    [string]::IsNullOrWhiteSpace($StagingConsent)) 'A02_NO_SECOND_ZIP_EXTRACTION'
   $script:Phase='validate-staged-file'
   $script:BackupPath=Assert-StagedBackup $StagedBackupPath
-  Require ($ExpectedBackupSha256 -cmatch '^[a-fA-F0-9]{64}
+  Require ($ExpectedBackupSha256 -cmatch '^[a-fA-F0-9]{64}$') 'A02_EXPECTED_DIGEST_REQUIRED'
+  $before=(Get-FileHash -LiteralPath $script:BackupPath -Algorithm SHA256).Hash
+  Require ($before -ieq $ExpectedBackupSha256) 'A02_BACKUP_CHANGED_SINCE_STAGE'
+
+  if($Mode -eq 'RestoreAndInventory'){
     Require ($RestoreConsent -ceq 'I_AUTHORIZE_A_NEW_ISOLATED_SQL_DATABASE') 'A02_RESTORE_CONSENT_REQUIRED'
     $script:Phase='validate-manifest-destination'
     Assert-ManifestDestination $ManifestOutputPath
@@ -184,6 +186,7 @@ try{
     Require ([string]::IsNullOrWhiteSpace($RestoreConsent) -and
       [string]::IsNullOrWhiteSpace($ManifestOutputPath)) 'A02_INSPECT_FORBIDS_RESTORE_ARGS'
   }
+
   $script:Phase='sql-header-filelist-verifyonly'
   $check=Invoke-JsonStep 'a02-isolated-sql-restore.ps1' @(
     '-Mode','Inspect','-BackupPath',$script:BackupPath
@@ -191,30 +194,34 @@ try{
   Require ($check.restoreExecuted -eq $false -and
     $check.financialReconciled -eq $false -and
     $check.sourceSqlMajor -le $check.engineSqlMajor) 'A02_SQL_INSPECT_CONTRACT_INVALID'
-  Require ((Get-FileHash -LiteralPath $script:BackupPath -Algorithm SHA256).Hash -ieq
-    $ExpectedBackupSha256) 'A02_STAGED_BACKUP_CHANGED_DURING_VERIFYONLY'
+  $after=(Get-FileHash -LiteralPath $script:BackupPath -Algorithm SHA256).Hash
+  Require ($after -ieq $ExpectedBackupSha256) 'A02_BACKUP_CHANGED_DURING_SQL_VERIFY'
+
   if($Mode -eq 'InspectStaged'){
     [pscustomobject]@{
       status='private-staged-sql-verifyonly-passed'
       stagedBackupPath=$script:BackupPath
       sourceSqlMajor=$check.sourceSqlMajor;engineSqlMajor=$check.engineSqlMajor
       engineEdition=$check.engineEdition;fileCount=$check.fileCount
-      sqlBackupVerified=$true;backupDigestContinuityVerified=$true;restoreExecuted=$false
-      financialMigrationPerformed=$false;canImport=$false
+      sqlBackupVerified=$true;backupDigestContinuityVerified=$true
+      restoreExecuted=$false;financialMigrationPerformed=$false;canImport=$false
     } | ConvertTo-Json -Compress
     return
   }
+
   $script:Phase='sql-isolated-restore'
   $restored=Invoke-JsonStep 'a02-isolated-sql-restore.ps1' @(
-    '-Mode','Restore','-BackupPath',$script:BackupPath,'-ConsentPhrase',$RestoreConsent
+    '-Mode','Restore','-BackupPath',$script:BackupPath,
+    '-ConsentPhrase',$RestoreConsent
   ) 'isolated-restore-completed-needs-mapping-and-reconciliation'
   $database=[string]$restored.databaseName
   Require ($database -cmatch '^FinoraHoloo_[0-9a-f]{32}$' -and
     $restored.financialReconciled -eq $false -and
     $restored.importPerformed -eq $false -and
     $restored.dbccCheckDbPassed -eq $true) 'A02_RESTORE_CONTRACT_INVALID'
-  Require ((Get-FileHash -LiteralPath $script:BackupPath -Algorithm SHA256).Hash -ieq
-    $ExpectedBackupSha256) 'A02_STAGED_BACKUP_CHANGED_DURING_RESTORE'
+  $restoredHash=(Get-FileHash -LiteralPath $script:BackupPath -Algorithm SHA256).Hash
+  Require ($restoredHash -ieq $ExpectedBackupSha256) 'A02_BACKUP_CHANGED_DURING_SQL_RESTORE'
+
   $script:Phase='private-schema-export'
   $schema=Invoke-JsonStep 'a02-isolated-schema-inventory.ps1' @(
     '-Mode','PrivateManifest','-InstanceName','FINORAMIG',
@@ -224,6 +231,7 @@ try{
     $schema.fileAclRestricted -eq $true -and
     $schema.userRowsRead -eq $false -and
     $schema.databaseModified -eq $false) 'A02_PRIVATE_SCHEMA_ENCRYPTION_INVALID'
+
   [pscustomobject]@{
     status='isolated-restore-and-encrypted-schema-created'
     isolatedDatabaseName=$database;stagedBackupPath=$script:BackupPath
@@ -234,69 +242,9 @@ try{
     financialReconciled=$false;financialMigrationPerformed=$false;canImport=$false
   } | ConvertTo-Json -Compress
 }catch{
-  # Failed restore can leave a NEW incomplete DB. Never silently delete it.
+  # Failure can leave an incomplete NEW isolated DB and unencrypted BAK copy.
+  # Never automatically DROP or DELETE owner's private data.
   Write-Error ('A02_PRIVATE_LAB_BLOCKED_AT_'+$script:Phase.ToUpperInvariant().Replace('-','_')+
-    '_NO_IMPORT_MANUAL_REVIEW_OF_PRIVATE_STAGING_AND_SQL_MAY_BE_REQUIRED')
-  exit 2
-}
-) 'A02_EXPECTED_BACKUP_DIGEST_REQUIRED'
-  $initialDigest=(Get-FileHash -LiteralPath $script:BackupPath -Algorithm SHA256).Hash
-  Require ($initialDigest -ieq $ExpectedBackupSha256) 'A02_STAGED_BACKUP_CHANGED_SINCE_CRC_STAGING'
-  if($Mode -eq 'RestoreAndInventory'){
-    Require ($RestoreConsent -ceq 'I_AUTHORIZE_A_NEW_ISOLATED_SQL_DATABASE') 'A02_RESTORE_CONSENT_REQUIRED'
-    $script:Phase='validate-manifest-destination'
-    Assert-ManifestDestination $ManifestOutputPath
-  }else{
-    Require ([string]::IsNullOrWhiteSpace($RestoreConsent) -and
-      [string]::IsNullOrWhiteSpace($ManifestOutputPath)) 'A02_INSPECT_FORBIDS_RESTORE_ARGS'
-  }
-  $script:Phase='sql-header-filelist-verifyonly'
-  $check=Invoke-JsonStep 'a02-isolated-sql-restore.ps1' @(
-    '-Mode','Inspect','-BackupPath',$script:BackupPath
-  ) 'backup-verifyonly-passed'
-  Require ($check.restoreExecuted -eq $false -and
-    $check.financialReconciled -eq $false -and
-    $check.sourceSqlMajor -le $check.engineSqlMajor) 'A02_SQL_INSPECT_CONTRACT_INVALID'
-  if($Mode -eq 'InspectStaged'){
-    [pscustomobject]@{
-      status='private-staged-sql-verifyonly-passed'
-      stagedBackupPath=$script:BackupPath
-      sourceSqlMajor=$check.sourceSqlMajor;engineSqlMajor=$check.engineSqlMajor
-      engineEdition=$check.engineEdition;fileCount=$check.fileCount
-      sqlBackupVerified=$true;restoreExecuted=$false
-      financialMigrationPerformed=$false;canImport=$false
-    } | ConvertTo-Json -Compress
-    return
-  }
-  $script:Phase='sql-isolated-restore'
-  $restored=Invoke-JsonStep 'a02-isolated-sql-restore.ps1' @(
-    '-Mode','Restore','-BackupPath',$script:BackupPath,'-ConsentPhrase',$RestoreConsent
-  ) 'isolated-restore-completed-needs-mapping-and-reconciliation'
-  $database=[string]$restored.databaseName
-  Require ($database -cmatch '^FinoraHoloo_[0-9a-f]{32}$' -and
-    $restored.financialReconciled -eq $false -and
-    $restored.importPerformed -eq $false -and
-    $restored.dbccCheckDbPassed -eq $true) 'A02_RESTORE_CONTRACT_INVALID'
-  $script:Phase='private-schema-export'
-  $schema=Invoke-JsonStep 'a02-isolated-schema-inventory.ps1' @(
-    '-Mode','PrivateManifest','-InstanceName','FINORAMIG',
-    '-DatabaseName',$database,'-OutputPath',$ManifestOutputPath
-  ) 'private-schema-manifest-encrypted'
-  Require ($schema.dpapiScope -ceq 'CurrentUser' -and
-    $schema.fileAclRestricted -eq $true -and
-    $schema.userRowsRead -eq $false -and
-    $schema.databaseModified -eq $false) 'A02_PRIVATE_SCHEMA_ENCRYPTION_INVALID'
-  [pscustomobject]@{
-    status='isolated-restore-and-encrypted-schema-created'
-    isolatedDatabaseName=$database;stagedBackupPath=$script:BackupPath
-    encryptedSchemaManifestPath=$ManifestOutputPath
-    tableCount=$schema.tableCount;columnCount=$schema.columnCount
-    sqlBackupVerified=$true;restoreExecuted=$true;dbccCheckDbPassed=$true
-    financialReconciled=$false;financialMigrationPerformed=$false;canImport=$false
-  } | ConvertTo-Json -Compress
-}catch{
-  # Failed restore can leave a NEW incomplete DB. Never silently delete it.
-  Write-Error ('A02_PRIVATE_LAB_BLOCKED_AT_'+$script:Phase.ToUpperInvariant().Replace('-','_')+
-    '_NO_IMPORT_MANUAL_REVIEW_OF_PRIVATE_STAGING_AND_SQL_MAY_BE_REQUIRED')
+    '_NO_IMPORT_STAGED_BACKUP_OR_ISOLATED_DB_MAY_REQUIRE_MANUAL_REVIEW')
   exit 2
 }
