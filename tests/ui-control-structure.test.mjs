@@ -18,9 +18,9 @@ test('Q01: every named inline view handler has an actual declared view method', 
   for (const [sourceName, source] of views) {
     // Find only declarations in the HTML/template markup, not arbitrary test
     // or controller calls that do not become user-facing controls.
-    const actions = [...source.matchAll(/on(?:click|change|input|submit|mousedown|blur|focus|keyup|keydown)\s*=\s*["']([^"']+)["']/g)];
+    const actions = [...source.matchAll(/on(?:click|change|input|submit|mousedown|blur|focus|keyup|keydown)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)];
     for (const action of actions) {
-      const handler = action[1].replace(/\\(["'])/g, '$1');
+      const handler = (action[1] || action[2] || '').replace(/\\(["'])/g, '$1');
       for (const call of handler.matchAll(/(?:window\.)?([A-Za-z_$][\w$]*(?:View|Modal))\.([A-Za-z_$][\w$]*)\s*\(/g)) {
         const viewName = call[1], method = call[2];
         refs.push({sourceName, viewName, method});
