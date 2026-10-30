@@ -380,20 +380,17 @@
   }
   // Read-only adversarial invoice render: unknown imported kinds, invoice IDs,
   // number and date must never create active markup or execute row handlers.
-  const invoiceController=window.InvoiceController;
   const invoiceView=window.InvoicesView;
-  const originalInvoices=invoiceController.getAll;
   const originalEditInvoice=invoiceView.editInvoice;
   const hostileInvoiceId="inv-test');window.Q01_INVOICE_ID_ATTACK=true;//";
   const injectedKind='<img src=x onerror="window.Q01_INVOICE_HTML_ATTACK=true">';
   let editedInvoiceId=null;
   try {
-    invoiceController.getAll=async()=>[{id:hostileInvoiceId,number:injectedKind,
+    const syntheticInvoices=[{id:hostileInvoiceId,number:injectedKind,
       kind:injectedKind,contactName:injectedKind,date:injectedKind,
       grandTotal:100,paidAmount:0,remaining:100,status:'unpaid',isPreInvoice:false}];
-    await invoiceView.reload();
     const frag=document.createElement('div');
-    frag.innerHTML=invoiceView.renderTable();
+    frag.innerHTML=invoiceView.renderTable(syntheticInvoices);
     if(frag.querySelector('img') || frag.querySelector('script') ||
        !frag.textContent.includes(injectedKind)) {
       throw Error('Imported invoice kind or date escaped the safe HTML rendering boundary');
@@ -407,9 +404,7 @@
       throw Error('Imported invoice identifier executed unsafe inline action code');
     }
   } finally {
-    invoiceController.getAll=originalInvoices;
     invoiceView.editInvoice=originalEditInvoice;
-    await invoiceView.reload();
     delete window.Q01_INVOICE_ID_ATTACK;
     delete window.Q01_INVOICE_HTML_ATTACK;
   }
