@@ -64,8 +64,11 @@ class RouterImpl {
       }
     }
 
-    document.querySelectorAll('[data-page]').forEach(a => {
-      a.classList.toggle('active', a.dataset.page === name);
+    document.querySelectorAll('#sidebarMenu [data-page]').forEach(a => {
+      const active = a.dataset.page === name;
+      a.classList.toggle('active', active);
+      if (active) a.setAttribute('aria-current', 'page');
+      else a.removeAttribute('aria-current');
     });
 
     EventBus.emit('route:changed', { name, params, route });
