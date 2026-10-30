@@ -390,6 +390,8 @@ async function connect(url) {
       assert.equal(audit.shellResults.toastResults.importantErrorsRemain, true);
       assert.equal(audit.shellResults.toastResults.dismissButtonsWork, true);
       assert.ok(audit.inventoryCount >= 25, 'Too few visible controls discovered');
+      assert.ok(audit.fieldsInspected >= 15, 'Visible form-field inventory unexpectedly small');
+      assert.ok(Number.isInteger(audit.fieldsMissingProgrammaticLabel), 'No programmatic label coverage reported');
       assert.ok(audit.safeClickCount >= 15, 'Safe interaction coverage unexpectedly low');
       assert.equal(audit.customerDataUsed, false);
       assert.equal(audit.financialActionsNotBulkClicked, true);
@@ -400,6 +402,9 @@ async function connect(url) {
         inventoryCount: audit.inventoryCount,
         safeClickCount: audit.safeClickCount, skippedCount: audit.skippedCount,
         accessibilityNameGaps: audit.accessibilityNameGaps,
+        fieldsInspected: audit.fieldsInspected,
+        fieldsMissingProgrammaticLabel: audit.fieldsMissingProgrammaticLabel,
+        fieldCoverageByRoute: audit.fieldCoverageByRoute,
         brokenHandlerCount: audit.brokenHandlerCount,
         problems: audit.problems.length, byRoute: audit.byRoute,
         evidenceFile: 'fresh-native-ui-control-click-audit.json',
