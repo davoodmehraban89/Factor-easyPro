@@ -29,7 +29,7 @@
     route, section, el.tagName.toLowerCase(), name(el),
     handler(el).replace(/\s+/g,' ').slice(0,180)
   ].join('|');
-  const dangerous = /\b(?:delete|wipe|remove|restore|save|post|submit|confirm|activate|seed|commit|final|approve|closePeriod|logout|export|import|download|print|settle|apply|reset|changeStatus|_save|_apply|_commit)\s*\(/i;
+  const dangerous = /(?:^|[.\s])(?:_?(?:save|delete|wipe|restore|post|submit|confirm|activate|seed|commit|final|approve|logout|export|import|download|print|settle|apply|reset|changeStatus|remove)\w*)\s*\(/i;
   const safeTab = /\.(?:_switchTab|switchTab|_switchPeriod|_setPreset|_setStockFilter|_clearFilters)\s*\(/;
   const safeOpen = /\.(?:openNewInvoice|openProductModal|openUnitModal|openCategoryModal|openContactModal|openExpenseModal|openChequeModal|openAccountModal|openReceiptModal|openPaymentModal|openTransferModal|openCompanyModal|openCompanySwitcher|openExportSectionModal|openSignedLicenseModal|openAuditTrail|openWipeModal|openRestoreModal|openPeriodModal|openJournalModal|openWarehouse|openStocktakeCreate|openTransfer|openReversal|_openQuickProduct|_openQuickContact|openLedger|openKardex|openStocktake|showJournal)\s*\(/;
   const clickables = (root) => [...root.querySelectorAll(
