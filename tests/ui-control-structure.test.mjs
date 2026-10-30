@@ -100,6 +100,10 @@ test('Q01: shared dialogs have ARIA naming, keyboard dismissal and focus restora
     'untrusted confirmation messages must be assigned as text, not HTML');
   assert.doesNotMatch(code, /\$\{message\}<\/p>/,
     'financial confirmation message must never be interpolated into innerHTML');
+  assert.match(code, /cancelButton\.textContent = String\(cancelText \?\? ''\)/);
+  assert.match(code, /confirmButton\.textContent = String\(confirmText \?\? ''\)/);
+  assert.doesNotMatch(code, /\$\{(?:cancelText|confirmText)\}<\/button>/,
+    'confirmation button labels must never become executable markup');
   assert.match(code, /addEventListener\('keydown'/);
   assert.match(code, /removeEventListener\('keydown'/);
 });
