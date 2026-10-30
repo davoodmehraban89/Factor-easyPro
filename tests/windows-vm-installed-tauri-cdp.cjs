@@ -372,6 +372,50 @@ async function connect(url) {
       }
     }
     if (mode === 'fresh') {
+      // Q01: click every safe, visible route/tab/form opener in the installed
+      // WebView2 (not only a preview). Financial writes remain separately
+      // guarded by the real synthetic functional matrix already run above.
+      const auditSource = fs.readFileSync(
+        path.join(__dirname, 'windows-vm-ui-interaction-audit-browser.js'), 'utf8');
+      const audit = await cdp.evaluate(auditSource, 240000);
+      assert.equal(audit.environment, 'installed-Windows-Tauri-WebView2-synthetic-VM');
+      assert.equal(audit.routesVisited, 10);
+      assert.ok(audit.inventoryCount >= 25, 'Too few visible controls discovered');
+      assert.ok(audit.safeClickCount >= 15, 'Safe interaction coverage unexpectedly low');
+      assert.equal(audit.customerDataUsed, false);
+      assert.equal(audit.financialActionsNotBulkClicked, true);
+      assert.equal(audit.everyActionVerified, false,
+        'A safe-navigation sweep cannot claim every financial action is verified');
+      report.nativeControlAudit = {
+        routesVisited: audit.routesVisited, inventoryCount: audit.inventoryCount,
+        safeClickCount: audit.safeClickCount, skippedCount: audit.skippedCount,
+        accessibilityNameGaps: audit.accessibilityNameGaps,
+        brokenHandlerCount: audit.brokenHandlerCount,
+        problems: audit.problems.length, byRoute: audit.byRoute,
+        evidenceFile: 'fresh-native-ui-control-click-audit.json',
+        claim: 'safe-clicks-and-inventory-only-not-every-button-verified'
+      };
+      fs.writeFileSync(path.join(path.dirname(reportPath),
+        report.nativeControlAudit.evidenceFile),
+        JSON.stringify(audit, null, 2), { flag: 'wx' });
+      const routeScreenshots = [];
+      for (const route of audit.routeNames) {
+        await cdp.evaluate('FINORA.Router.go(' + JSON.stringify(route) + ')', 20000);
+        const screen = await cdp.command('Page.captureScreenshot', {
+          format: 'png', captureBeyondViewport: false, fromSurface: true
+        }, 20000);
+        assert.ok(screen?.data, 'Screenshot missing for route ' + route);
+        const image = Buffer.from(screen.data, 'base64');
+        assert.ok(image.length > 1000 && image.subarray(1,4).toString('ascii') === 'PNG',
+          'Bad native WebView2 PNG for route ' + route);
+        const filename = 'q01-ui-' + route + '.png';
+        fs.writeFileSync(path.join(path.dirname(reportPath), filename, image, { flag: 'wx' }));
+        routeScreenshots.push(filename);
+      }
+      report.nativeControlAudit.routeScreenshots = routeScreenshots;
+      await cdp.evaluate('FINORA.Router.go("dashboard")');
+    }
+    if (mode === 'fresh') {
       // A07: emulate a disconnected WebView2 network on the REAL installed app.
       // This is stronger than jsdom/offline browser preview but not an OS
       // Wi-Fi disable, physical power loss, or a disconnected customer device.
