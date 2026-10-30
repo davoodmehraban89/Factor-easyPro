@@ -111,6 +111,15 @@ try {
         $current = $current.Parent
     }
     $null = [System.IO.Directory]::CreateDirectory($privateRoot)
+    # A preexisting junction at our application/staging subfolder must not
+    # redirect extracted private backup bytes outside the user's profile.
+    $stagingParent = [System.IO.DirectoryInfo]::new($privateRoot)
+    while ($null -ne $stagingParent) {
+        if (($stagingParent.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'A02_STAGING_ROOT_LINK_DISALLOWED'
+        }
+        $stagingParent = $stagingParent.Parent
+    }
     $uniqueName = 'stage_' + [System.Guid]::NewGuid().ToString('N')
     $newDirectory = [System.IO.Path]::Combine($privateRoot, $uniqueName)
     $null = [System.IO.Directory]::CreateDirectory($newDirectory)
