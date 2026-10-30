@@ -229,6 +229,26 @@ namespace Finora.Migration {
         try { Stage(good, outFile); }
         catch (IOException) { refusedOverwrite = true; }
         Require(refusedOverwrite, "A02_OVERWRITE_ALLOWED");
+        // Mutate ONLY central CRC, leaving compressed source bytes intact:
+        // probing must not claim CRC, and staging must fail and clean up.
+        string damaged = Path.Combine(root, "bad_crc.zip");
+        byte[] corrupt = File.ReadAllBytes(good);
+        int central = -1;
+        for (int i = 0; i <= corrupt.Length - 46; i++) {
+          if (BitConverter.ToUInt32(corrupt, i) == 0x02014b50u) { central = i; break; }
+        }
+        Require(central >= 0, "A02_SYNTHETIC_CENTRAL_MISSING");
+        corrupt[central + 16] ^= 0x80;
+        File.WriteAllBytes(damaged, corrupt);
+        HolooZipReport badProbe = Probe(damaged);
+        Require(badProbe.EnvelopeValid && !badProbe.CrcVerified,
+          "A02_PROBE_MUST_NOT_CLAIM_CRC");
+        string damagedOut = Path.Combine(root, "bad_crc.bak");
+        bool crcBlocked = false;
+        try { Stage(damaged, damagedOut); }
+        catch (InvalidDataException) { crcBlocked = true; }
+        Require(crcBlocked && !File.Exists(damagedOut),
+          "A02_CORRUPTED_CRC_ACCEPTED_OR_OUTPUT_LEFT");
         string wrong = Path.Combine(root, "not_sql.zip");
         using (FileStream f = new FileStream(wrong, FileMode.CreateNew)) {
           using (ZipArchive zip = new ZipArchive(f, ZipArchiveMode.Create, true)) {
