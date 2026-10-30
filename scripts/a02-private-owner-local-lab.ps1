@@ -100,6 +100,31 @@ if($Mode -eq 'Test'){
     $r=Invoke-JsonStep $test.File @('-Mode','Test') $test.Status
     Require ($r.canImport -eq $false) 'A02_SELFTEST_UNSAFE_IMPORT_CLAIM'
   }
+  # Verify operator cannot redirect the staged backup to another path or an
+  # existing database source. These test paths are synthetic and never opened.
+  foreach($unsafe in @(
+    '\\server\share\HolooBackupCopy.bak',
+    'C:\Windows\Temp\HolooBackupCopy.bak',
+    'C:\User\..\HolooBackupCopy.bak',
+    'C:\Safe\HolooBackupCopy.bak:stream',
+    'C:/Safe/HolooBackupCopy.bak',
+    'relative\HolooBackupCopy.bak'
+  )){
+    $blocked=$false
+    try{$null=Assert-StagedBackup $unsafe}catch{$blocked=$true}
+    Require $blocked 'A02_SELFTEST_STAGED_PATH_ESCAPE_ACCEPTED'
+  }
+  foreach($unsafe in @(
+    '\\server\share\schema.dpapi',
+    'C:\Private\..\schema.dpapi',
+    'relative\schema.dpapi',
+    'C:\Private\schema.dpapi:stream',
+    'C:/Private/schema.dpapi'
+  )){
+    $blocked=$false
+    try{Assert-ManifestDestination $unsafe}catch{$blocked=$true}
+    Require $blocked 'A02_SELFTEST_MANIFEST_PATH_ESCAPE_ACCEPTED'
+  }
   [pscustomobject]@{
     status='private-lab-synthetic-orchestration-passed'
     checks=$tests.Count;ownerBackupUsed=$false;sqlServerInstalled=$false
