@@ -108,7 +108,7 @@
     } catch(error) {
       failures.push({route,section,kind:'click-error',label:name(el),error:String(error.message).slice(0,170)});
       if (row) {row.status='failed';row.reason='UI click error';}
-    } finally {dismiss();}
+    } finally { if (category !== 'open') dismiss(); }
   }
   // Explicit shell regression: semantic links, keyboard focus, active route,
   // persistent sidebar collapse and reversible theme toggle.
@@ -145,9 +145,37 @@
   themeButton.click();await wait(50);
   if(document.documentElement.getAttribute('data-theme')!==originalTheme ||
      localStorage.getItem('finora_pro_theme')!==originalTheme)throw Error('theme setting not reversible/persisted');
+  // Cross-app dialog behavior: nested modal focus, Escape and focus return.
+  const modalTrigger=hamburger;
+  modalTrigger.focus();
+  let unexpectedConfirm=false;
+  FINORA.Modal.open({title:'Q01 Synthetic outer dialog',
+    body:'<input id="q01ModalField" value="synthetic" />',
+    footer:'<button class="btn" onclick="FINORA.Modal.close()">بستن</button>'});
+  await wait(30);
+  const outer=document.querySelector('.modal-card[role="dialog"][aria-modal="true"]');
+  if(!outer || !outer.querySelector('[id^="finora-dialog-title-"]') ||
+    !outer.contains(document.activeElement)) throw Error('outer dialog ARIA or focus absent');
+  FINORA.Modal.confirm({title:'Q01 Synthetic nested confirmation',
+    message:'Synthetic data only; no operation permitted',
+    onConfirm:()=>{unexpectedConfirm=true;}});
+  await wait(30);
+  const stack=[...document.querySelectorAll('.modal-card[role="dialog"]')];
+  if(stack.length!==2 || stack[0].getAttribute('aria-hidden')!=='true' ||
+    !stack[1].contains(document.activeElement)) throw Error('nested dialog focus/isolation failed');
+  document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+  await wait(15);
+  if(document.querySelectorAll('.modal-card').length!==1 ||
+    !outer.contains(document.activeElement) || unexpectedConfirm) throw Error('Escape did not dismiss nested confirm safely');
+  document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+  await wait(15);
+  if(document.querySelector('.modal-backdrop') || document.activeElement!==modalTrigger ||
+    unexpectedConfirm) throw Error('Escape did not restore focus to original control');
+  const modalKeyboard={roleAndLabel:true,nestedDialogIsolation:true,
+    escapeClosesWithoutConfirm:true,focusReturnsToTrigger:true};
   const shellResults={keyboardReachableSidebarLinks:navLinks.length,
     sidebarCollapseClickAndPersistence:true,themeToggleClickAndPersistence:true,
-    activeRouteAriaCurrent:true};
+    activeRouteAriaCurrent:true,modalKeyboard};
   for (const route of routes) {
     await go(route);
     const active=[...document.querySelectorAll('#sidebarMenu [aria-current="page"]')];
@@ -208,6 +236,13 @@
         await press(el,route,ctx.section,'open');
         const overlay=document.querySelector('.modal-backdrop');
         if(overlay) {
+          const dialog=overlay.querySelector('.modal-card[role="dialog"][aria-modal="true"]');
+          if(!dialog || !dialog.getAttribute('aria-labelledby') ||
+              !document.getElementById(dialog.getAttribute('aria-labelledby')) ||
+              !dialog.contains(document.activeElement)){
+            failures.push({route,section:ctx.section,kind:'modal-a11y-missing',
+              handler:action.slice(0,170)});
+          }
           const nested=clickables(overlay);
           const modalControls=nested.map(x=>({
             route,section:ctx.section+'/modal',tag:x.tagName.toLowerCase(),
@@ -230,6 +265,15 @@
             const key=[route,ctx.section+'/modal',cancel.tagName.toLowerCase(),
               name(cancel),handler(cancel).slice(0,180)].join('|');
             const row=all.get(key);if(row)row.status='clicked';
+          } else {
+            // A modal without a cancel button must still be Esc-dismissable.
+            document.dispatchEvent(new KeyboardEvent('keydown',
+              {key:'Escape',bubbles:true,cancelable:true}));
+            await wait(30);
+          }
+          if(document.querySelector('.modal-backdrop')){
+            failures.push({route,section:ctx.section,kind:'modal-cannot-close',
+              handler:action.slice(0,170)});
           }
         }
         dismiss();
