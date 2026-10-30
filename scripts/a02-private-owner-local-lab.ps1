@@ -168,6 +168,27 @@ if($Mode -eq 'Test'){
     try{Assert-ManifestDestination $unsafe}catch{$blocked=$true}
     Require $blocked 'A02_SELFTEST_MANIFEST_PATH_ESCAPE_ACCEPTED'
   }
+  # Test the resume ACL gate IN MEMORY: never open owner staging paths
+  # and never persist an insecure access rule.
+  $acl=[Security.AccessControl.FileSecurity]::new()
+  $acl.SetAccessRuleProtection($true,$false)
+  $current=[Security.Principal.WindowsIdentity]::GetCurrent().User
+  $acl.SetOwner($current)
+  foreach($sidText in @($current.Value,'S-1-5-18','S-1-5-32-544') | Select-Object -Unique){
+    $sid=[Security.Principal.SecurityIdentifier]::new([string]$sidText)
+    $rule=[Security.AccessControl.FileSystemAccessRule]::new(
+      $sid,[Security.AccessControl.FileSystemRights]::FullControl,
+      [Security.AccessControl.AccessControlType]::Allow)
+    [void]$acl.AddAccessRule($rule)
+  }
+  Assert-A02StagedAcl $acl
+  $everyone=[Security.Principal.SecurityIdentifier]::new('S-1-1-0')
+  [void]$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
+    $everyone,[Security.AccessControl.FileSystemRights]::Read,
+    [Security.AccessControl.AccessControlType]::Allow))
+  $blocked=$false
+  try{Assert-A02StagedAcl $acl}catch{$blocked=$true}
+  Require $blocked 'A02_SELFTEST_BROAD_PUBLIC_BAK_ACL_ACCEPTED'
   [pscustomobject]@{
     status='private-lab-synthetic-orchestration-passed'
     checks=$tests.Count;ownerBackupUsed=$false;sqlServerInstalled=$false
