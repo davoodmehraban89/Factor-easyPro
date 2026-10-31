@@ -356,10 +356,20 @@
     await expenseView.reload();
     const scratch=document.createElement('div');
     scratch.innerHTML=expenseView.renderContent();
+    const categoryFilter=scratch.querySelector('select[aria-label="سرفصل سند"]');
+    const matchingOptions=[...(categoryFilter?.options || [])]
+      .filter(option=>option.value===hostileCategory);
+    const actualLabels=matchingOptions.map(option=>option.textContent);
     if(scratch.querySelector('img') || scratch.querySelector('script') ||
-        scratch.querySelector('select[aria-label="سرفصل سند"] option')?.value!==hostileCategory ||
+        matchingOptions.length!==1 || actualLabels[0]!==hostileCategory ||
         !scratch.textContent.includes(hostileCell)) {
-      throw Error('Untrusted expense list fields created executable markup or corrupted category value');
+      throw Error('Untrusted expense list fields created executable markup or corrupted category value: ' +
+        JSON.stringify({filterFound:!!categoryFilter,
+          optionsCount:categoryFilter?.options?.length ?? -1,
+          maliciousCategoryPresent:matchingOptions.length===1,
+          labelMatches:actualLabels[0]===hostileCategory,
+          unexpectedImages:scratch.querySelectorAll('img').length,
+          unexpectedScripts:scratch.querySelectorAll('script').length}));
     }
     expenseView.editExpense=(id)=>{clickedExpenseId=id;};
     const edit=scratch.querySelector('button[title="ویرایش"]');
