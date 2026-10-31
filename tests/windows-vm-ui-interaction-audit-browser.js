@@ -742,7 +742,7 @@
           // preview openers without ever invoking Save or physical Print.
           const nestedOpenActions=nested.filter(x=>!x.disabled &&
             safeOpen.test(handler(x)) &&
-            /_openQuickContact|_openQuickProduct|InvoicePrint\._preview/.test(handler(x)));
+            /_openQuickContact|_openQuickProduct|ProductsView\.openUnitModal|ProductsView\.openCategoryModal|StockKardexModal\.openAdjustModal|InvoicePrint\._preview/.test(handler(x)));
           for(const nestedAction of nestedOpenActions){
             const parentDepth=FINORA.Modal.stack.length;
             const parentCard=FINORA.Modal.stack.at(-1)?.card;
