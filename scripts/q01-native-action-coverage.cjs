@@ -1,6 +1,10 @@
 'use strict';
 const RULES=[
 {match:'window.InvoiceFormView._save(false)',scenarios:['purchase-and-post-ledger','partial-sale-and-inventory','sale-return-immutable-stock-and-ledger','purchase-return-and-stock-guardrails','return-cash-settlement-net-credit'],kind:'native-fixture-positive-and-negative',note:'فاکتور خرید، فروش و مرجوعی با اثر ثبت‌شده در نصب واقعی'},
+{match:'window.ContactsView.saveContact(',scenarios:['contacts-crud-form-and-tags'],kind:'native-ui-create-and-update',note:'ثبت و ویرایش شخص از فرم واقعی و ماندگاری برچسب در WebView2'},
+{match:'window.ProductsView.saveProduct(',scenarios:['products-crud-form-and-nested-classifiers'],kind:'native-ui-create-and-update',note:'ثبت و ویرایش کالا از فرم واقعی با قیمت و نقطه سفارش و طبقه‌بندی انتخاب‌شده'},
+{match:'window.ProductsView.saveUnit(true)',scenarios:['products-crud-form-and-nested-classifiers'],kind:'native-ui-nested-create',note:'ایجاد واحد از پنجره تو‌در‌تو و انتخاب آن در فرم والد کالا'},
+{match:'window.ProductsView.saveCategory(true)',scenarios:['products-crud-form-and-nested-classifiers'],kind:'native-ui-nested-create',note:'ایجاد گروه از پنجره تو‌در‌تو و انتخاب آن در فرم والد کالا'},
 {match:'window.TreasuryView.saveAccount(null)',scenarios:['partial-sale-and-inventory'],kind:'native-fixture-create',note:'ایجاد حساب خزانه در سناریوی فروش'},
 {match:"window.TreasuryView._saveTransaction('transfer')",scenarios:['inactive-treasury-cheque-settlement'],kind:'native-negative-guard-only',note:'فقط رد انتقال به حساب غیرفعال؛ مسیر مثبت مستقل نیست'},
 {match:"window.TreasuryView._saveTransaction('receipt')",scenarios:['return-cash-settlement-net-credit'],kind:'native-fixture-positive-and-negative',note:'رد دریافت بیش از مانده و ثبت دریافت مجاز'},
