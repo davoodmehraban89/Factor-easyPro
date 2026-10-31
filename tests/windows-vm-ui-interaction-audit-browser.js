@@ -139,6 +139,7 @@
   async function press(el, route, section, category) {
     if (seenClick.has(el)) return;
     seenClick.add(el);
+    const k=sig(el,route,section);
     const row=all.get(k);
     const before=target().innerHTML;
     const beforeModal=!!document.querySelector('.modal-backdrop');
@@ -787,8 +788,8 @@
             const initialRows=itemsBody.querySelectorAll('tr').length;
             registerControl(addRow,route,ctx.section+'/modal');
             await press(addRow,route,ctx.section+'/modal','open');
-            // _renderItems replaces tbody.innerHTML. Re-query the live node;
-            // the original itemsBody reference is detached after a render.
+            // Re-query after the row render so the assertion reads the current
+            // modal's live table rather than relying on pre-click row children.
             const currentItemsBody=overlay.querySelector('#itemsBody');
             const afterAdd=currentItemsBody?.querySelectorAll('tr').length ?? 0;
             if(afterAdd!==initialRows+1){
