@@ -763,9 +763,15 @@
           inventory(route,'root');
           tab.click();await wait(320);
         }
-        const el=clickables(target()).find(x=>
-          handler(x)===action.handler && name(x)===action.label &&
-          x.tagName.toLowerCase()===action.tag);
+        // Rendered labels can legitimately change with live counts and filters.
+        // Resolve by the stable inline handler + element type, then wait briefly
+        // for slow IndexedDB-backed tabs to finish rendering in the installed VM.
+        let el=null;
+        for(let attempt=0;attempt<12 && !el;attempt++){
+          el=clickables(target()).find(x=>
+            handler(x)===action.handler && x.tagName.toLowerCase()===action.tag);
+          if(!el) await wait(100);
+        }
         if(!el){
           failures.push({route,section:group.section,kind:'safe-action-vanished',
             handler:action.handler,label:action.label});
