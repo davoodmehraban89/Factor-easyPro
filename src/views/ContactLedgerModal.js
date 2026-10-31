@@ -18,7 +18,7 @@ class ContactLedgerModalImpl {
     const body = this._buildBody(contact, ledger);
     const footer = `
       <button class="btn btn-secondary" onclick="FINORA.Modal.close()">بستن</button>
-      <button class="btn" onclick="window.ContactLedgerModal._printLedger('${contactId}')">🖨️ چاپ صورت‌حساب</button>
+      <button class="btn" onclick="window.ContactLedgerModal._printLedger(${this._esc(JSON.stringify(String(contactId ?? '')))})">🖨️ چاپ صورت‌حساب</button>
     `;
 
     Modal.open({
@@ -75,9 +75,9 @@ class ContactLedgerModalImpl {
 
           return `
             <tr>
-              <td style="font-size:11.5px;width:110px">${Formatters.toPersianDigits(r.date || '—')}</td>
+              <td style="font-size:11.5px;width:110px">${this._esc(Formatters.toPersianDigits(r.date || '—'))}</td>
               <td><span class="badge ${typeCls}" style="font-size:10px">${this._esc(r.typeLabel)}</span></td>
-              <td style="font-size:11.5px;color:var(--text-muted)">${r.refNumber ? '#' + Formatters.toPersianDigits(r.refNumber) : '—'}</td>
+              <td style="font-size:11.5px;color:var(--text-muted)">${this._esc(r.refNumber ? '#' + Formatters.toPersianDigits(r.refNumber) : '—')}</td>
               <td style="text-align:left;font-weight:600;color:var(--danger)">
                 ${r.debit > 0 ? Formatters.money(r.debit) : '—'}
               </td>
@@ -103,7 +103,7 @@ class ContactLedgerModalImpl {
               ${tags}
             </div>
             ${contact.mobile ? `<div style="font-size:11.5px;color:var(--text-muted)">📱 ${Formatters.phone(contact.mobile)}</div>` : ''}
-            ${contact.nationalId ? `<div style="font-size:11.5px;color:var(--text-muted)">🆔 ${Formatters.toPersianDigits(contact.nationalId)}</div>` : ''}
+            ${contact.nationalId ? `<div style="font-size:11.5px;color:var(--text-muted)">🆔 ${this._esc(Formatters.toPersianDigits(contact.nationalId))}</div>` : ''}
           </div>
           <div style="text-align:left;min-width:200px">
             <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">مانده حساب</div>
@@ -176,9 +176,9 @@ class ContactLedgerModalImpl {
 
       return `
         <tr>
-          <td>${Formatters.toPersianDigits(r.date || '—')}</td>
+          <td>${this._esc(Formatters.toPersianDigits(r.date || '—'))}</td>
           <td>${this._esc(r.typeLabel)}</td>
-          <td>${r.refNumber ? '#' + Formatters.toPersianDigits(r.refNumber) : '—'}</td>
+          <td>${this._esc(r.refNumber ? '#' + Formatters.toPersianDigits(r.refNumber) : '—')}</td>
           <td>${r.debit > 0 ? Formatters.money(r.debit) : '—'}</td>
           <td>${r.credit > 0 ? Formatters.money(r.credit) : '—'}</td>
           <td>${balanceCell}</td>
@@ -194,8 +194,7 @@ class ContactLedgerModalImpl {
       <html lang="fa" dir="rtl">
       <head>
         <meta charset="UTF-8" />
-        <title>صورت‌حساب ${contact.name}</title>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/Vazirmatn-FD-font-face.css" />
+        <title>صورت‌حساب ${this._esc(contact.name)}</title>
         <style>
           @page { size: A4 portrait; margin: 10mm; }
           * { box-sizing: border-box; margin: 0; padding: 0; }

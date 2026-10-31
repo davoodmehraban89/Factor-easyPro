@@ -68,8 +68,10 @@ class KeyboardShortcutsImpl {
   _onKeyDown(e) {
     if (!this.settings.enabled) return;
 
-    const modal = document.querySelector('.modal-backdrop.active') ||
-                  document.querySelector('.modal-backdrop');
+    // Always target the topmost dialog. The old query selected the first
+    // backdrop, so Enter/Ctrl+S could affect a hidden parent dialog.
+    const backdrops = document.querySelectorAll('.modal-backdrop');
+    const modal = backdrops[backdrops.length - 1] || null;
 
     // ────── Ctrl+S / Cmd+S ──────
     if (this._isCtrlS(e)) {
@@ -94,20 +96,27 @@ class KeyboardShortcutsImpl {
     // ────── Escape → بستن مودال ──────
     if (e.key === 'Escape' && this.settings.escapeCloses) {
       if (modal) {
+        // ModalManager owns stacked dialogs and already closes exactly one
+        // top dialog on Escape; a second click here closed both dialogs.
+        if (window.FINORA?.Modal?.stack?.length) return;
         e.preventDefault();
         this._clickCloseButton(modal);
       }
       return;
     }
 
-    // ────── Enter → تأیید (فقط داخل مودال، نه در textarea) ──────
-    if (e.key === 'Enter' && !e.shiftKey && this.settings.enterConfirms) {
+    // ────── Plain Enter: preserve keyboard semantics of focused controls ──────
+    // The previous global handler could SAVE a financial form when focus was
+    // on "Cancel" or a select/autocomplete field. Let native Enter activate
+    // buttons, links, dropdowns and inputs. Ctrl+Enter remains the deliberate
+    // confirm shortcut; plain Enter only confirms when the dialog surface
+    // itself (not a form control or editable child) has focus.
+    if (e.key === 'Enter' && !e.shiftKey && this.settings.enterConfirms && modal) {
       const active = document.activeElement;
-      if (active && active.tagName === 'TEXTAREA') return;
-      if (modal) {
-        e.preventDefault();
-        this._clickPrimaryButton(modal);
-      }
+      if (!active || !modal.contains(active)) return;
+      if (active !== modal.querySelector('.modal-card')) return;
+      e.preventDefault();
+      this._clickPrimaryButton(modal);
       return;
     }
 
