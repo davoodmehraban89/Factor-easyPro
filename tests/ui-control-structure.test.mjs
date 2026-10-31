@@ -342,6 +342,19 @@ test('Q01: native UI audit has no duplicate safeConfirm lexical declaration', ()
   assert.ok(audit.includes('safeConfirmDialog.querySelector'));
 });
 
+test('Q01: filter clicks are deferred until row-scoped confirmation and editor probes finish', () => {
+  const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
+  const queue=audit.indexOf('const deferredSafeActions=[]');
+  const confirm=audit.indexOf('const confirmActions=');
+  const open=audit.indexOf('const openActions=');
+  const deferred=audit.indexOf('for(const group of deferredSafeActions)');
+  assert.ok(queue>=0 && confirm>queue && open>confirm && deferred>open,
+    'filters must not hide row targets before edit/delete confirmation probes');
+  assert.ok(audit.includes('safe-tab-vanished'));
+  assert.ok(audit.includes('safe-action-vanished'));
+  assert.doesNotMatch(audit,/safeOpen = .*changeStatus|safeOpen = .*_printInvoice/);
+});
+
 test('Q01: native click audit separates unique action signatures from repeated tab instances', () => {
   const audit = fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
   const native = fs.readFileSync(path.join(root,'tests','windows-vm-installed-tauri-cdp.cjs'),'utf8');
