@@ -32,7 +32,14 @@
   ].join('|');
   const dangerous = /(?:^|[.\s])(?:_?(?:save|delete|wipe|restore|post|submit|confirm|activate|seed|commit|final|approve|logout|export|import|download|print|settle|apply|reset|changeStatus|remove)\w*)\s*\(/i;
   const safeTab = /\.(?:_switchTab|switchTab|_switchPeriod|_setPreset)\s*\(/;
-  const safeOpen = /\.(?:openNewInvoice|openProductModal|openUnitModal|openCategoryModal|openContactModal|openExpenseModal|openChequeModal|openAccountModal|openReceiptModal|openPaymentModal|openTransferModal|openCompanyModal|openCompanySwitcher|openExportSectionModal|openSignedLicenseModal|openAuditTrail|openWipeModal|openRestoreModal|openPeriodModal|openJournalModal|openWarehouse|openStocktakeCreate|openTransfer|openReversal|_openQuickProduct|_openQuickContact|openLedger|openKardex|openStocktake|showJournal)\s*\(/;
+  const safeNavigate = /FINORA\.Router\.go\s*\(/;
+  const safeFilter = /\.(?:_togglePreInvoice|_setStockFilter|_clearFilters|_applyCustom|refresh|setTheme)\s*\(/;
+  // These handlers only open an editor/preview/diagnostic dialog. The audit
+  // closes it without saving; a separate fixture-backed test owns commits.
+  const safeOpen = /\.(?:openNewInvoice|openProductModal|openUnitModal|openCategoryModal|openContactModal|openExpenseModal|openChequeModal|openAccountModal|openReceiptModal|openPaymentModal|openTransferModal|openCompanyModal|openCompanySwitcher|openExportSectionModal|openSignedLicenseModal|openAuditTrail|openWipeModal|openRestoreModal|openPeriodModal|openJournalModal|openWarehouse|openStocktakeCreate|openTransfer|openReversal|_openQuickProduct|_openQuickContact|openLedger|openKardex|openStocktake|showJournal|editInvoice|editProduct|editContact|editCheque|editAccount|changeStatus|openAdjustModal|_printInvoice|printInvoice|createCompany|checkHolooMigrationReadiness|runFinancialDiagnostics)\s*\(/;
+  // A delete/close-period/seed action is safe to probe only up to its
+  // confirmation prompt. The audit must cancel and prove zero database writes.
+  const safeConfirm = /\.(?:deleteInvoice|deleteProduct|deleteContact|deleteCheque|deleteTransaction|deleteExpense|deleteAccount|closePeriod|seedChart)\s*\(/;
   const clickables = (root) => [...root.querySelectorAll(
     'button, a, [role="button"], input[type="button"], input[type="submit"], [onclick]'
   )].filter(isVisible);
@@ -132,7 +139,7 @@
         handler:handler(el).slice(0,170),changed,afterModal});
       if (row) {row.status='clicked';row.reason=changed?'visible-state-changed':'no-observable-DOM-change';}
       if (!changed) {
-        const expectedNoop = /\._clearFilters\(\)|\.switchTab\('journals'\)/.test(handler(el));
+        const expectedNoop = /\._clearFilters\(\)|\._applyCustom\(\)|\.refresh\(\)|\.switchTab\('journals'\)/.test(handler(el));
         if (expectedNoop) {
           if (row) row.reason='idempotent-click-on-already-selected-or-clear-filter-state';
         } else {
@@ -143,7 +150,7 @@
     } catch(error) {
       failures.push({route,section,kind:'click-error',label:name(el),error:String(error.message).slice(0,170)});
       if (row) {row.status='failed';row.reason='UI click error';}
-    } finally { if (category !== 'open') dismiss(); }
+    } finally { if (category !== 'open' && category !== 'confirm-request') dismiss(); }
   }
   // Explicit shell regression: semantic links, keyboard focus, active route,
   // persistent sidebar collapse and reversible theme toggle.
@@ -588,12 +595,75 @@
           row.status='broken-handler';row.reason='target function missing';
           failures.push({route,section:ctx.section,kind:'missing-function',callee:parsed.callee});
         } else if (el.disabled) {row.status='disabled';row.reason='disabled state';}
-        else if (dangerous.test(code)) {
+        else if (!safeConfirm.test(code) && !safeNavigate.test(code) && !safeFilter.test(code) && !safeOpen.test(code) && dangerous.test(code)) {
           row.status='not-clicked';row.reason='financial or destructive action needs explicit fixture-backed test';
         } else if (!code) {
           row.status='not-clicked';row.reason='dynamic event listener or no inline action; requires focused audit';
-        } else if (!safeTab.test(code) && !safeOpen.test(code)) {
+        } else if (!safeTab.test(code) && !safeNavigate.test(code) && !safeFilter.test(code) && !safeOpen.test(code) && !safeConfirm.test(code)) {
           row.status='not-clicked';row.reason='not on audited safe-action allowlist';
+        }
+      }
+      // Exercise read-only navigation, filters and reversible view settings.
+      const safeActions=[...new Set(controls
+        .filter(el=>!el.disabled && (safeNavigate.test(handler(el)) || safeFilter.test(handler(el))))
+        .map(el=>handler(el)))];
+      for (const action of safeActions) {
+        await go(route);
+        if (ctx.tabAction) {
+          const tab=clickables(target()).find(el=>handler(el)===ctx.tabAction);
+          if(tab){tab.click();await wait(160);}
+        }
+        const el=clickables(target()).find(x=>handler(x)===action);
+        if(!el){failures.push({route,section:ctx.section,kind:'safe-action-vanished',handler:action});continue;}
+        inventory(route,ctx.section);
+        await press(el,route,ctx.section,safeNavigate.test(action)?'navigation':'filter');
+      }
+      // Open destructive confirmation prompts, but NEVER approve them here.
+      // Compare every persistent store before/after Cancel to prove no write.
+      const confirmStores=['users','companies','contacts','products','units','categories',
+        'treasury','invoices','invoice_items','stock_movements','transactions','cheques',
+        'expenses','settings','logs','account_chart','fiscal_periods','journal_entries',
+        'journal_lines','warehouses','inventory_balances','stocktakes','stocktake_lines',
+        'settlements','account_mappings','audit_events','document_corrections'];
+      const confirmSnapshot=async()=>JSON.stringify(await Promise.all(confirmStores.map(async store=>
+        [store,await FINORA.Storage.getAll(store)])));
+      const confirmActions=[...new Set(controls
+        .filter(el=>!el.disabled && safeConfirm.test(handler(el)))
+        .map(el=>handler(el)))].slice(0,30);
+      for(const action of confirmActions){
+        await go(route);
+        if(ctx.tabAction){
+          const tab=clickables(target()).find(el=>handler(el)===ctx.tabAction);
+          if(tab){tab.click();await wait(160);}
+        }
+        const el=clickables(target()).find(x=>handler(x)===action);
+        if(!el){failures.push({route,section:ctx.section,kind:'confirm-action-vanished',handler:action});continue;}
+        const before=await confirmSnapshot();
+        inventory(route,ctx.section);
+        await press(el,route,ctx.section,'confirm-request');
+        const overlay=document.querySelector('.modal-backdrop');
+        if(!overlay){
+          failures.push({route,section:ctx.section,kind:'confirmation-prompt-missing',handler:action});
+          continue;
+        }
+        const cancel=clickables(overlay).find(x=>
+          /FINORA\.Modal\.close|Modal\.closeAll/.test(handler(x)) ||
+          /^(انصراف|بستن|بازگشت|✕|×)$/.test(name(x)));
+        if(!cancel){
+          failures.push({route,section:ctx.section,kind:'confirmation-cancel-missing',handler:action});
+          dismiss();continue;
+        }
+        cancel.click();await wait(80);
+        clicks.push({route,section:ctx.section+'/confirm',category:'confirm-cancel',
+          label:name(el),handler:action.slice(0,170),
+          changed:!document.querySelector('.modal-backdrop')});
+        if(document.querySelector('.modal-backdrop')){
+          failures.push({route,section:ctx.section,kind:'confirmation-cancel-did-not-close',handler:action});
+          dismiss();
+        }
+        const after=await confirmSnapshot();
+        if(before!==after){
+          failures.push({route,section:ctx.section,kind:'cancel-mutated-persistent-data',handler:action});
         }
       }
       // Open every safe modal/editor visible in this context without saving.
