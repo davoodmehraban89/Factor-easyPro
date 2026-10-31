@@ -336,14 +336,14 @@
     message:hostileMessage,confirmText:hostileMessage,cancelText:hostileMessage,
     onConfirm:()=>{syntheticConfirmed++;}});
   await wait(25);
-  const safeConfirm=FINORA.Modal.stack[FINORA.Modal.stack.length-1]?.card;
-  if (!safeConfirm || safeConfirm.querySelector('[data-confirm-message]')?.textContent!==hostileMessage ||
-      safeConfirm.querySelector('[data-action="confirm"]')?.textContent!==hostileMessage ||
-      safeConfirm.querySelector('[data-action="cancel"]')?.textContent!==hostileMessage ||
-      safeConfirm.querySelector('img') || window.Q01_INJECTED) {
+  const safeConfirmDialog=FINORA.Modal.stack[FINORA.Modal.stack.length-1]?.card;
+  if (!safeConfirmDialog || safeConfirmDialog.querySelector('[data-confirm-message]')?.textContent!==hostileMessage ||
+      safeConfirmDialog.querySelector('[data-action="confirm"]')?.textContent!==hostileMessage ||
+      safeConfirmDialog.querySelector('[data-action="cancel"]')?.textContent!==hostileMessage ||
+      safeConfirmDialog.querySelector('img') || window.Q01_INJECTED) {
     throw Error('Confirmation message was interpreted as executable HTML');
   }
-  safeConfirm.querySelector('[data-action="cancel"]').click();
+  safeConfirmDialog.querySelector('[data-action="cancel"]').click();
   if (syntheticConfirmed!==1 || FINORA.Modal.stack.length) {
     throw Error('Text-only confirmation Cancel executed a callback or leaked a dialog');
   }
