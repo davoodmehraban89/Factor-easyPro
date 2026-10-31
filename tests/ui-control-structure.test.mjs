@@ -158,6 +158,13 @@ test('Q01: dashboard and cheque tables remain usable in the installed narrow con
   assert.match(native,/cheque-table-horizontal-scroll-accessibility/);
 });
 
+test('Q01: deferred safe actions survive live label changes and slow tab rendering', () => {
+  const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
+  assert.match(audit,/for\(let attempt=0;attempt<12 && !el;attempt\+\+\)/);
+  assert.match(audit,/handler\(x\)===action\.handler && x\.tagName\.toLowerCase\(\)===action\.tag/);
+  assert.doesNotMatch(audit,/handler\(x\)===action\.handler && name\(x\)===action\.label/);
+});
+
 test('Q01: native audit verifies safe routes, filters, edit previews and cancel-only destructive prompts', () => {
   const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
   for(const token of ['safeNavigate','safeFilter','safeOpen','safeConfirmAction',
@@ -235,7 +242,7 @@ test('Q01: remaining financial grid, reporting and settings inputs announce thei
   const read=name=>fs.readFileSync(path.join(root,'src','views',name+'.js'),'utf8');
   const cases=[
     ['ReportsView',['aria-label="از تاریخ گزارش"','aria-label="تا تاریخ گزارش"']],
-    ['InvoiceFormView',['aria-label="جستجوی کالای ردیف فاکتور"','aria-label="نوع تخفیف ردیف"','aria-label="وضعیت پرداخت فاکتور"']],
+    ['InvoiceFormView',['aria-label="جستجوی کالای ردیف فاکتور"','aria-label="نوع تخفیف ردیف"','aria-label="وضعیت پرداخت فاکتور"','aria-label="مبلغ پرداخت‌شده"']],
     ['AccountingView',['aria-label="حساب ردیف سند"','aria-label="مبلغ بدهکار ردیف"','aria-label="مبلغ بستانکار ردیف"','aria-label="شرح ردیف سند"','for="acStWarehouse"']],
     ['TreasuryView',['aria-label="جستجوی تراکنش‌های خزانه"']],
     ['ChequesView',['aria-label="جستجوی چک"','aria-label="نوع چک"','aria-label="وضعیت چک"']],
