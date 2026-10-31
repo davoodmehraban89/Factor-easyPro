@@ -426,6 +426,21 @@ async function connect(url) {
       assert.equal(audit.shellResults.modalKeyboard.visibleInputAutoFocused, true);
       assert.equal(audit.problems.filter(x=>x.kind==='modal-a11y-missing').length, 0,
         'An opened financial dialog failed to move keyboard focus inside itself');
+      const modalInteractionProblems=audit.problems.filter(x=>[
+        'nested-safe-action-did-not-open-dialog',
+        'nested-modal-a11y-missing',
+        'nested-modal-cancel-did-not-restore-parent',
+        'invoice-draft-add-row-failed',
+        'invoice-draft-remove-new-row-missing',
+        'invoice-draft-row-count-not-restored',
+        'invoice-last-row-removal-not-blocked',
+        'unsaved-contact-tag-not-added'
+      ].includes(x.kind) || (
+        x.kind==='no-visible-change' &&
+        /InvoiceFormView\\._addRow/.test(x.handler||'')
+      ));
+      assert.deepEqual(modalInteractionProblems, [],
+        'Native nested-modal, invoice-row or unsaved-contact-tag interaction regressed');
       assert.equal(audit.shellResults.modalKeyboard.enterOnFocusedCancelDoesNotSave, true);
       assert.equal(audit.shellResults.modalKeyboard.enterOnInputDoesNotSubmit, true);
       assert.equal(audit.shellResults.modalKeyboard.tabAndShiftTabStayInsideTopDialog, true);
