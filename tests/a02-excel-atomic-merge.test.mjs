@@ -29,7 +29,7 @@ test('A02 Excel product import deduplicates against current company and in same 
     code: 'FOREIGN', name: 'Foreign' });
   const result = await ExcelController.importProducts({ 'کالاها': [
     { 'کد': 'OLD', 'نام': 'Do not overwrite' },
-    { 'کد': 'NEW', 'نام': 'First', 'قیمت خرید': '۱٬۵۰۰' },
+    { 'کد': 'NEW', 'نام': 'First', 'قیمت خرید': '۱٬۵۰۰', 'نقطه سفارش': '۲.۵' },
     { 'کد': 'NEW', 'نام': 'Repeated' },
     { 'کد': 'FOREIGN', 'نام': 'Same code but in another company' },
     { 'کد': '', 'نام': '' }
@@ -39,6 +39,7 @@ test('A02 Excel product import deduplicates against current company and in same 
   assert.equal(list.length, 3);
   assert.equal(list.find(p => p.id === 'old-c1').buyPrice, 5);
   assert.equal(list.find(p => p.code === 'NEW').buyPrice, 1500);
+  assert.equal(list.find(p => p.code === 'NEW').minStock, 2.5);
   assert.equal(list.find(p => p.code === 'FOREIGN').companyId, 'excel-c1');
   assert.equal((await StorageService.get('products', 'foreign-c2')).name, 'Foreign');
   assert.ok(list.every(p => p.createdAt && p.updatedAt && p.ownerUserId !== undefined));
