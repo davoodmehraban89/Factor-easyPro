@@ -59,7 +59,7 @@ test('invalid row discount must fail before creating a financial invoice or prei
 
 test('UI updates discountInput, not already-calculated rial discount, when typing', () => {
   const view = readFileSync(new URL('../src/views/InvoiceFormView.js', import.meta.url), 'utf8');
-  assert.match(view, /if \(field === 'discount'\) \{[\s\S]*?ctx\.data\.items\[idx\]\.discountInput = NumberInput\.parse\(value\)/);
+  assert.match(view, /if \(field === 'discount'\) \{[\s\S]*?ctx\.data\.items\[idx\]\.discountInput = NumberInput\.parseStrict\(value/);
 });
 
 
