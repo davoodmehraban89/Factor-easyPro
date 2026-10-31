@@ -33,3 +33,10 @@ test('posting verifies typed row discount, total discount and enabled VAT',()=>{
  const d=fixture();d.vatEnabled=false;
  assert.throws(()=>assertInvoiceTotals(d),/مالیات فاکتور/);
 });
+
+
+test('overprecise near-boundary percentages cannot silently round to 100 percent',()=>{
+ for(const value of [99.9999999999,50.00000000001,0.000000001])
+   assert.throws(()=>percentOfRials(100,value),/درصد/);
+ assert.equal(percentOfRials(10000,10.29),1029);
+});

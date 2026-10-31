@@ -9,6 +9,7 @@ export const INVOICE_DIRECTIONS = Object.freeze({
   sale:'out',non_formal:'out',purchase:'in',sale_return:'in',purchase_return:'out'
 });
 export function amount(value,label='مبلغ') {
+  if(typeof value!=='number' && typeof value!=='string') throw Error(label+' نامعتبر است');
   if(typeof value==='string' && !/^\d+$/.test(value.trim())) throw Error(label+' باید عدد صحیح باشد');
   const n=Number(value);
   if(!Number.isSafeInteger(n)||n<0) throw Error(label+' نامعتبر است');
@@ -22,7 +23,7 @@ export function positiveAmount(v,label) {
 export function qtyUnits(q) {
   const n=Number(q), scaled=n*QTY_SCALE;
   if(!Number.isFinite(n)||n<=0||!Number.isSafeInteger(Math.round(scaled))||
-    Math.abs(scaled-Math.round(scaled))>1e-7) throw Error('مقدار کالا نامعتبر است');
+    Math.round(scaled)/QTY_SCALE!==n) throw Error('مقدار کالا نامعتبر است');
   return Math.round(scaled);
 }
 // Round a quantity multiplied by a whole-rial unit price ONCE per line.
@@ -46,7 +47,7 @@ export function percentOfRials(rials, rate, label='درصد') {
     throw Error(label+' باید حداکثر دو رقم اعشار داشته باشد');
   const n=Number(rate), scaled=n*100;
   if(!Number.isFinite(n)||n<0||n>100||
-     Math.abs(scaled-Math.round(scaled))>1e-7)
+     Math.abs(scaled-Math.round(scaled))>1e-10)
     throw Error(label+' باید بین صفر و صد با حداکثر دو رقم اعشار باشد');
   return Number((BigInt(base)*BigInt(Math.round(scaled))+5000n)/10000n);
 }

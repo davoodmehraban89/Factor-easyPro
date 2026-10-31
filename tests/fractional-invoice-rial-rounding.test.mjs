@@ -35,3 +35,10 @@ test('invoice UI preview and persistence use identical gross line function', () 
   assert.ok(!controller.includes('const lineSubtotal = qty * price'));
   assert.ok(!view.includes('const lineSubtotal = qty * price'));
 });
+
+
+test('fractional stock rejects near-millisecond-precision numeric edits',()=>{
+ for(const quantity of [1.234000000001,0.001000000001,2.500000001])
+   assert.throws(()=>qtyUnits(quantity),/مقدار کالا نامعتبر/);
+ assert.equal(qtyUnits(2.501),2501);
+});
