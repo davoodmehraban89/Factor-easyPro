@@ -37,6 +37,19 @@ export function lineGrossRials(quantity, unitPrice) {
     throw Error('جمع ردیف فاکتور از محدوده مجاز ریالی بیشتر است');
   return Number(gross);
 }
+// Exact whole-rial percentages: 2-decimal rate, integer basis points and BigInt.
+// Reject rates not representable without silently losing fractional percent.
+export function percentOfRials(rials, rate, label='درصد') {
+  const base=amount(rials,'مبلغ مبنای درصد');
+  if(typeof rate!=='number'&&typeof rate!=='string')throw Error(label+' نامعتبر است');
+  if(typeof rate==='string'&&!/^\d+(?:\.\d{1,2})?$/.test(rate.trim()))
+    throw Error(label+' باید حداکثر دو رقم اعشار داشته باشد');
+  const n=Number(rate), scaled=n*100;
+  if(!Number.isFinite(n)||n<0||n>100||
+     Math.abs(scaled-Math.round(scaled))>1e-7)
+    throw Error(label+' باید بین صفر و صد با حداکثر دو رقم اعشار باشد');
+  return Number((BigInt(base)*BigInt(Math.round(scaled))+5000n)/10000n);
+}
 export const fromQtyUnits=q=>q/QTY_SCALE;
 const plus=(a,b)=>{const n=a+b;if(!Number.isSafeInteger(n))throw Error('سرریز موجودی یا مبلغ');return n};
 export function receiveStock(current,quantity,totalCost) {
@@ -91,11 +104,8 @@ export function assertInvoiceTotals(inv) {
     const discount=amount(i.discount??0,'تخفیف ردیف');
     if(discount>gross)throw Error('تخفیف ردیف بیش از مبلغ ناخالص است');
     if(i.discountInput!==undefined) {
-      const raw=Number(i.discountInput);
-      if(!Number.isFinite(raw)||raw<0)throw Error('ورودی تخفیف ردیف نامعتبر است');
       if(discountType==='percent'){
-        if(raw>100)throw Error('درصد تخفیف ردیف بیش از صد است');
-        if(discount!==Math.round(gross*raw/100))
+        if(discount!==percentOfRials(gross,i.discountInput,'درصد تخفیف ردیف'))
           throw Error('تخفیف محاسبه‌شده ردیف با درصد واردشده ناسازگار است');
       }else if(discount!==amount(i.discountInput,'تخفیف ثابت ردیف')){
         throw Error('تخفیف ثابت ردیف با ورودی اصلی ناسازگار است');
@@ -108,6 +118,19 @@ export function assertInvoiceTotals(inv) {
   if(amount(inv.subtotal)!==total)throw Error('جمع ردیف‌ها نادرست است');
   const disc=amount(inv.totalDiscount,'تخفیف'),vat=amount(inv.vatAmount,'مالیات');
   if(disc>total)throw Error('تخفیف نامعتبر است');
+  if(inv.discountInput!==undefined) {
+    const mode=inv.discountType||'fixed';
+    if(!['fixed','percent'].includes(mode))throw Error('نوع تخفیف کل فاکتور نامعتبر است');
+    const expected=mode==='percent'
+      ? percentOfRials(total,inv.discountInput,'درصد تخفیف کل')
+      : Math.min(total,amount(inv.discountInput,'تخفیف ثابت کل'));
+    if(disc!==expected)throw Error('تخفیف کل با ورودی ثبت‌شده ناسازگار است');
+  }
+  if(inv.vatEnabled!==undefined) {
+    const expected=inv.vatEnabled && inv.kind!=='non_formal'
+      ? percentOfRials(total-disc,inv.vatRate??0,'درصد مالیات') : 0;
+    if(vat!==expected)throw Error('مالیات فاکتور با نرخ و وضعیت مالیات ناسازگار است');
+  }
   if(amount(inv.grandTotal)!==total-disc+vat)throw Error('مبلغ کل فاکتور ناسازگار است');
   if(amount(inv.paidAmount)>inv.grandTotal)throw Error('مبلغ پرداخت بیش از مبلغ فاکتور است');
   return true;

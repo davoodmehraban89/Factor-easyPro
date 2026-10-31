@@ -12,7 +12,7 @@ import { numberToWords } from '../utils/NumberToWords.js';
 import { NumberInput } from '../utils/NumberInput.js';
 import { SettingsController } from '../controllers/SettingsController.js';
 import { RetailPostingService } from '../core/RetailPostingService.js';
-import { lineGrossRials } from '../core/RetailFinanceCore.mjs';
+import { lineGrossRials, percentOfRials } from '../core/RetailFinanceCore.mjs';
 
 let ctx = {
   editId: null,
@@ -508,7 +508,8 @@ class InvoiceFormViewImpl {
         let lineDiscount = 0;
         const discInput = Number(item.discountInput !== undefined ? item.discountInput : item.discount) || 0;
         if (item.discountType === 'percent') {
-          lineDiscount = Math.round(lineSubtotal * discInput / 100);
+          try { lineDiscount = percentOfRials(lineSubtotal,discInput); }
+          catch (_) { lineDiscount = 0; }
         } else {
           lineDiscount = discInput;
         }
@@ -532,7 +533,8 @@ class InvoiceFormViewImpl {
     const discInput = NumberInput.parse(document.getElementById('invDiscInput')?.value);
     let totalDiscount = 0;
     if (discType === 'percent') {
-      totalDiscount = Math.round(subtotal * discInput / 100);
+      try { totalDiscount = percentOfRials(subtotal,discInput); }
+      catch (_) { totalDiscount = 0; }
     } else {
       totalDiscount = discInput;
     }
@@ -544,7 +546,10 @@ class InvoiceFormViewImpl {
     const vatEnabled = kind !== 'non_formal' && document.getElementById('invVatEnabled')?.checked;
     const vatRate = NumberInput.parse(document.getElementById('invVatRate')?.value);
     let vatAmount = 0;
-    if (vatEnabled) vatAmount = Math.round(afterDiscount * vatRate / 100);
+    if (vatEnabled) {
+      try { vatAmount = percentOfRials(afterDiscount,vatRate); }
+      catch (_) { vatAmount = 0; }
+    }
 
     const grandTotal = afterDiscount + vatAmount;
 
