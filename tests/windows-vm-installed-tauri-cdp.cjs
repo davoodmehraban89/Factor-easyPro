@@ -91,7 +91,27 @@ async function connect(url) {
     const r = await command('Runtime.evaluate', {
       expression, awaitPromise: true, returnByValue: true
     }, timeoutMs);
-    if (r.exceptionDetails) throw Error('Native UI exception: ' + r.exceptionDetails.text);
+    if (r.exceptionDetails) {
+      const detail=r.exceptionDetails;
+      const exception=detail.exception||{};
+      const frames=(detail.stackTrace?.callFrames||[]).slice(0,8).map(frame=>({
+        functionName:frame.functionName||'',url:frame.url||'',
+        line:frame.lineNumber,column:frame.columnNumber
+      }));
+      let pageContext=null;
+      try {
+        const context=await command('Runtime.evaluate',{
+          expression:"JSON.stringify({stage:window.__Q01_AUDIT_STAGE||null,route:window.FINORA?.Router?.current?.()||null,modalDepth:window.FINORA?.Modal?.stack?.length??null})",
+          returnByValue:true
+        },5000);
+        pageContext=context.result?.value||null;
+      } catch (_) {}
+      throw Error('Native UI exception: '+JSON.stringify({
+        text:detail.text||'',description:exception.description||'',
+        value:exception.value??null,line:detail.lineNumber,column:detail.columnNumber,
+        frames,pageContext
+      }));
+    }
     if (r.result?.subtype === 'error') throw Error('Native UI rejected JavaScript evaluation');
     return r.result?.value;
   };
