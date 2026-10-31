@@ -42,7 +42,9 @@ test('A02 Excel product import deduplicates against current company and in same 
   assert.equal(list.find(p => p.code === 'NEW').minStock, 2.5);
   assert.equal(list.find(p => p.code === 'FOREIGN').companyId, 'excel-c1');
   assert.equal((await StorageService.get('products', 'foreign-c2')).name, 'Foreign');
-  assert.ok(list.every(p => p.createdAt && p.updatedAt && p.ownerUserId !== undefined));
+  assert.ok(list.filter(p => p.id !== 'old-c1').every(p =>
+    p.createdAt && p.updatedAt && p.ownerUserId === 'excel-admin'));
+  assert.equal(list.find(p => p.id === 'old-c1').name, 'Existing');
 });
 
 test('A02 contact import preserves both-role and skips repeated company mobile', async () => {
