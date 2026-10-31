@@ -166,7 +166,9 @@ try {
   # Validate all essential paths on the SAME installed candidate before
   # declaring the disposable VM laboratory successful.
   $mandatory = @(
+    'legacy-stock-adjustment-form-and-validation',
     'activate-accounting-and-inventory',
+    'integrated-stock-adjustment-guard',
     'contacts-crud-form-and-tags',
     'products-crud-form-and-nested-classifiers',
     'positive-opening-ledger-and-idempotency',
