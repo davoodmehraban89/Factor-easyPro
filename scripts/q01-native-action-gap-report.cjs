@@ -26,6 +26,8 @@ function buildReport(audit){
   const actions=audit.uniqueActions;
   const pending=actions.filter(x=>x.status!=='clicked');
   const errors=(audit.problems||[]).filter(x=>x);
+  const fixtureCovered=pending.filter(x=>x.fixtureCoverage);
+  const withoutFixture=pending.filter(x=>!x.fixtureCoverage);
   const lines=[
     '# Q01 — کنترل‌های رابط کاربری هنوز نیازمند تأیید',
     '',
@@ -37,6 +39,8 @@ function buildReport(audit){
     '| امضاهای کنترلی متمایز | '+audit.uniqueActionCount+' |',
     '| امضاهای کلیک‌شده حداقل یک بار | '+audit.uniqueActionClicked+' |',
     '| امضاهای کلیک‌نشده | '+audit.uniqueActionUnverified+' |',
+    '| کلیک‌نشده ولی دارای پوشش سناریوی مستقل | '+fixtureCovered.length+' |',
+    '| کلیک‌نشده و فاقد شواهد سناریوی مستقل | '+withoutFixture.length+' |',
     '| امضاهای غیرفعال | '+audit.uniqueActionDisabled+' |',
     '| امضاهای دارای شکست آزمون | '+audit.uniqueActionFailed+' |',
     '| موارد تکراری در تب‌ها | '+audit.duplicateInstanceCount+' |',
@@ -51,9 +55,10 @@ function buildReport(audit){
   for(const [route,label] of Object.entries(routeName)){
     const part=pending.filter(x=>x.route===route);
     if(!part.length)continue;
-    lines.push('## '+label+' — '+part.length+' مورد باقی‌مانده','','| کنترل | وضعیت | علت / گام لازم | هندلر |','|---|---|---|---|');
+    lines.push('## '+label+' — '+part.length+' مورد باقی‌مانده','','| کنترل | وضعیت کلیک | پوشش سناریوی مستقل | علت / گام لازم | هندلر |','|---|---|---|---|---|');
     for(const row of part){
       lines.push('| '+cell(row.label||'(بدون نام)')+' | '+cell(row.status)+
+        ' | '+cell(row.fixtureCoverage?.summary||'ندارد')+
         ' | '+cell(row.whyNotVerified||'به آزمون مستقل نیاز دارد')+
         ' | '+cell(row.handler||'(listener پویا)')+' |');
     }

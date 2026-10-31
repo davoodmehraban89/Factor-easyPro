@@ -408,6 +408,12 @@ async function connect(url) {
       assert.ok(auditSource.includes('for(const group of deferredSafeActions)'),
         'native UI audit must execute queued filters after editor/confirmation probes');
       const audit = await cdp.evaluate(auditSource, 240000);
+      const fixtureCoverage = require('../scripts/q01-native-action-coverage.cjs').annotateAudit(audit, {
+        nativeFunctional: report.nativeFunctional,
+        encryptedCompanyBackup: report.encryptedCompanyBackup ===
+          'native-SettingsUI-AES-GCM-PBKDF2-wrong-password-and-audited-restore-passed'
+      });
+      report.nativeControlCoverage = fixtureCoverage;
       assert.equal(audit.environment, 'installed-Windows-Tauri-WebView2-synthetic-VM');
       assert.equal(audit.routesVisited, 10);
       assert.equal(audit.shellResults.keyboardReachableSidebarLinks, 10);
@@ -488,6 +494,8 @@ async function connect(url) {
         uniqueActionCount: audit.uniqueActionCount,
         uniqueActionClicked: audit.uniqueActionClicked,
         uniqueActionUnverified: audit.uniqueActionUnverified,
+        uniqueActionCoveredByFixture: fixtureCoverage.fixtureCoveredNotClicked,
+        uniqueActionWithoutFixtureEvidence: fixtureCoverage.withoutFixtureEvidence,
         uniqueActionDisabled: audit.uniqueActionDisabled,
         uniqueActionFailed: audit.uniqueActionFailed,
         duplicateInstanceCount: audit.duplicateInstanceCount,
@@ -511,6 +519,11 @@ async function connect(url) {
       report.nativeControlAudit.gapReportFile='q01-native-unverified-controls.md';
       fs.writeFileSync(path.join(path.dirname(reportPath),
         report.nativeControlAudit.gapReportFile),gapReport,{flag:'wx'});
+      report.nativeControlAudit.fixtureCoverageFile='q01-native-fixture-coverage.md';
+      fs.writeFileSync(path.join(path.dirname(reportPath),
+        report.nativeControlAudit.fixtureCoverageFile),
+        require('../scripts/q01-native-action-coverage.cjs').buildCoverageReport(fixtureCoverage),
+        {flag:'wx'});
       const routeScreenshots = [];
       for (const route of audit.routeNames) {
         await cdp.evaluate('FINORA.Router.go(' + JSON.stringify(route) + ')', 20000);
