@@ -82,10 +82,12 @@ test('native fractional step and large number input stay intact', () => {
 test('invoice quantity, reorder threshold and stocktake adjustment opt in to three decimals', () => {
   for (const [path, name] of [
     ['src/views/InvoiceFormView.js', 'item.qty'],
-    ['src/views/ProductsView.js', 'data.minStock'],
+    ['src/views/ProductsView.js', 'data.minStock || 0'],
     ['src/views/StockKardexModal.js', 'currentStock']
   ]) {
     const src = readFileSync(new URL('../' + path, import.meta.url), 'utf8');
     assert.ok(src.includes('data-decimals="3" value="${NumberInput.format(' + name + ', 3)}"'), path);
   }
+  const invoice = readFileSync(new URL('../src/views/InvoiceFormView.js', import.meta.url), 'utf8');
+  assert.ok(invoice.includes('data-decimals="2" value="${NumberInput.format(d.vatRate || 10, 2)}"'), 'VAT fractional input');
 });
