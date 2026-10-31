@@ -423,8 +423,8 @@ async function connect(url) {
         'Every nonclicked control must have a machine-readable reason');
       assert.ok(audit.fieldsInspected >= 15, 'Visible form-field inventory unexpectedly small');
       assert.ok(Number.isInteger(audit.fieldsMissingProgrammaticLabel), 'No programmatic label coverage reported');
-      assert.ok(audit.fieldsMissingProgrammaticLabel <= 5,
-        'Financial field accessible labels regressed: '+audit.fieldsMissingProgrammaticLabel);
+      assert.equal(audit.fieldsMissingProgrammaticLabel, 0,
+        'Every visible financial input must have a programmatic label');
       assert.ok(audit.safeClickCount >= 15, 'Safe interaction coverage unexpectedly low');
       assert.equal(audit.uniqueActionFailed, 0, 'A native UI action click failed');
       assert.equal(audit.brokenHandlerCount, 0, 'A visible control points to a missing handler');
