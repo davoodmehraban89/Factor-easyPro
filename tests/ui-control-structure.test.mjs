@@ -144,6 +144,10 @@ test('A03: expense table escapes imported values in HTML and inline action argum
   ]) assert.ok(src.includes(fragment), 'unescaped expense HTML found: '+fragment);
   assert.ok(native.includes('expenseUnsafeHtmlEscaped:true'));
   assert.ok(native.includes('Untrusted expense list fields created executable markup'));
+  // The first category option is the legitimate 'all' filter, never the injected row.
+  assert.match(native, /filter\(option=>option\.value===hostileCategory\)/);
+  assert.match(native, /matchingOptions\.length!==1/);
+  assert.doesNotMatch(native, /select\[aria-label="سرفصل سند"\] option'\)\?\.value!==hostileCategory/);
   assert.ok(native.includes('Expense row identifier escaped the safe JS argument'));
 });
 
