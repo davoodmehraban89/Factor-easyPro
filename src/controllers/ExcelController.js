@@ -38,6 +38,22 @@ function excelRial(value, field) {
   return amount;
 }
 
+// Stock reorder thresholds are quantities, not rial. Fractional stock
+// quantities (for example 2.5 kg) are valid and must survive Excel import.
+function excelQuantity(value) {
+  if (value === null || value === undefined || value === '') return 0;
+  const ascii = String(value)
+    .replace(/[۰-۹]/g, c => String(c.charCodeAt(0) - 1776))
+    .replace(/[٠-٩]/g, c => String(c.charCodeAt(0) - 1632))
+    .replace(/[,\s،٬]/g, '');
+  const amount = Number(ascii);
+  if (!/^\d+(?:\.\d+)?$/.test(ascii) || !Number.isFinite(amount) ||
+      amount < 0 || amount > Number.MAX_SAFE_INTEGER) {
+    throw new Error('نقطه سفارش کالا مقدار نامعتبر دارد');
+  }
+  return amount;
+}
+
 class ExcelControllerImpl {
   // ============================================================
   // ذخیره فایل + نمایش پیام + باز کردن خودکار (سازگار با Tauri)
@@ -507,7 +523,7 @@ class ExcelControllerImpl {
         unitId: null, categoryId: null,
         buyPrice: excelRial(row['قیمت خرید'] ?? row['قیمت خرید (ریال)'], 'قیمت خرید'),
         sellPrice: excelRial(row['قیمت فروش'] ?? row['قیمت فروش (ریال)'], 'قیمت فروش'),
-        minStock: excelRial(row['نقطه سفارش'], 'نقطه سفارش'),
+        minStock: excelQuantity(row['نقطه سفارش']),
         trackInventory: !String(row['نوع'] || '').includes('خدمت'),
         isActiveSell: true, isActiveBuy: true, description: '',
         createdAt: now, updatedAt: now
