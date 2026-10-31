@@ -127,6 +127,7 @@ export function assertInvoiceTotals(inv) {
     if(disc!==expected)throw Error('تخفیف کل با ورودی ثبت‌شده ناسازگار است');
   }
   if(inv.vatEnabled!==undefined) {
+    if(typeof inv.vatEnabled!=='boolean')throw Error('وضعیت مالیات باید صریحاً صحیح یا غلط باشد');
     const expected=inv.vatEnabled && inv.kind!=='non_formal'
       ? percentOfRials(total-disc,inv.vatRate??0,'درصد مالیات') : 0;
     if(vat!==expected)throw Error('مالیات فاکتور با نرخ و وضعیت مالیات ناسازگار است');

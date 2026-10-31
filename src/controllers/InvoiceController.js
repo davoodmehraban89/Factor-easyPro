@@ -73,7 +73,9 @@ class InvoiceControllerImpl {
       };
     });
 
-    const subtotal = items.reduce((s, it) => s + it.lineTotal, 0);
+    // Every intermediate must fit a safe integer, including pre-invoices
+    // that bypass the finalized double-entry posting boundary.
+    const subtotal = items.reduce((sum, it) => amount(sum + it.lineTotal, 'جمع فاکتور'), 0);
 
     // تخفیف کلی
     let totalDiscount = 0;
@@ -96,7 +98,7 @@ class InvoiceControllerImpl {
     let vatAmount = 0;
     if (data.vatEnabled && data.kind !== 'non_formal')
       vatAmount = percentOfRials(afterDiscount,vatRate,'درصد مالیات');
-    const grandTotal = afterDiscount + vatAmount;
+    const grandTotal = amount(afterDiscount + vatAmount, 'جمع کل فاکتور');
 
     // پرداخت
     const paidAmount = Math.min(amount(data.paidAmount ?? 0,'مبلغ پرداخت'), grandTotal);

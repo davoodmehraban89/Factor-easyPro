@@ -52,7 +52,7 @@ test('legacy line percent discount uses raw discount when discountInput is absen
 test('invalid row discount must fail before creating a financial invoice or preinvoice', async () => {
   await setup();
   for (const invalid of [101, -1, Infinity, 'invalid']) {
-    await assert.rejects(InvoiceController.save(base(invalid)), /تخفیف ردیف فاکتور نامعتبر/);
+    await assert.rejects(InvoiceController.save(base(invalid)), /تخفیف ردیف فاکتور نامعتبر|درصد تخفیف ردیف/);
     assert.deepEqual(await StorageService.getByCompany('invoices', 'discount-test-company'), []);
   }
 });
@@ -60,4 +60,29 @@ test('invalid row discount must fail before creating a financial invoice or prei
 test('UI updates discountInput, not already-calculated rial discount, when typing', () => {
   const view = readFileSync(new URL('../src/views/InvoiceFormView.js', import.meta.url), 'utf8');
   assert.match(view, /if \(field === 'discount'\) \{[\s\S]*?ctx\.data\.items\[idx\]\.discountInput = NumberInput\.parse\(value\)/);
+});
+
+
+test('preinvoice rejects safe-integer overflow across individually valid items before writing', async () => {
+  await setup();
+  const payload = base(10);
+  payload.items = [
+    { productId: 'synthetic-product-1', qty: 1, price: Number.MAX_SAFE_INTEGER, discountType: 'fixed', discountInput: 0 },
+    { productId: 'synthetic-product-2', qty: 1, price: 2, discountType: 'fixed', discountInput: 0 }
+  ];
+  await assert.rejects(InvoiceController.save(payload), /جمع فاکتور نامعتبر/);
+  assert.deepEqual(await StorageService.getByCompany('invoices', 'discount-test-company'), []);
+});
+
+test('malformed VAT, global discount or payment inputs are rejected before invoice save', async () => {
+  await setup();
+  for(const patch of [
+    { vatEnabled: true, vatRate: -0.01 }, { vatEnabled: true, vatRate: 'bad' },
+    { discountType: 'percent', discountInput: 100.001 },
+    { discountType: 'fixed', discountInput: -1 },
+    { paidAmount: Infinity }, { paidAmount: -1 }
+  ]) {
+    await assert.rejects(InvoiceController.save({ ...base(10), ...patch }), /درصد|نامعتبر|صحیح/);
+    assert.deepEqual(await StorageService.getByCompany('invoices','discount-test-company'),[]);
+  }
 });
