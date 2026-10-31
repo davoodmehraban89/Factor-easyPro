@@ -37,7 +37,7 @@
   const safeFilter = /\.(?:_togglePreInvoice|_setStockFilter|_clearFilters|_applyCustom|refresh|setTheme)\s*\(/;
   // These handlers only open an editor/preview/diagnostic dialog. The audit
   // closes it without saving; a separate fixture-backed test owns commits.
-  const safeOpen = /\.(?:openNewInvoice|openProductModal|openUnitModal|openCategoryModal|openContactModal|openExpenseModal|openChequeModal|openAccountModal|openReceiptModal|openPaymentModal|openTransferModal|openCompanyModal|openCompanySwitcher|openExportSectionModal|openSignedLicenseModal|openAuditTrail|openWipeModal|openRestoreModal|openPeriodModal|openJournalModal|openWarehouse|openStocktakeCreate|openTransfer|openReversal|_openQuickProduct|_openQuickContact|openLedger|openKardex|openStocktake|showJournal|editInvoice|editProduct|editContact|editCheque|editAccount|changeStatus|openAdjustModal|_printInvoice|printInvoice|checkHolooMigrationReadiness|runFinancialDiagnostics)\s*\(/;
+  const safeOpen = /\.(?:openNewInvoice|openProductModal|openUnitModal|openCategoryModal|openContactModal|openExpenseModal|openChequeModal|openAccountModal|openReceiptModal|openPaymentModal|openTransferModal|openCompanyModal|openCompanySwitcher|openExportSectionModal|openSignedLicenseModal|openAuditTrail|openWipeModal|openRestoreModal|openPeriodModal|openJournalModal|openWarehouse|openStocktakeCreate|openTransfer|openReversal|_openQuickProduct|_openQuickContact|openLedger|openKardex|openStocktake|showJournal|editInvoice|editProduct|editContact|editCheque|editAccount|openAdjustModal|printInvoice|checkHolooMigrationReadiness|runFinancialDiagnostics)\s*\(/;
   // A delete/close-period/seed action is safe to probe only up to its
   // confirmation prompt. The audit must cancel and prove zero database writes.
   const safeConfirmAction = /\.(?:deleteInvoice|deleteProduct|deleteContact|deleteCheque|deleteTransaction|deleteExpense|deleteAccount|closePeriod|seedChart)\s*\(/;
@@ -579,6 +579,9 @@
     const tabActions=[...new Set(tabs.map(el=>handler(el)))];
     const contexts=[{section:'root',tabAction:null}];
     for (const action of tabActions) contexts.push({section:'tab-'+contexts.length,tabAction:action});
+    // Delay filters until all row-scoped edit and confirmation actions have
+    // been inspected. A filter can hide the very rows needed by later probes.
+    const deferredSafeActions=[];
     for (const ctx of contexts) {
       await go(route);
       if (ctx.tabAction) {
@@ -611,22 +614,13 @@
           row.status='not-clicked';row.reason='not on audited safe-action allowlist';
         }
       }
-      // Exercise read-only navigation, filters and reversible view settings.
+      // Queue safe navigation and filter actions for after all contexts.
       const safeActions=[...new Set(controls
         .filter(el=>!el.disabled && (safeNavigate.test(handler(el)) || safeFilter.test(handler(el))))
         .map(el=>handler(el)))];
-      for (const action of safeActions) {
-        window.__Q01_AUDIT_STAGE='safe-action:'+route+':'+action;
-        await go(route);
-        if (ctx.tabAction) {
-          const tab=clickables(target()).find(el=>handler(el)===ctx.tabAction);
-          if(tab){tab.click();await wait(160);}
-        }
-        const el=clickables(target()).find(x=>handler(x)===action);
-        if(!el){failures.push({route,section:ctx.section,kind:'safe-action-vanished',handler:action});continue;}
-        inventory(route,ctx.section);
-        await press(el,route,ctx.section,safeNavigate.test(action)?'navigation':'filter');
-      }
+      if(safeActions.length) deferredSafeActions.push({
+        section:ctx.section,tabAction:ctx.tabAction,actions:safeActions
+      });
       // Open destructive confirmation prompts, but NEVER approve them here.
       // Compare every persistent store before/after Cancel to prove no write.
       const confirmStores=['users','companies','contacts','products','units','categories',
@@ -742,6 +736,30 @@
           }
         }
         dismiss();
+      }
+    }
+    // Only now click reversible navigation and filter controls. Keeping this
+    // after every row-scoped action prevents filters hiding edit/delete targets.
+    for(const group of deferredSafeActions){
+      for(const action of group.actions){
+        window.__Q01_AUDIT_STAGE='safe-action:'+route+':'+action;
+        await go(route);
+        if(group.tabAction){
+          const tab=clickables(target()).find(el=>handler(el)===group.tabAction);
+          if(!tab){
+            failures.push({route,section:group.section,kind:'safe-tab-vanished',handler:group.tabAction});
+            continue;
+          }
+          inventory(route,'root');
+          await press(tab,route,'root','tab');
+        }
+        const el=clickables(target()).find(x=>handler(x)===action);
+        if(!el){
+          failures.push({route,section:group.section,kind:'safe-action-vanished',handler:action});
+          continue;
+        }
+        inventory(route,group.section);
+        await press(el,route,group.section,safeNavigate.test(action)?'navigation':'filter');
       }
     }
   }
