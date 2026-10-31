@@ -9,6 +9,7 @@
     'dashboard','invoices','products','contacts','treasury',
     'cheques','expenses','reports','accounting','settings'
   ];
+  window.__Q01_AUDIT_STAGE='audit-start';
   const failures = [];
   const inventories = [];
   const clicks = [];
@@ -615,6 +616,7 @@
         .filter(el=>!el.disabled && (safeNavigate.test(handler(el)) || safeFilter.test(handler(el))))
         .map(el=>handler(el)))];
       for (const action of safeActions) {
+        window.__Q01_AUDIT_STAGE='safe-action:'+route+':'+action;
         await go(route);
         if (ctx.tabAction) {
           const tab=clickables(target()).find(el=>handler(el)===ctx.tabAction);
@@ -638,6 +640,7 @@
         .filter(el=>!el.disabled && safeConfirm.test(handler(el)))
         .map(el=>handler(el)))].slice(0,30);
       for(const action of confirmActions){
+        window.__Q01_AUDIT_STAGE='confirm-cancel:'+route+':'+action;
         await go(route);
         if(ctx.tabAction){
           const tab=clickables(target()).find(el=>handler(el)===ctx.tabAction);
@@ -678,6 +681,7 @@
         .filter(el=>!el.disabled && safeOpen.test(handler(el)))
         .map(el=>handler(el)))].slice(0,30);
       for (const action of openActions) {
+        window.__Q01_AUDIT_STAGE='open-modal:'+route+':'+action;
         await go(route);
         if (ctx.tabAction) {
           const tab=clickables(target()).find(el=>handler(el)===ctx.tabAction);
@@ -817,6 +821,7 @@
       missingAccessibleName:slice.filter(x=>!x.hasAccessibleName).length
     };
   }
+  window.__Q01_AUDIT_STAGE='audit-completed';
   return {
     environment:'installed-Windows-Tauri-WebView2-synthetic-VM',
     shellResults,
