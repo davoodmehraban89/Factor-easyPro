@@ -755,10 +755,15 @@ class InvoiceFormViewImpl {
         if (!item.productId) return; // intentionally empty draft row
         const row = document.querySelector(`#itemsBody tr[data-idx="${idx}"]`);
         if (!row) throw Error('ردیف کالای انتخاب‌شده در فرم یافت نشد');
-        item.qty = NumberInput.parseStrict(row.querySelector('.row-qty'), { decimals: 3 });
+        const qtyField = row.querySelector('.row-qty');
+        const priceField = row.querySelector('.row-price');
+        const discountField = row.querySelector('.row-disc');
+        if (!qtyField || !priceField || !discountField)
+          throw Error('فیلدهای عددی ردیف کالای انتخاب‌شده کامل نیستند');
+        item.qty = NumberInput.parseStrict(qtyField, { decimals: 3 });
         if (item.qty <= 0) throw Error('مقدار کالا باید مثبت باشد');
-        item.price = NumberInput.parseStrict(row.querySelector('.row-price'), { optional: true });
-        item.discountInput = NumberInput.parseStrict(row.querySelector('.row-disc'), {
+        item.price = NumberInput.parseStrict(priceField, { optional: true });
+        item.discountInput = NumberInput.parseStrict(discountField, {
           decimals: item.discountType === 'percent' ? 2 : 0, optional: true
         });
       });
