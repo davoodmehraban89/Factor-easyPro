@@ -169,6 +169,11 @@
         if (expectedNoop) {
           if (row) row.reason='idempotent-click-on-already-selected-or-clear-filter-state';
         } else {
+          // A non-idempotent safe action that produced no observable state
+          // change is a failed control, not a successful click. Propagate this
+          // into uniqueActionFailed so the native acceptance gate cannot hide
+          // it behind the separate problems array.
+          if (row) {row.status='failed';row.reason='no-observable-DOM-change';}
           failures.push({route,section,kind:'no-visible-change',
             label:name(el),handler:handler(el).slice(0,170)});
         }
