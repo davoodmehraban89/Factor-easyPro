@@ -126,6 +126,19 @@ test('A01: financial confirm never executes twice after Confirm/Cancel or while 
   assert.ok(runner.includes('modalKeyboard.staleFinancialConfirmIgnored'));
 });
 
+test('Q01: dashboard and cheque tables remain usable in the installed narrow content pane', () => {
+  const styles=fs.readFileSync(path.join(root,'src','styles','main.css'),'utf8');
+  const cheques=fs.readFileSync(path.join(root,'src','views','ChequesView.js'),'utf8');
+  const native=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
+  assert.match(styles,/\.table-wrap\s*\{[^}]*overflow-x:\s*auto/s);
+  assert.match(styles,/@media\s*\(max-width:\s*1200px\)/);
+  assert.match(styles,/\.dash-grid-main,\s*\.dash-grid-main\s*>\s*\*/);
+  assert.match(cheques,/class="table-wrap cheques-table-scroll" tabindex="0" role="region"/);
+  assert.match(cheques,/aria-label="جدول چک‌ها/);
+  assert.match(native,/responsive-horizontal-overflow/);
+  assert.match(native,/cheque-table-horizontal-scroll-accessibility/);
+});
+
 test('Q01: native audit verifies safe routes, filters, edit previews and cancel-only destructive prompts', () => {
   const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
   for(const token of ['safeNavigate','safeFilter','safeOpen','safeConfirm',
