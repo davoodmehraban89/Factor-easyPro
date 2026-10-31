@@ -605,7 +605,21 @@ async function connect(url) {
       assert.ok(measured.timingsMs.seedProducts >= 0 &&
         measured.timingsMs.seedInvoices >= 0 &&
         measured.timingsMs.companyInvoiceReadP95 >= 0 &&
-        measured.timingsMs.snapshotExport >= 0);
+        measured.timingsMs.snapshotExport >= 0 &&
+        measured.timingsMs.reportsReload >= 0 &&
+        measured.timingsMs.encryptedBackup >= 0);
+      for (const tab of ['pl','sales','products','customers']) {
+        assert.ok(measured.reportTabs?.[tab]?.htmlCharacters >= 200,
+          'A08 installed report tab was not rendered: ' + tab);
+      }
+      assert.equal(measured.encryptedBackup?.schemaVersion, 7);
+      assert.equal(measured.encryptedBackup?.products, 10000);
+      assert.equal(measured.encryptedBackup?.invoices, 50000);
+      assert.equal(measured.encryptedBackup?.filenameSuffix, '.fbackup');
+      assert.equal(measured.encryptedBackup?.companyScoped, true);
+      assert.equal(measured.encryptedBackup?.credentialsExcluded, true);
+      assert.ok(measured.encryptedBackup?.bytes > 100000,
+        'A08 large encrypted backup is suspiciously small');
       const validHeap = item =>
         Number.isSafeInteger(item?.usedSize) && item.usedSize >= 0 &&
         Number.isSafeInteger(item?.totalSize) && item.totalSize >= item.usedSize;

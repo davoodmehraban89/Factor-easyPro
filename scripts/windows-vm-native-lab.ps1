@@ -218,6 +218,22 @@ try {
       [long]$heap.afterAllocated -lt [long]$heap.afterUsed) {
     throw 'Installed native WebView2 60k workload has no valid JS heap evidence'
   }
+  $reportTabs = $nativePerformance.nativePerformance.reportTabs
+  foreach ($tab in @('pl','sales','products','customers')) {
+    if (!$reportTabs.$tab -or [int]$reportTabs.$tab.htmlCharacters -lt 200) {
+      throw "A08 installed report tab evidence is missing: $tab"
+    }
+  }
+  $encryptedBackup = $nativePerformance.nativePerformance.encryptedBackup
+  if (!$encryptedBackup -or [int]$encryptedBackup.products -ne 10000 -or
+      [int]$encryptedBackup.invoices -ne 50000 -or
+      [int]$encryptedBackup.schemaVersion -ne 7 -or
+      $encryptedBackup.filenameSuffix -ne '.fbackup' -or
+      $encryptedBackup.companyScoped -ne $true -or
+      $encryptedBackup.credentialsExcluded -ne $true -or
+      [long]$encryptedBackup.bytes -lt 100000) {
+    throw 'A08 installed encrypted company backup did not include the complete synthetic scale'
+  }
   $summary.integratedCoverage = [ordered]@{
     installedFinancialScenarios = $mandatory.Count
     offlineRoutes = 10
@@ -226,10 +242,15 @@ try {
     benchmarkInvoices = 50000
     nativeJsHeapAfterUsedBytes = [long]$heap.afterUsed
     nativeJsHeapScope = 'renderer-only'
+    reportsRendered = 4
+    reportsReloadMs = [double]$nativePerformance.nativePerformance.timingsMs.reportsReload
+    encryptedBackupBytes = [long]$encryptedBackup.bytes
+    encryptedBackupMs = [double]$encryptedBackup.durationMs
     crashRestoreRowsRemaining = 0
     independentHumanQA = 'not-covered'
     customerBackup = 'not-covered'
     physicalPrinter = 'not-covered'
+    physicalPowerLoss = 'not-tested'
   }
   $summary.status = 'PASSED'
   Write-Output 'Verified fresh installation, NSIS in-place upgrade, retained v6 records, native login and Windows DPAPI'
