@@ -4,6 +4,7 @@ import 'fake-indexeddb/auto';
 import { StorageService } from '../src/core/StorageService.js';
 import { Auth } from '../src/core/Auth.js';
 import { CompanyService } from '../src/core/CompanyService.js';
+globalThis.window ??= globalThis;
 
 const company='financial-controller-money-company';
 async function setup(){
@@ -17,14 +18,18 @@ const rows=store=>StorageService.getByCompany(store,company);
 test('treasury account and transaction controller reject malformed, fractional and unsafe rial amounts before writes',async()=>{
  await setup();
  const {TreasuryController}=await import('../src/controllers/TreasuryController.js');
- for(const invalid of [-1,1.5,Infinity,NaN,Number.MAX_SAFE_INTEGER+1,'bad','1.2','1e2',null,true,{}]){
+ const optionalInvalid=[-1,1.5,Infinity,NaN,Number.MAX_SAFE_INTEGER+1,'bad','1.2','1e2',true,{}];
+ const requiredInvalid=[...optionalInvalid,null];
+ for(const invalid of optionalInvalid){
   await assert.rejects(TreasuryController.createAccount({name:'Rejected',initialBalance:invalid}),/نامعتبر|صحیح/);
   assert.deepEqual(await rows('treasury'),[]);
  }
  const account=await TreasuryController.createAccount({name:'Synthetic cash',initialBalance:0});
- for(const invalid of [-1,1.5,Infinity,NaN,Number.MAX_SAFE_INTEGER+1,'bad','1.2','1e2',null,true,{}]){
+ for(const invalid of optionalInvalid){
   await assert.rejects(TreasuryController.updateAccount(account.id,{name:'Synthetic cash',initialBalance:invalid}),/نامعتبر|صحیح/);
   assert.equal((await StorageService.get('treasury',account.id)).initialBalance,0);
+ }
+ for(const invalid of requiredInvalid){
   await assert.rejects(TreasuryController.createTransaction({type:'receipt',toAccountId:account.id,amount:invalid}),/نامعتبر|صحیح/);
   assert.equal((await rows('treasury')).filter(x=>x.recordType==='transaction').length,0);
  }
