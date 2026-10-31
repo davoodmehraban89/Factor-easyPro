@@ -110,3 +110,39 @@ test('over-precision is never silently truncated before the ledger validation', 
   assert.throws(() => qtyUnits(NumberInput.parse(input)), /مقدار کالا نامعتبر/);
   assert.equal(qtyUnits(1.234), 1234);
 });
+
+
+test('strict numeric parsing rejects malformed grouping, letters and silent data changes',()=>{
+ for(const invalid of ['2x5','1,23','-1','12..5','1.2.3','1e2','10 x','1 000','', '10٫20a'])
+   assert.throws(()=>NumberInput.parseStrict(invalid,{decimals:3}),/نامعتبر|مجاز/);
+ assert.equal(NumberInput.parseStrict('',{optional:true}),0);
+ assert.equal(NumberInput.parseStrict('۱٬۲۳۴٫۵',{decimals:3}),1234.5);
+ assert.equal(NumberInput.parseStrict('1,234.125',{decimals:3}),1234.125);
+ assert.equal(NumberInput.parseStrict('۱٬۰۰۰'),1000);
+ assert.equal(NumberInput.parseStrict(' 10 '),10);
+ assert.throws(()=>NumberInput.parseStrict('1.2345',{decimals:3}),/اعشار/);
+ assert.throws(()=>NumberInput.parseStrict('10.5'),/اعشار/);
+ assert.equal(NumberInput.parseStrict('10.50',{decimals:2}),10.5);
+});
+
+test('invoice write path validates displayed row and VAT inputs strictly',()=>{
+ const src=readFileSync(new URL('../src/views/InvoiceFormView.js',import.meta.url),'utf8');
+ assert.match(src,/item\.qty = NumberInput\.parseStrict/);
+ assert.match(src,/item\.price = NumberInput\.parseStrict/);
+ assert.match(src,/item\.discountInput = NumberInput\.parseStrict/);
+ assert.match(src,/vatRate = NumberInput\.parseStrict/);
+ assert.match(src,/data-decimals="\\?\$\{item\.discountType === 'percent' \? 2 : 0\}"/);
+});
+
+
+test('live input never sanitizes malformed currency or quantity into another number',()=>{
+ for(const malformed of ['2x5','1,23','1 000','12..5','1e3']) {
+   const el=field(malformed,{decimals:3});
+   NumberInput._formatLive(el);
+   assert.equal(el.value,malformed);
+   assert.throws(()=>NumberInput.parseStrict(el,{decimals:3}),/نامعتبر/);
+ }
+ const valid=field('۱۲۳۴٫۵',{decimals:3});
+ NumberInput._formatLive(valid);
+ assert.equal(valid.value,'1,234.5');
+});

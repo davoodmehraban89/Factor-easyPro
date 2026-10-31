@@ -176,6 +176,13 @@ async function purchaseInvoice() {
   quantityField.dispatchEvent(new Event('input', { bubbles: true }));
   check(quantityField.value === '2.5',
     'Native input silently changed 2.5 to an incorrect financial quantity');
+  // Malformed paste must never silently become a new financial quantity.
+  quantityField.value = '2x5';
+  quantityField.dispatchEvent(new Event('input', { bubbles: true }));
+  check(quantityField.value === '2x5', 'Native formatter silently rewrote an invalid invoice amount');
+  await window.InvoiceFormView._save(false);
+  check(!(await FINORA.Storage.getAll('invoices')).some(x => x.contactId === c.id && x.kind === 'purchase'),
+    'Malformed native invoice quantity committed financial data');
   // Restore the original synthetic invoice fixture before financial posting.
   document.querySelector('.row-qty').value = '10';
   window.InvoiceFormView._onFieldChange(0, 'qty', '10');
