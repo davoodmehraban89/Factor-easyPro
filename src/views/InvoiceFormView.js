@@ -226,7 +226,7 @@ class InvoiceFormViewImpl {
 
           <div id="paidRow" style="display:${d.paymentMethod === 'partial' ? 'flex' : 'none'};gap:8px;align-items:center;margin-bottom:10px">
             <label for="invPaidAmount" style="flex:1;font-size:12.5px;margin:0">مبلغ پرداخت‌شده</label>
-            <input type="text" inputmode="numeric" class="form-control" id="invPaidAmount" style="width:140px;min-height:34px" value="${NumberInput.format(d.paidAmount || 0)}" oninput="window.InvoiceFormView._recalc()" />
+            <input type="text" inputmode="numeric" class="form-control" id="invPaidAmount" aria-label="مبلغ پرداخت‌شده" style="width:140px;min-height:34px" value="${NumberInput.format(d.paidAmount || 0)}" oninput="window.InvoiceFormView._recalc()" />
           </div>
 
           <div class="form-group" style="margin-bottom:0">
