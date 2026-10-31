@@ -742,6 +742,27 @@
     }
   }
   await FINORA.Router.go('dashboard');
+  const dashboardGrid=target()?.querySelector('.dash-grid-main');
+  if(dashboardGrid && dashboardGrid.scrollWidth>dashboardGrid.clientWidth+1){
+    failures.push({route:'dashboard',kind:'responsive-horizontal-overflow',
+      clientWidth:dashboardGrid.clientWidth,scrollWidth:dashboardGrid.scrollWidth});
+  }
+  await FINORA.Router.go('cheques');
+  const chequeScroll=target()?.querySelector('.cheques-table-scroll');
+  if(!chequeScroll || chequeScroll.tabIndex!==0 ||
+     chequeScroll.getAttribute('role')!=='region' ||
+     !chequeScroll.getAttribute('aria-label') ||
+     chequeScroll.scrollWidth<=chequeScroll.clientWidth){
+    failures.push({route:'cheques',kind:'cheque-table-horizontal-scroll-accessibility',
+      found:!!chequeScroll,tabIndex:chequeScroll?.tabIndex??-1,
+      role:chequeScroll?.getAttribute('role')||'',
+      overflow:!!chequeScroll && chequeScroll.scrollWidth>chequeScroll.clientWidth});
+  } else {
+    chequeScroll.focus();
+    if(document.activeElement!==chequeScroll){
+      failures.push({route:'cheques',kind:'cheque-table-scroll-not-keyboard-focusable'});
+    }
+  }
   const rows=[...all.values()];
   // A route/tab may render the SAME action in multiple UI states. Counting
   // each instance as a different button exaggerated the initial denominator.
