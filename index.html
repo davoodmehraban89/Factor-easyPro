@@ -25,16 +25,16 @@
       </div>
 
       <ul class="sidebar-menu" id="sidebarMenu">
-        <li><a data-page="dashboard"><span class="icon">📊</span><span class="label">داشبورد</span></a></li>
-        <li><a data-page="invoices"><span class="icon">🧾</span><span class="label">فاکتورها</span></a></li>
-        <li><a data-page="products"><span class="icon">📦</span><span class="label">کالا و انبار</span></a></li>
-        <li><a data-page="contacts"><span class="icon">👥</span><span class="label">اشخاص</span></a></li>
-        <li><a data-page="treasury"><span class="icon">🏦</span><span class="label">خزانه و بانک</span></a></li>
-        <li><a data-page="cheques"><span class="icon">💳</span><span class="label">چک‌ها</span></a></li>
-        <li><a data-page="expenses"><span class="icon">💰</span><span class="label">هزینه و درآمد</span></a></li>
-        <li><a data-page="reports"><span class="icon">📈</span><span class="label">گزارش سود و زیان</span></a></li>
-        <li><a data-page="accounting"><span class="icon">📒</span><span class="label">حسابداری (فاز ۱)</span></a></li>
-        <li><a data-page="settings"><span class="icon">⚙️</span><span class="label">تنظیمات</span></a></li>
+        <li><a href="#dashboard" data-page="dashboard"><span class="icon">📊</span><span class="label">داشبورد</span></a></li>
+        <li><a href="#invoices" data-page="invoices"><span class="icon">🧾</span><span class="label">فاکتورها</span></a></li>
+        <li><a href="#products" data-page="products"><span class="icon">📦</span><span class="label">کالا و انبار</span></a></li>
+        <li><a href="#contacts" data-page="contacts"><span class="icon">👥</span><span class="label">اشخاص</span></a></li>
+        <li><a href="#treasury" data-page="treasury"><span class="icon">🏦</span><span class="label">خزانه و بانک</span></a></li>
+        <li><a href="#cheques" data-page="cheques"><span class="icon">💳</span><span class="label">چک‌ها</span></a></li>
+        <li><a href="#expenses" data-page="expenses"><span class="icon">💰</span><span class="label">هزینه و درآمد</span></a></li>
+        <li><a href="#reports" data-page="reports"><span class="icon">📈</span><span class="label">گزارش سود و زیان</span></a></li>
+        <li><a href="#accounting" data-page="accounting"><span class="icon">📒</span><span class="label">حسابداری (فاز ۱)</span></a></li>
+        <li><a href="#settings" data-page="settings"><span class="icon">⚙️</span><span class="label">تنظیمات</span></a></li>
       </ul>
 
       <div class="sidebar-footer">
@@ -51,7 +51,7 @@
 
     <main class="main" id="main">
       <header class="header">
-        <button class="hamburger" onclick="document.getElementById('sidebar').classList.toggle('collapsed');document.getElementById('main').classList.toggle('sidebar-collapsed')">☰</button>
+        <button type="button" class="hamburger" id="sidebarToggleBtn" aria-label="بستن منوی اصلی" aria-expanded="true" aria-controls="sidebarMenu" onclick="FINORA.Layout.toggleSidebar()">☰</button>
 
         <div class="header-title">
           <h2 id="pageTitle">داشبورد</h2>

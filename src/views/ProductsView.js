@@ -167,9 +167,9 @@ class ProductsViewImpl {
             <td>${stockHtml}</td>
             <td>
               <div class="row-actions">
-                ${!isService ? `<button class="icon-btn-sm" title="کاردکس انبار" onclick="window.ProductsView.openKardex('${p.id}')">📊</button>` : ''}
-                <button class="icon-btn-sm" title="ویرایش" onclick="window.ProductsView.editProduct('${p.id}')">✏️</button>
-                <button class="icon-btn-sm danger" title="حذف" onclick="window.ProductsView.deleteProduct('${p.id}')">🗑️</button>
+                ${!isService ? `<button class="icon-btn-sm" title="کاردکس انبار" onclick="window.ProductsView.openKardex(${this._esc(JSON.stringify(String(p.id ?? '')))})">📊</button>` : ''}
+                <button class="icon-btn-sm" title="ویرایش" onclick="window.ProductsView.editProduct(${this._esc(JSON.stringify(String(p.id ?? '')))})">✏️</button>
+                <button class="icon-btn-sm danger" title="حذف" onclick="window.ProductsView.deleteProduct(${this._esc(JSON.stringify(String(p.id ?? '')))})">🗑️</button>
               </div>
             </td>
           </tr>
@@ -222,9 +222,9 @@ class ProductsViewImpl {
       <div class="toolbar">
         <div class="search-input-wrap">
           <span class="icon">🔍</span>
-          <input type="text" class="form-control" id="productSearch" placeholder="جستجو بر اساس نام، کد یا بارکد..." value="${this._esc(currentSearch)}" oninput="window.ProductsView._onSearch(this.value)" />
+          <input type="text" class="form-control" id="productSearch" aria-label="جستجوی کالا" placeholder="جستجو بر اساس نام، کد یا بارکد..." value="${this._esc(currentSearch)}" oninput="window.ProductsView._onSearch(this.value)" />
         </div>
-        <select class="form-control" style="width:auto;min-width:160px" onchange="window.ProductsView._setStockFilter(this.value)">
+        <select class="form-control" style="width:auto;min-width:160px" aria-label="وضعیت موجودی" onchange="window.ProductsView._setStockFilter(this.value)">
           <option value="" ${currentStockFilter === '' ? 'selected' : ''}>همه کالاها</option>
           <option value="low" ${currentStockFilter === 'low' ? 'selected' : ''}>⚠️ کم‌موجود</option>
           <option value="out" ${currentStockFilter === 'out' ? 'selected' : ''}>🚨 تمام‌شده</option>
@@ -280,7 +280,7 @@ class ProductsViewImpl {
           <td>${this._esc(u.symbol || '—')}</td>
           <td>
             <div class="row-actions">
-              <button class="icon-btn-sm danger" title="حذف" onclick="window.ProductsView.deleteUnit('${u.id}')">🗑️</button>
+              <button class="icon-btn-sm danger" title="حذف" onclick="window.ProductsView.deleteUnit(${this._esc(JSON.stringify(String(u.id ?? '')))})">🗑️</button>
             </div>
           </td>
         </tr>
@@ -315,7 +315,7 @@ class ProductsViewImpl {
             <td>${parent ? this._esc(parent.name) : '<span class="badge badge-muted">بدون والد</span>'}</td>
             <td>
               <div class="row-actions">
-                <button class="icon-btn-sm danger" title="حذف" onclick="window.ProductsView.deleteCategory('${c.id}')">🗑️</button>
+                <button class="icon-btn-sm danger" title="حذف" onclick="window.ProductsView.deleteCategory(${this._esc(JSON.stringify(String(c.id ?? '')))})">🗑️</button>
               </div>
             </td>
           </tr>
@@ -348,11 +348,11 @@ class ProductsViewImpl {
     };
 
     const unitOptions = cache.units.map(u =>
-      `<option value="${u.id}" ${data.unitId === u.id ? 'selected' : ''}>${this._esc(u.name)}</option>`
+      `<option value="${this._esc(u.id)}" ${data.unitId === u.id ? 'selected' : ''}>${this._esc(u.name)}</option>`
     ).join('');
 
     const catOptions = cache.categories.map(c =>
-      `<option value="${c.id}" ${data.categoryId === c.id ? 'selected' : ''}>${this._esc(c.name)}</option>`
+      `<option value="${this._esc(c.id)}" ${data.categoryId === c.id ? 'selected' : ''}>${this._esc(c.name)}</option>`
     ).join('');
 
     const body = `
@@ -422,7 +422,7 @@ class ProductsViewImpl {
 
     const footer = `
       <button class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button>
-      <button class="btn" onclick="window.ProductsView.saveProduct(${isEdit ? `'${productId}'` : 'null'})">💾 ذخیره</button>
+      <button class="btn" onclick="window.ProductsView.saveProduct(${isEdit ? this._esc(JSON.stringify(String(productId ?? ''))) : 'null'})">💾 ذخیره</button>
     `;
 
     Modal.open({
@@ -542,7 +542,7 @@ class ProductsViewImpl {
         const unitSelect = document.getElementById('pUnit');
         if (unitSelect) {
           unitSelect.innerHTML = cache.units.map(u =>
-            `<option value="${u.id}">${this._esc(u.name)}</option>`
+            `<option value="${this._esc(u.id)}">${this._esc(u.name)}</option>`
           ).join('');
           unitSelect.value = newUnit.id;
         }
@@ -575,7 +575,7 @@ class ProductsViewImpl {
   // ============================================================
   openCategoryModal(fromProductForm = false) {
     const parentOptions = cache.categories.map(c =>
-      `<option value="${c.id}">${this._esc(c.name)}</option>`
+      `<option value="${this._esc(c.id)}">${this._esc(c.name)}</option>`
     ).join('');
     const body = `
       <div class="form-group">
@@ -613,7 +613,7 @@ class ProductsViewImpl {
         const catSelect = document.getElementById('pCategory');
         if (catSelect) {
           catSelect.innerHTML = cache.categories.map(c =>
-            `<option value="${c.id}">${this._esc(c.name)}</option>`
+            `<option value="${this._esc(c.id)}">${this._esc(c.name)}</option>`
           ).join('');
           catSelect.value = newCategory.id;
         }
