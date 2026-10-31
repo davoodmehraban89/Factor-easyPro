@@ -614,9 +614,11 @@
         }
       }
       // Queue safe navigation and filter actions for after all contexts.
-      const safeActions=[...new Set(controls
+      const safeActions=[...new Map(controls
         .filter(el=>!el.disabled && (safeNavigate.test(handler(el)) || safeFilter.test(handler(el))))
-        .map(el=>handler(el)))];
+        .map(el=>[sig(el,route,ctx.section),{
+          handler:handler(el),label:name(el),tag:el.tagName.toLowerCase()
+        }])).values()];
       if(safeActions.length) deferredSafeActions.push({
         section:ctx.section,tabAction:ctx.tabAction,actions:safeActions
       });
@@ -739,7 +741,7 @@
     // after every row-scoped action prevents filters hiding edit/delete targets.
     for(const group of deferredSafeActions){
       for(const action of group.actions){
-        window.__Q01_AUDIT_STAGE='safe-action:'+route+':'+action;
+        window.__Q01_AUDIT_STAGE='safe-action:'+route+':'+action.handler;
         await go(route);
         if(group.tabAction){
           const tab=clickables(target()).find(el=>handler(el)===group.tabAction);
@@ -748,15 +750,19 @@
             continue;
           }
           inventory(route,'root');
-          await press(tab,route,'root','tab');
+          tab.click();await wait(160);
         }
-        const el=clickables(target()).find(x=>handler(x)===action);
+        const el=clickables(target()).find(x=>
+          handler(x)===action.handler && name(x)===action.label &&
+          x.tagName.toLowerCase()===action.tag);
         if(!el){
-          failures.push({route,section:group.section,kind:'safe-action-vanished',handler:action});
+          failures.push({route,section:group.section,kind:'safe-action-vanished',
+            handler:action.handler,label:action.label});
           continue;
         }
         inventory(route,group.section);
-        await press(el,route,group.section,safeNavigate.test(action)?'navigation':'filter');
+        await press(el,route,group.section,
+          safeNavigate.test(action.handler)?'navigation':'filter');
       }
     }
   }
