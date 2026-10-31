@@ -67,10 +67,18 @@ async function legacyStockAdjustmentFormAndValidation() {
   await FINORA.Modal.close();
   check(!document.querySelector('.toast-error'),
     'Legacy stock adjustment form displayed an unexpected error');
+  // Remove only this scenario's synthetic legacy movement and product. The
+  // following activation scenario deliberately refuses any pre-existing
+  // stock movement, so the disposable fixture must leave the company empty.
+  await FINORA.Storage.delete('stock_movements', movement.id);
+  await FINORA.Storage.delete('products', product.id);
+  check(!(await FINORA.Storage.getAll('stock_movements')).some(move => move.productId === product.id) &&
+    !(await FINORA.Storage.getAll('products')).some(row => row.id === product.id),
+    'Synthetic legacy stock-adjustment fixture cleanup failed');
   return { overPrecisionRejectedWithoutWrites: true,
     negativeRejectedWithoutWrites: true, validAdjustmentPosted: true,
     fractionalQuantityPreserved: true, parentKardexRefreshedInPlace: true,
-    duplicateKardexPrevented: true };
+    duplicateKardexPrevented: true, syntheticFixtureCleanedBeforeActivation: true };
 }
 
 async function integratedStockAdjustmentGuard() {
