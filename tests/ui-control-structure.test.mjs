@@ -363,6 +363,13 @@ test('Q01: safe navigation audit distinguishes same-handler controls by label an
   assert.ok(audit.includes("safeNavigate.test(action.handler)?'navigation':'filter'"));
 });
 
+test('Q01: native WebView2 runner validates the exact injected audit source before execution', () => {
+  const runner=fs.readFileSync(path.join(root,'tests','windows-vm-installed-tauri-cdp.cjs'),'utf8');
+  assert.ok(runner.includes("auditSource.split('const safeConfirmAction =').length-1,1"));
+  assert.ok(runner.includes("auditSource.includes('const deferredSafeActions=[]')"));
+  assert.ok(runner.includes("auditSource.includes('for(const group of deferredSafeActions)')"));
+});
+
 test('Q01: native click audit separates unique action signatures from repeated tab instances', () => {
   const audit = fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
   const native = fs.readFileSync(path.join(root,'tests','windows-vm-installed-tauri-cdp.cjs'),'utf8');
