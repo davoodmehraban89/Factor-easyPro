@@ -126,6 +126,20 @@ test('A01: financial confirm never executes twice after Confirm/Cancel or while 
   assert.ok(runner.includes('modalKeyboard.staleFinancialConfirmIgnored'));
 });
 
+test('Q01: native audit verifies safe routes, filters, edit previews and cancel-only destructive prompts', () => {
+  const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
+  for(const token of ['safeNavigate','safeFilter','safeOpen','safeConfirm',
+    'confirm-request','confirm-cancel','confirmation-prompt-missing',
+    'cancel-mutated-persistent-data','FINORA.Storage.getAll(store)',
+    'safe-action-vanished','editInvoice','editProduct','editContact',
+    'editCheque','runFinancialDiagnostics','checkHolooMigrationReadiness']) {
+    assert.ok(audit.includes(token),'native action audit missing coverage contract: '+token);
+  }
+  assert.match(audit,/const confirmStores=\['users','companies','contacts','products'/);
+  assert.match(audit,/category !== 'open' && category !== 'confirm-request'/);
+  assert.match(audit,/\._togglePreInvoice\|_setStockFilter\|_clearFilters/);
+});
+
 test('Q01: form labels are only associated within unambiguous modal groups', () => {
   const modal=fs.readFileSync(path.join(root,'src','core','Modal.js'),'utf8');
   const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
