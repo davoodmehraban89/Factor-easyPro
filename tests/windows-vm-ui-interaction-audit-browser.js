@@ -337,14 +337,17 @@
     message:hostileMessage,confirmText:hostileMessage,cancelText:hostileMessage,
     onConfirm:()=>{syntheticConfirmed++;}});
   await wait(25);
-  const safeConfirm=FINORA.Modal.stack[FINORA.Modal.stack.length-1]?.card;
-  if (!safeConfirm || safeConfirm.querySelector('[data-confirm-message]')?.textContent!==hostileMessage ||
-      safeConfirm.querySelector('[data-action="confirm"]')?.textContent!==hostileMessage ||
-      safeConfirm.querySelector('[data-action="cancel"]')?.textContent!==hostileMessage ||
-      safeConfirm.querySelector('img') || window.Q01_INJECTED) {
+  // Use a globally unique identifier: this source is evaluated repeatedly
+  // in one long-lived WebView2 realm alongside other test scripts.
+  const q01TextOnlyConfirmCard_20261031=FINORA.Modal.stack[FINORA.Modal.stack.length-1]?.card;
+  if (!q01TextOnlyConfirmCard_20261031 ||
+      q01TextOnlyConfirmCard_20261031.querySelector('[data-confirm-message]')?.textContent!==hostileMessage ||
+      q01TextOnlyConfirmCard_20261031.querySelector('[data-action="confirm"]')?.textContent!==hostileMessage ||
+      q01TextOnlyConfirmCard_20261031.querySelector('[data-action="cancel"]')?.textContent!==hostileMessage ||
+      q01TextOnlyConfirmCard_20261031.querySelector('img') || window.Q01_INJECTED) {
     throw Error('Confirmation message was interpreted as executable HTML');
   }
-  safeConfirm.querySelector('[data-action="cancel"]').click();
+  q01TextOnlyConfirmCard_20261031.querySelector('[data-action="cancel"]').click();
   if (syntheticConfirmed!==1 || FINORA.Modal.stack.length) {
     throw Error('Text-only confirmation Cancel executed a callback or leaked a dialog');
   }
