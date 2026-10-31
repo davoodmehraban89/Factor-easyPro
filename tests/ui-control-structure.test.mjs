@@ -352,6 +352,11 @@ test('Q01: filter clicks are deferred until row-scoped confirmation and editor p
     'filters must not hide row targets before edit/delete confirmation probes');
   assert.ok(audit.includes('safe-tab-vanished'));
   assert.ok(audit.includes('safe-action-vanished'));
+  assert.ok(audit.includes("const safeTab = /\\.(?:_switchTab|switchTab)"));
+  assert.ok(audit.includes("_switchPeriod|_setPreset"));
+  assert.ok(audit.includes("tabAction:tabActions[0]||null"));
+  assert.ok(audit.includes("const pending=[...group.actions]"));
+  assert.ok(audit.includes("for(const candidate of clickables(target()).filter(x=>"));
   assert.doesNotMatch(audit,/safeOpen = .*changeStatus|safeOpen = .*_printInvoice/);
 });
 
