@@ -1,7 +1,8 @@
-'use strict';
-const test=require('node:test');
-const assert=require('node:assert/strict');
-const {annotateAudit,coverageFor}=require('../scripts/q01-native-action-coverage.cjs');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import coverage from '../scripts/q01-native-action-coverage.cjs';
+
+const { annotateAudit, coverageFor } = coverage;
 
 test('Q01 maps invoice and treasury handlers only when every required native scenario passed',()=>{
  const scenarios={
