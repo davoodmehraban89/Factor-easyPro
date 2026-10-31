@@ -113,12 +113,13 @@ test('over-precision is never silently truncated before the ledger validation', 
 
 
 test('strict numeric parsing rejects malformed grouping, letters and silent data changes',()=>{
- for(const invalid of ['2x5','1,23','-1','12..5','1.2.3','1e2','10 ','1 000','', '10٫20a'])
+ for(const invalid of ['2x5','1,23','-1','12..5','1.2.3','1e2','10 x','1 000','', '10٫20a'])
    assert.throws(()=>NumberInput.parseStrict(invalid,{decimals:3}),/نامعتبر|مجاز/);
  assert.equal(NumberInput.parseStrict('',{optional:true}),0);
  assert.equal(NumberInput.parseStrict('۱٬۲۳۴٫۵',{decimals:3}),1234.5);
  assert.equal(NumberInput.parseStrict('1,234.125',{decimals:3}),1234.125);
  assert.equal(NumberInput.parseStrict('۱٬۰۰۰'),1000);
+ assert.equal(NumberInput.parseStrict(' 10 '),10);
  assert.throws(()=>NumberInput.parseStrict('1.2345',{decimals:3}),/اعشار/);
  assert.throws(()=>NumberInput.parseStrict('10.5'),/اعشار/);
  assert.equal(NumberInput.parseStrict('10.50',{decimals:2}),10.5);
