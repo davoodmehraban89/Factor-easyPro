@@ -334,8 +334,10 @@ test('Q01: financial mutations are not mislabeled safe by the static control cat
 
 test('Q01: native UI audit has no duplicate safeConfirm lexical declaration', () => {
   const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
-  const declarations=audit.match(/\\bconst\\s+safeConfirm\\s*=/g)||[];
-  assert.equal(declarations.length,1,'safeConfirm action matcher must be declared exactly once');
+  const declarations=audit.match(/\\bconst\\s+safeConfirmAction\\s*=/g)||[];
+  assert.equal(declarations.length,1,'safeConfirmAction matcher must be declared exactly once');
+  assert.doesNotMatch(audit,/\\bconst\\s+safeConfirm\\s*=/,
+    'the matcher must not collide with modal fixture variable names');
   assert.match(audit,/const safeConfirmDialog=FINORA\\.Modal\\.stack/);
   assert.match(audit,/safeConfirmDialog\\.querySelector/);
 });
