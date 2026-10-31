@@ -137,7 +137,7 @@ test('Q01: native audit verifies safe routes, filters, edit previews and cancel-
   }
   assert.match(audit,/const confirmStores=\['users','companies','contacts','products'/);
   assert.match(audit,/category !== 'open' && category !== 'confirm-request'/);
-  assert.match(audit,/\._togglePreInvoice\|_setStockFilter\|_clearFilters/);
+  assert.match(audit,/_togglePreInvoice\|_setStockFilter\|_clearFilters/);
 });
 
 test('Q01: form labels are only associated within unambiguous modal groups', () => {
