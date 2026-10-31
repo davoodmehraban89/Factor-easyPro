@@ -133,3 +133,16 @@ test('invoice write path validates displayed row and VAT inputs strictly',()=>{
  assert.match(src,/vatRate = NumberInput\.parseStrict/);
  assert.match(src,/data-decimals="\\?\$\{item\.discountType === 'percent' \? 2 : 0\}"/);
 });
+
+
+test('live input never sanitizes malformed currency or quantity into another number',()=>{
+ for(const malformed of ['2x5','1,23','1 000','12..5','1e3']) {
+   const el=field(malformed,{decimals:3});
+   NumberInput._formatLive(el);
+   assert.equal(el.value,malformed);
+   assert.throws(()=>NumberInput.parseStrict(el,{decimals:3}),/نامعتبر/);
+ }
+ const valid=field('۱۲۳۴٫۵',{decimals:3});
+ NumberInput._formatLive(valid);
+ assert.equal(valid.value,'1,234.5');
+});

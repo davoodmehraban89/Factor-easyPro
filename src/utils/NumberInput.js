@@ -79,6 +79,12 @@ export const NumberInput = {
     const oldValue = el.value;
     const cursor = el.selectionStart ?? oldValue.length;
     const digits = this._fractionDigits(el);
+    // Do not silently turn malformed pasted text (2x5, 1,23) into a
+    // different amount. Leave it visible so strict save validation rejects it.
+    const normalized = latinDigits(oldValue).replace(/[٬،]/g, ',');
+    if (!/^-?[\d,]*(?:\.[\d]*)?$/.test(normalized)) return;
+    const whole = normalized.split('.')[0].replace(/^-/, '');
+    if (whole.includes(',') && !/^\d{1,3}(?:,\d{3})+$/.test(whole)) return;
     const formatted = this._formatText(oldValue, digits);
     if (formatted === oldValue) return;
 

@@ -416,9 +416,17 @@ class InvoiceFormViewImpl {
     if (field === 'discount') {
       // The textbox contains raw percent/rial input, not the computed rial
       // discount. _recalc() sets item.discount only after using this value.
-      ctx.data.items[idx].discountInput = NumberInput.parse(value);
+      try {
+        ctx.data.items[idx].discountInput = NumberInput.parseStrict(value, {
+          decimals: ctx.data.items[idx].discountType === 'percent' ? 2 : 0, optional: true
+        });
+      } catch (_) { ctx.data.items[idx].discountInput = NaN; }
     } else if (field === 'qty' || field === 'price') {
-      ctx.data.items[idx][field] = NumberInput.parse(value);
+      try {
+        ctx.data.items[idx][field] = NumberInput.parseStrict(value, {
+          decimals: field === 'qty' ? 3 : 0, optional: field !== 'qty'
+        });
+      } catch (_) { ctx.data.items[idx][field] = NaN; }
     } else {
       ctx.data.items[idx][field] = value;
     }
