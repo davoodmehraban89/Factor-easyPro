@@ -649,6 +649,14 @@ class InvoiceFormViewImpl {
     const name = document.getElementById('qpName').value.trim();
     if (!name) { Toast.warning('نام کالا الزامی است'); return; }
 
+    let buyPrice, sellPrice;
+    try {
+      buyPrice = NumberInput.parseStrict(document.getElementById('qpBuyPrice'), { optional: true });
+      sellPrice = NumberInput.parseStrict(document.getElementById('qpSellPrice'), { optional: true });
+    } catch (error) {
+      Toast.warning('قیمت کالای جدید نامعتبر است: ' + error.message);
+      return;
+    }
     const data = {
       code: document.getElementById('qpCode').value,
       barcode: '',
@@ -656,8 +664,8 @@ class InvoiceFormViewImpl {
       unit: document.getElementById('qpUnit').value || 'عدد',
       unitId: null,
       categoryId: null,
-      buyPrice: NumberInput.parse(document.getElementById('qpBuyPrice').value),
-      sellPrice: NumberInput.parse(document.getElementById('qpSellPrice').value),
+      buyPrice,
+      sellPrice,
       trackInventory: document.getElementById('qpTrackInventory').checked,
       isActiveSell: true,
       isActiveBuy: true,

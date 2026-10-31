@@ -210,12 +210,22 @@ class ProductControllerImpl {
     if (await RetailPostingService.isEnabled())
       throw new Error('گردش دستی موجودی در شرکت یکپارچه مجاز نیست؛ از خرید، فروش، انتقال یا انبارگردانی استفاده کنید');
     const user = Auth.current();
+    const company = await DataScope.companyId();
+    const product = await StorageService.get('products', productId);
+    if (!product || product.companyId !== company)
+      throw Error('کالای گردش انبار متعلق به شرکت فعال نیست');
+    if (!['in','out','adjust'].includes(type))
+      throw Error('نوع گردش انبار نامعتبر است');
+    const quantity = Number(qty);
+    if (!Number.isFinite(quantity) || quantity < 0 || (type !== 'adjust' && quantity === 0))
+      throw Error('مقدار گردش انبار نامعتبر است');
+    if (quantity > 0) qtyUnits(quantity);
     const movement = {
       id: StorageService.uid('mv_'),
       ownerUserId: user.id,
       productId,
       type,
-      qty: Number(qty) || 0,
+      qty: quantity,
       refType,
       refId,
       note,

@@ -189,7 +189,13 @@ class StockKardexModalImpl {
   }
 
   async saveAdjust(productId) {
-    const newQty = NumberInput.parse(document.getElementById('adjQty').value);
+    let newQty;
+    try {
+      newQty = NumberInput.parseStrict(document.getElementById('adjQty'), { decimals: 3 });
+    } catch (error) {
+      Toast.warning('موجودی معتبر نیست: ' + error.message);
+      return;
+    }
     const note = (document.getElementById('adjNote').value || '').trim();
 
     if (isNaN(newQty) || newQty < 0) {
