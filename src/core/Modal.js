@@ -190,8 +190,18 @@ class ModalManager {
     const confirmButton = footerEl.querySelector('[data-action="confirm"]');
     cancelButton.textContent = String(cancelText ?? '');
     confirmButton.textContent = String(confirmText ?? '');
-    cancelButton.onclick = () => this.close();
+    // A confirmation can mutate posted financial records. Consume a valid
+    // decision only once, and ignore detached/hidden parent buttons.
+    let settled = false;
+    const isActive = () => this.stack[this.stack.length - 1] === modal;
+    cancelButton.onclick = () => {
+      if (settled || !isActive()) return;
+      settled = true;
+      this.close();
+    };
     confirmButton.onclick = () => {
+      if (settled || !isActive()) return;
+      settled = true;
       this.close();
       if (onConfirm) onConfirm();
     };
