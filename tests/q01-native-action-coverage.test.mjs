@@ -34,6 +34,17 @@ test('Q01 maps contact, product, unit and category UI writes only to installed f
   'A scenario with an explicit failed assertion must not be reported as coverage');
 });
 
+test('Q01 maps legacy stock adjustment and integrated-mode guard only to both native scenarios',()=>{
+ const evidence={nativeFunctional:{
+  'legacy-stock-adjustment-form-and-validation':{validAdjustmentPosted:true,overPrecisionRejectedWithoutWrites:true},
+  'integrated-stock-adjustment-guard':{manualAdjustmentHidden:true,directOpenBlocked:true,directSaveBlocked:true}
+ }};
+ assert.equal(coverageFor("window.StockKardexModal.openAdjustModal('prod_1')",evidence).kind,'native-ui-guarded-action');
+ assert.equal(coverageFor("window.StockKardexModal.saveAdjust('prod_1')",evidence).kind,'native-ui-stock-posting');
+ evidence.nativeFunctional['integrated-stock-adjustment-guard'].directSaveBlocked=false;
+ assert.equal(coverageFor("window.StockKardexModal.openAdjustModal('prod_1')",evidence),null);
+});
+
 test('Q01 labels encrypted backup UI coverage only after the installed backup test passes',()=>{
  assert.equal(coverageFor('window.SettingsView.downloadBackup()',{}),null);
  assert.equal(coverageFor('window.SettingsView.restoreBackup()',{encryptedCompanyBackup:true}).kind,'native-encrypted-backup-ui');
