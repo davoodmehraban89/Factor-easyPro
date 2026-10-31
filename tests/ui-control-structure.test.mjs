@@ -370,6 +370,14 @@ test('Q01: filter clicks are deferred until row-scoped confirmation and editor p
   assert.doesNotMatch(audit,/safeOpen = .*changeStatus|safeOpen = .*_printInvoice/);
 });
 
+test('Q01: safe navigation audit distinguishes same-handler controls by label and tag', () => {
+  const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
+  assert.ok(audit.includes('handler:handler(el),label:name(el),tag:el.tagName.toLowerCase()'));
+  assert.ok(audit.includes('handler(x)===action.handler && name(x)===action.label'));
+  assert.ok(audit.includes('tab.click();await wait(160);'));
+  assert.ok(audit.includes("safeNavigate.test(action.handler)?'navigation':'filter'"));
+});
+
 test('Q01: native click audit separates unique action signatures from repeated tab instances', () => {
   const audit = fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
   const native = fs.readFileSync(path.join(root,'tests','windows-vm-installed-tauri-cdp.cjs'),'utf8');
