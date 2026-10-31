@@ -768,7 +768,14 @@
                 handler:handler(nestedAction)});
             }
             auditFields(childDialog,route,ctx.section+'/nested-modal');
-            const childCancel=clickables(childDialog).find(x=>
+            // Inventory every child-dialog action, including save controls
+            // that are deliberately not clicked in this generic sweep. Their
+            // positive/negative behavior must be covered by a dedicated
+            // synthetic workflow or remain explicitly unverified.
+            const childControls=clickables(childDialog);
+            childControls.forEach(control=>
+              registerControl(control,route,ctx.section+'/nested-modal'));
+            const childCancel=childControls.find(x=>
               /FINORA\.Modal\.close|Modal\.closeAll/.test(handler(x)) ||
               /^(انصراف|بستن|بازگشت|✕|×)$/.test(name(x)));
             if(childCancel){
