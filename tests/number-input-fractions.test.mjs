@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { NumberInput } from '../src/utils/NumberInput.js';
+import { qtyUnits } from '../src/core/RetailFinanceCore.mjs';
 
 function field(value, { decimals, type = 'text', inputmode = 'numeric', step } = {}) {
   const attrs = new Map([['inputmode', inputmode]]);
@@ -98,4 +99,14 @@ test('an explicit zero VAT rate remains zero when reopening an invoice', () => {
   assert.equal(NumberInput.format(null ?? 10, 2), '10');
   const form = readFileSync(new URL('../src/views/InvoiceFormView.js', import.meta.url), 'utf8');
   assert.ok(form.includes('d.vatRate ?? 10, 2'), 'zero tax must not be replaced with ten percent');
+});
+
+
+test('over-precision is never silently truncated before the ledger validation', () => {
+  const input = field('1.23456', { decimals: 3 });
+  NumberInput._formatLive(input);
+  assert.equal(input.value, '1.23456');
+  assert.equal(NumberInput.parse(input), 1.23456);
+  assert.throws(() => qtyUnits(NumberInput.parse(input)), /مقدار کالا نامعتبر/);
+  assert.equal(qtyUnits(1.234), 1234);
 });

@@ -47,7 +47,8 @@ export const NumberInput = {
     const numeric = positive.replace(/[^\d.]/g, '');
     const point = numeric.indexOf('.');
     let integer = (point >= 0 ? numeric.slice(0, point) : numeric).replace(/^0+(?=\d)/, '');
-    const fraction = point >= 0 ? numeric.slice(point + 1).replace(/\./g, '').slice(0, digits || 3) : '';
+    // Never silently truncate over-precision: finance validation must reject it.
+    const fraction = point >= 0 ? numeric.slice(point + 1).replace(/\./g, '') : '';
     if (!integer && (point >= 0 || negative)) integer = '0';
     const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     const decimal = point >= 0 ? '.' + fraction : '';
