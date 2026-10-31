@@ -5,6 +5,8 @@ const RULES=[
 {match:'window.ProductsView.saveProduct(',scenarios:['products-crud-form-and-nested-classifiers'],kind:'native-ui-create-and-update',note:'ثبت و ویرایش کالا از فرم واقعی با قیمت و نقطه سفارش و طبقه‌بندی انتخاب‌شده'},
 {match:'window.ProductsView.saveUnit(true)',scenarios:['products-crud-form-and-nested-classifiers'],kind:'native-ui-nested-create',note:'ایجاد واحد از پنجره تو‌در‌تو و انتخاب آن در فرم والد کالا'},
 {match:'window.ProductsView.saveCategory(true)',scenarios:['products-crud-form-and-nested-classifiers'],kind:'native-ui-nested-create',note:'ایجاد گروه از پنجره تو‌در‌تو و انتخاب آن در فرم والد کالا'},
+{match:'window.StockKardexModal.openAdjustModal(',scenarios:['legacy-stock-adjustment-form-and-validation','integrated-stock-adjustment-guard'],kind:'native-ui-guarded-action',note:'اصلاح دستی در حالت قدیمی و جلوگیری از نمایش/فراخوانی آن در حسابداری یکپارچه'},
+{match:'window.StockKardexModal.saveAdjust(',scenarios:['legacy-stock-adjustment-form-and-validation'],kind:'native-ui-stock-posting',note:'رد مقدار منفی و دقت بیش از سه رقم و ثبت موجودی واقعی در نصب ویندوز'},
 {match:'window.TreasuryView.saveAccount(null)',scenarios:['partial-sale-and-inventory'],kind:'native-fixture-create',note:'ایجاد حساب خزانه در سناریوی فروش'},
 {match:"window.TreasuryView._saveTransaction('transfer')",scenarios:['inactive-treasury-cheque-settlement'],kind:'native-negative-guard-only',note:'فقط رد انتقال به حساب غیرفعال؛ مسیر مثبت مستقل نیست'},
 {match:"window.TreasuryView._saveTransaction('receipt')",scenarios:['return-cash-settlement-net-credit'],kind:'native-fixture-positive-and-negative',note:'رد دریافت بیش از مانده و ثبت دریافت مجاز'},
