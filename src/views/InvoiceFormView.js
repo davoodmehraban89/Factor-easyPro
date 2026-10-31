@@ -211,7 +211,7 @@ class InvoiceFormViewImpl {
               <input type="checkbox" id="invVatEnabled" ${d.vatEnabled ? 'checked' : ''} onchange="window.InvoiceFormView._recalc()" />
               مالیات ارزش افزوده
             </label>
-            <input type="text" inputmode="numeric" class="form-control" id="invVatRate" aria-label="درصد مالیات بر ارزش افزوده" style="width:80px;min-height:34px" data-decimals="2" value="${NumberInput.format(d.vatRate || 10, 2)}" oninput="window.InvoiceFormView._recalc()" />
+            <input type="text" inputmode="numeric" class="form-control" id="invVatRate" aria-label="درصد مالیات بر ارزش افزوده" style="width:80px;min-height:34px" data-decimals="2" value="${NumberInput.format(d.vatRate ?? 10, 2)}" oninput="window.InvoiceFormView._recalc()" />
             <span style="font-size:12.5px;color:var(--text-muted)">٪</span>
           </div>
 

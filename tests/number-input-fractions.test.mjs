@@ -89,5 +89,13 @@ test('invoice quantity, reorder threshold and stocktake adjustment opt in to thr
     assert.ok(src.includes('data-decimals="3" value="${NumberInput.format(' + name + ', 3)}"'), path);
   }
   const invoice = readFileSync(new URL('../src/views/InvoiceFormView.js', import.meta.url), 'utf8');
-  assert.ok(invoice.includes('data-decimals="2" value="${NumberInput.format(d.vatRate || 10, 2)}"'), 'VAT fractional input');
+  assert.ok(invoice.includes('data-decimals="2" value="${NumberInput.format(d.vatRate ?? 10, 2)}"'), 'VAT fractional input');
+});
+
+test('an explicit zero VAT rate remains zero when reopening an invoice', () => {
+  const savedRate = 0;
+  assert.equal(NumberInput.format(savedRate ?? 10, 2), '0');
+  assert.equal(NumberInput.format(null ?? 10, 2), '10');
+  const form = readFileSync(new URL('../src/views/InvoiceFormView.js', import.meta.url), 'utf8');
+  assert.ok(form.includes('d.vatRate ?? 10, 2'), 'zero tax must not be replaced with ten percent');
 });
