@@ -126,6 +126,20 @@ test('A01: financial confirm never executes twice after Confirm/Cancel or while 
   assert.ok(runner.includes('modalKeyboard.staleFinancialConfirmIgnored'));
 });
 
+test('Q01: native audit verifies safe routes, filters, edit previews and cancel-only destructive prompts', () => {
+  const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
+  for(const token of ['safeNavigate','safeFilter','safeOpen','safeConfirm',
+    'confirm-request','confirm-cancel','confirmation-prompt-missing',
+    'cancel-mutated-persistent-data','FINORA.Storage.getAll(store)',
+    'safe-action-vanished','editInvoice','editProduct','editContact',
+    'editCheque','runFinancialDiagnostics','checkHolooMigrationReadiness']) {
+    assert.ok(audit.includes(token),'native action audit missing coverage contract: '+token);
+  }
+  assert.match(audit,/const confirmStores=\['users','companies','contacts','products'/);
+  assert.match(audit,/category !== 'open' && category !== 'confirm-request'/);
+  assert.match(audit,/_togglePreInvoice\|_setStockFilter\|_clearFilters/);
+});
+
 test('Q01: form labels are only associated within unambiguous modal groups', () => {
   const modal=fs.readFileSync(path.join(root,'src','core','Modal.js'),'utf8');
   const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
@@ -316,6 +330,56 @@ test('Q01: financial mutations are not mislabeled safe by the static control cat
   } finally {
     fs.rmSync(dir,{recursive:true,force:true});
   }
+});
+
+test('Q01: native UI audit has no duplicate safeConfirm lexical declaration', () => {
+  const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
+  assert.equal(audit.split('const safeConfirmAction =').length-1,1,
+    'safeConfirmAction matcher must be declared exactly once');
+  assert.equal(audit.split('const safeConfirm =').length-1,0,
+    'the matcher must not collide with modal fixture variable names');
+  assert.ok(audit.includes('const safeConfirmDialog=FINORA.Modal.stack'));
+  assert.ok(audit.includes('safeConfirmDialog.querySelector'));
+});
+
+test('Q01: filter clicks are deferred until row-scoped confirmation and editor probes finish', () => {
+  const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
+  const queue=audit.indexOf('const deferredSafeActions=[]');
+  const confirm=audit.indexOf('const confirmActions=');
+  const open=audit.indexOf('const openActions=');
+  const deferred=audit.indexOf('for(const group of deferredSafeActions)');
+  assert.ok(queue>=0 && confirm>queue && open>confirm && deferred>open,
+    'filters must not hide row targets before edit/delete confirmation probes');
+  assert.ok(audit.includes('safe-tab-vanished'));
+  assert.ok(audit.includes('safe-action-vanished'));
+  assert.ok(audit.includes("const safeTab = /\\.(?:_switchTab|switchTab)"));
+  assert.ok(audit.includes("_switchPeriod|_setPreset"));
+  assert.ok(audit.includes("tabAction:tabActions[0]||null"));
+  assert.ok(audit.includes("const pending=[...group.actions]"));
+  assert.ok(audit.includes("for(const candidate of clickables(target()).filter(x=>"));
+  assert.doesNotMatch(audit,/safeOpen = .*changeStatus|safeOpen = .*_printInvoice/);
+});
+
+test('Q01: safe navigation audit distinguishes same-handler controls by label and tag', () => {
+  const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
+  assert.ok(audit.includes('handler:handler(el),label:name(el),tag:el.tagName.toLowerCase()'));
+  assert.ok(audit.includes('handler(x)===action.handler && name(x)===action.label'));
+  assert.ok(audit.includes('tab.click();await wait(160);'));
+  assert.ok(audit.includes("safeNavigate.test(action.handler)?'navigation':'filter'"));
+});
+
+test('Q01: native WebView2 runner validates the exact injected audit source before execution', () => {
+  const runner=fs.readFileSync(path.join(root,'tests','windows-vm-installed-tauri-cdp.cjs'),'utf8');
+  assert.ok(runner.includes("auditSource.split('const safeConfirmAction =').length-1,1"));
+  assert.ok(runner.includes("auditSource.includes('const deferredSafeActions=[]')"));
+  assert.ok(runner.includes("auditSource.includes('for(const group of deferredSafeActions)')"));
+});
+
+test('Q01: partial-payment amount field has an explicit associated label', () => {
+  const view=fs.readFileSync(path.join(root,'src','views','InvoiceFormView.js'),'utf8');
+  assert.match(view,/label for="invPaidAmount"/);
+  assert.match(view,/id="invPaidAmount"/);
+  assert.match(view,/مبلغ پرداخت‌شده/);
 });
 
 test('Q01: native click audit separates unique action signatures from repeated tab instances', () => {

@@ -377,6 +377,12 @@ async function connect(url) {
       // guarded by the real synthetic functional matrix already run above.
       const auditSource = fs.readFileSync(
         path.join(__dirname, 'windows-vm-ui-interaction-audit-browser.js'), 'utf8');
+      assert.equal(auditSource.split('const safeConfirmAction =').length-1,1,
+        'native UI audit must define its cancel-only destructive matcher exactly once');
+      assert.ok(auditSource.includes('const deferredSafeActions=[]'),
+        'native UI audit must defer filters until row-scoped probes finish');
+      assert.ok(auditSource.includes('for(const group of deferredSafeActions)'),
+        'native UI audit must execute queued filters after editor/confirmation probes');
       const audit = await cdp.evaluate(auditSource, 240000);
       assert.equal(audit.environment, 'installed-Windows-Tauri-WebView2-synthetic-VM');
       assert.equal(audit.routesVisited, 10);
@@ -417,9 +423,18 @@ async function connect(url) {
         'Every nonclicked control must have a machine-readable reason');
       assert.ok(audit.fieldsInspected >= 15, 'Visible form-field inventory unexpectedly small');
       assert.ok(Number.isInteger(audit.fieldsMissingProgrammaticLabel), 'No programmatic label coverage reported');
-      assert.ok(audit.fieldsMissingProgrammaticLabel <= 5,
-        'Financial field accessible labels regressed: '+audit.fieldsMissingProgrammaticLabel);
+      assert.equal(audit.fieldsMissingProgrammaticLabel, 0,
+        'Every visible financial input must have a programmatic label');
       assert.ok(audit.safeClickCount >= 15, 'Safe interaction coverage unexpectedly low');
+      assert.equal(audit.uniqueActionFailed, 0, 'A native UI action click failed');
+      assert.equal(audit.brokenHandlerCount, 0, 'A visible control points to a missing handler');
+      assert.equal(audit.accessibilityNameGaps, 0, 'A visible control has no accessible name');
+      const unresolvedActionTargets=audit.problems.filter(x=>[
+        'safe-action-vanished','safe-tab-vanished','confirm-action-vanished',
+        'open-action-vanished'
+      ].includes(x.kind));
+      assert.deepEqual(unresolvedActionTargets,[],
+        'Native UI action targets disappeared during navigation/filter probes');
       assert.equal(audit.customerDataUsed, false);
       assert.equal(audit.financialActionsNotBulkClicked, true);
       assert.equal(audit.everyActionVerified, false,

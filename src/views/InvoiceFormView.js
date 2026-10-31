@@ -225,7 +225,7 @@ class InvoiceFormViewImpl {
           </div>
 
           <div id="paidRow" style="display:${d.paymentMethod === 'partial' ? 'flex' : 'none'};gap:8px;align-items:center;margin-bottom:10px">
-            <span style="flex:1;font-size:12.5px">مبلغ پرداخت‌شده</span>
+            <label for="invPaidAmount" style="flex:1;font-size:12.5px;margin:0">مبلغ پرداخت‌شده</label>
             <input type="text" inputmode="numeric" class="form-control" id="invPaidAmount" style="width:140px;min-height:34px" value="${NumberInput.format(d.paidAmount || 0)}" oninput="window.InvoiceFormView._recalc()" />
           </div>
 

@@ -31,8 +31,15 @@
     handler(el).replace(/\s+/g,' ').slice(0,180)
   ].join('|');
   const dangerous = /(?:^|[.\s])(?:_?(?:save|delete|wipe|restore|post|submit|confirm|activate|seed|commit|final|approve|logout|export|import|download|print|settle|apply|reset|changeStatus|remove)\w*)\s*\(/i;
-  const safeTab = /\.(?:_switchTab|switchTab|_switchPeriod|_setPreset)\s*\(/;
-  const safeOpen = /\.(?:openNewInvoice|openProductModal|openUnitModal|openCategoryModal|openContactModal|openExpenseModal|openChequeModal|openAccountModal|openReceiptModal|openPaymentModal|openTransferModal|openCompanyModal|openCompanySwitcher|openExportSectionModal|openSignedLicenseModal|openAuditTrail|openWipeModal|openRestoreModal|openPeriodModal|openJournalModal|openWarehouse|openStocktakeCreate|openTransfer|openReversal|_openQuickProduct|_openQuickContact|openLedger|openKardex|openStocktake|showJournal)\s*\(/;
+  const safeTab = /\.(?:_switchTab|switchTab)\s*\(/;
+  const safeNavigate = /FINORA\.Router\.go\s*\(/;
+  const safeFilter = /\.(?:_togglePreInvoice|_setStockFilter|_clearFilters|_applyCustom|_switchPeriod|_setPreset|refresh|setTheme)\s*\(/;
+  // These handlers only open an editor/preview/diagnostic dialog. The audit
+  // closes it without saving; a separate fixture-backed test owns commits.
+  const safeOpen = /\.(?:openNewInvoice|openProductModal|openUnitModal|openCategoryModal|openContactModal|openExpenseModal|openChequeModal|openAccountModal|openReceiptModal|openPaymentModal|openTransferModal|openCompanyModal|openCompanySwitcher|openExportSectionModal|openSignedLicenseModal|openAuditTrail|openWipeModal|openRestoreModal|openPeriodModal|openJournalModal|openWarehouse|openStocktakeCreate|openTransfer|openReversal|_openQuickProduct|_openQuickContact|openLedger|openKardex|openStocktake|showJournal|editInvoice|editProduct|editContact|editCheque|editAccount|openAdjustModal|printInvoice|checkHolooMigrationReadiness|runFinancialDiagnostics)\s*\(/;
+  // A delete/close-period/seed action is safe to probe only up to its
+  // confirmation prompt. The audit must cancel and prove zero database writes.
+  const safeConfirmAction = /\.(?:deleteInvoice|deleteProduct|deleteContact|deleteCheque|deleteTransaction|deleteExpense|deleteAccount|closePeriod|seedChart)\s*\(/;
   const clickables = (root) => [...root.querySelectorAll(
     'button, a, [role="button"], input[type="button"], input[type="submit"], [onclick]'
   )].filter(isVisible);
@@ -122,17 +129,24 @@
     const row=all.get(k);
     const before=target().innerHTML;
     const beforeModal=!!document.querySelector('.modal-backdrop');
+    const beforeRoute=FINORA.Router.current();
+    const beforeTheme=document.documentElement.getAttribute('data-theme');
+    const beforeToasts=[...document.querySelectorAll('.toast')].map(x=>x.textContent.trim()).join('|');
     try {
       el.click(); await wait(180);
       if (!noError()) throw Error('error toast or page render error');
       const after=target()?.innerHTML||'';
       const afterModal=!!document.querySelector('.modal-backdrop');
-      const changed = before !== after || beforeModal !== afterModal;
+      const afterRoute=FINORA.Router.current();
+      const afterTheme=document.documentElement.getAttribute('data-theme');
+      const afterToasts=[...document.querySelectorAll('.toast')].map(x=>x.textContent.trim()).join('|');
+      const changed = before !== after || beforeModal !== afterModal ||
+        beforeRoute !== afterRoute || beforeTheme !== afterTheme || beforeToasts !== afterToasts;
       clicks.push({route,section,category,label:name(el),
         handler:handler(el).slice(0,170),changed,afterModal});
       if (row) {row.status='clicked';row.reason=changed?'visible-state-changed':'no-observable-DOM-change';}
       if (!changed) {
-        const expectedNoop = /\._clearFilters\(\)|\.switchTab\('journals'\)/.test(handler(el));
+        const expectedNoop = /\._clearFilters\(\)|\._applyCustom\(\)|\.refresh\(\)|\.switchTab\('journals'\)/.test(handler(el));
         if (expectedNoop) {
           if (row) row.reason='idempotent-click-on-already-selected-or-clear-filter-state';
         } else {
@@ -143,7 +157,7 @@
     } catch(error) {
       failures.push({route,section,kind:'click-error',label:name(el),error:String(error.message).slice(0,170)});
       if (row) {row.status='failed';row.reason='UI click error';}
-    } finally { if (category !== 'open') dismiss(); }
+    } finally { if (category !== 'open' && category !== 'confirm-request') dismiss(); }
   }
   // Explicit shell regression: semantic links, keyboard focus, active route,
   // persistent sidebar collapse and reversible theme toggle.
@@ -322,14 +336,14 @@
     message:hostileMessage,confirmText:hostileMessage,cancelText:hostileMessage,
     onConfirm:()=>{syntheticConfirmed++;}});
   await wait(25);
-  const safeConfirm=FINORA.Modal.stack[FINORA.Modal.stack.length-1]?.card;
-  if (!safeConfirm || safeConfirm.querySelector('[data-confirm-message]')?.textContent!==hostileMessage ||
-      safeConfirm.querySelector('[data-action="confirm"]')?.textContent!==hostileMessage ||
-      safeConfirm.querySelector('[data-action="cancel"]')?.textContent!==hostileMessage ||
-      safeConfirm.querySelector('img') || window.Q01_INJECTED) {
+  const safeConfirmDialog=FINORA.Modal.stack[FINORA.Modal.stack.length-1]?.card;
+  if (!safeConfirmDialog || safeConfirmDialog.querySelector('[data-confirm-message]')?.textContent!==hostileMessage ||
+      safeConfirmDialog.querySelector('[data-action="confirm"]')?.textContent!==hostileMessage ||
+      safeConfirmDialog.querySelector('[data-action="cancel"]')?.textContent!==hostileMessage ||
+      safeConfirmDialog.querySelector('img') || window.Q01_INJECTED) {
     throw Error('Confirmation message was interpreted as executable HTML');
   }
-  safeConfirm.querySelector('[data-action="cancel"]').click();
+  safeConfirmDialog.querySelector('[data-action="cancel"]').click();
   if (syntheticConfirmed!==1 || FINORA.Modal.stack.length) {
     throw Error('Text-only confirmation Cancel executed a callback or leaked a dialog');
   }
@@ -562,8 +576,11 @@
     // Evaluate each known safe top-level tab. The router is reset between
     // clicks to avoid mutating references after HTML rerendering.
     const tabActions=[...new Set(tabs.map(el=>handler(el)))];
-    const contexts=[{section:'root',tabAction:null}];
-    for (const action of tabActions) contexts.push({section:'tab-'+contexts.length,tabAction:action});
+    const contexts=[{section:'root',tabAction:tabActions[0]||null}];
+    for (const action of tabActions.slice(1)) contexts.push({section:'tab-'+contexts.length,tabAction:action});
+    // Delay filters until all row-scoped edit and confirmation actions have
+    // been inspected. A filter can hide the very rows needed by later probes.
+    const deferredSafeActions=[];
     for (const ctx of contexts) {
       await go(route);
       if (ctx.tabAction) {
@@ -588,12 +605,69 @@
           row.status='broken-handler';row.reason='target function missing';
           failures.push({route,section:ctx.section,kind:'missing-function',callee:parsed.callee});
         } else if (el.disabled) {row.status='disabled';row.reason='disabled state';}
-        else if (dangerous.test(code)) {
+        else if (!safeConfirmAction.test(code) && !safeNavigate.test(code) && !safeFilter.test(code) && !safeOpen.test(code) && dangerous.test(code)) {
           row.status='not-clicked';row.reason='financial or destructive action needs explicit fixture-backed test';
         } else if (!code) {
           row.status='not-clicked';row.reason='dynamic event listener or no inline action; requires focused audit';
-        } else if (!safeTab.test(code) && !safeOpen.test(code)) {
+        } else if (!safeTab.test(code) && !safeNavigate.test(code) && !safeFilter.test(code) && !safeOpen.test(code) && !safeConfirmAction.test(code)) {
           row.status='not-clicked';row.reason='not on audited safe-action allowlist';
+        }
+      }
+      // Queue safe navigation and filter actions for after all contexts.
+      const safeActions=[...new Map(controls
+        .filter(el=>!el.disabled && (safeNavigate.test(handler(el)) || safeFilter.test(handler(el))))
+        .map(el=>[sig(el,route,ctx.section),{
+          handler:handler(el),label:name(el),tag:el.tagName.toLowerCase()
+        }])).values()];
+      if(safeActions.length) deferredSafeActions.push({
+        section:ctx.section,tabAction:ctx.tabAction,actions:safeActions
+      });
+      // Open destructive confirmation prompts, but NEVER approve them here.
+      // Compare every persistent store before/after Cancel to prove no write.
+      const confirmStores=['users','companies','contacts','products','units','categories',
+        'treasury','invoices','invoice_items','stock_movements','transactions','cheques',
+        'expenses','settings','logs','account_chart','fiscal_periods','journal_entries',
+        'journal_lines','warehouses','inventory_balances','stocktakes','stocktake_lines',
+        'settlements','account_mappings','audit_events','document_corrections'];
+      const confirmSnapshot=async()=>JSON.stringify(await Promise.all(confirmStores.map(async store=>
+        [store,await FINORA.Storage.getAll(store)])));
+      const confirmActions=[...new Set(controls
+        .filter(el=>!el.disabled && safeConfirmAction.test(handler(el)))
+        .map(el=>handler(el)))].slice(0,30);
+      for(const action of confirmActions){
+        await go(route);
+        if(ctx.tabAction){
+          const tab=clickables(target()).find(el=>handler(el)===ctx.tabAction);
+          if(tab){tab.click();await wait(160);}
+        }
+        const el=clickables(target()).find(x=>handler(x)===action);
+        if(!el){failures.push({route,section:ctx.section,kind:'confirm-action-vanished',handler:action});continue;}
+        const before=await confirmSnapshot();
+        inventory(route,ctx.section);
+        await press(el,route,ctx.section,'confirm-request');
+        const overlay=document.querySelector('.modal-backdrop');
+        if(!overlay){
+          failures.push({route,section:ctx.section,kind:'confirmation-prompt-missing',handler:action});
+          continue;
+        }
+        const cancel=clickables(overlay).find(x=>
+          /FINORA\.Modal\.close|Modal\.closeAll/.test(handler(x)) ||
+          /^(انصراف|بستن|بازگشت|✕|×)$/.test(name(x)));
+        if(!cancel){
+          failures.push({route,section:ctx.section,kind:'confirmation-cancel-missing',handler:action});
+          dismiss();continue;
+        }
+        cancel.click();await wait(80);
+        clicks.push({route,section:ctx.section+'/confirm',category:'confirm-cancel',
+          label:name(el),handler:action.slice(0,170),
+          changed:!document.querySelector('.modal-backdrop')});
+        if(document.querySelector('.modal-backdrop')){
+          failures.push({route,section:ctx.section,kind:'confirmation-cancel-did-not-close',handler:action});
+          dismiss();
+        }
+        const after=await confirmSnapshot();
+        if(before!==after){
+          failures.push({route,section:ctx.section,kind:'cancel-mutated-persistent-data',handler:action});
         }
       }
       // Open every safe modal/editor visible in this context without saving.
@@ -661,6 +735,52 @@
           }
         }
         dismiss();
+      }
+    }
+    // Only now click reversible navigation and filter controls. Keeping this
+    // after every row-scoped action prevents filters hiding edit/delete targets.
+    for(const group of deferredSafeActions){
+      const pending=[...group.actions];
+      const seen=new Set(pending.map(action=>JSON.stringify([
+        action.tag,action.label,action.handler
+      ])));
+      for(let index=0;index<pending.length;index++){
+        const action=pending[index];
+        window.__Q01_AUDIT_STAGE='safe-action:'+route+':'+action.handler;
+        await go(route);
+        if(group.tabAction){
+          const tab=clickables(target()).find(el=>handler(el)===group.tabAction);
+          if(!tab){
+            failures.push({route,section:group.section,kind:'safe-tab-vanished',handler:group.tabAction});
+            continue;
+          }
+          inventory(route,'root');
+          tab.click();await wait(320);
+        }
+        const el=clickables(target()).find(x=>
+          handler(x)===action.handler && name(x)===action.label &&
+          x.tagName.toLowerCase()===action.tag);
+        if(!el){
+          failures.push({route,section:group.section,kind:'safe-action-vanished',
+            handler:action.handler,label:action.label});
+          continue;
+        }
+        inventory(route,group.section);
+        await press(el,route,group.section,
+          safeNavigate.test(action.handler)?'navigation':'filter');
+        // Preset/toggle controls can reveal a second safe control (for example
+        // the custom-report Apply button). Discover and verify that state too.
+        if(safeFilter.test(action.handler)){
+          await wait(80);
+          inventory(route,group.section);
+          for(const candidate of clickables(target()).filter(x=>
+            !x.disabled && safeFilter.test(handler(x)))){
+            const next={handler:handler(candidate),label:name(candidate),
+              tag:candidate.tagName.toLowerCase()};
+            const key=JSON.stringify([next.tag,next.label,next.handler]);
+            if(!seen.has(key)){seen.add(key);pending.push(next);}
+          }
+        }
       }
     }
   }
