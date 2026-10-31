@@ -165,6 +165,17 @@ test('Q01: deferred safe actions survive live label changes and slow tab renderi
   assert.doesNotMatch(audit,/handler\(x\)===action\.handler && name\(x\)===action\.label/);
 });
 
+test('Q01: native UI audit opens and cancels safe nested editors and restores invoice draft rows', () => {
+  const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
+  for(const token of ['_printInvoice','InvoicePrint\\._preview','nested-safe-action-did-not-open-dialog',
+    'nested-modal-cancel-did-not-restore-parent','invoice-draft-add-row-failed',
+    'invoice-draft-row-count-not-restored','invoice-last-row-removal-not-blocked',
+    'unsaved-contact-tag-not-added','beforeModalDepth','afterModalDepth']) {
+    assert.ok(audit.includes(token),'native nested-modal audit missing: '+token);
+  }
+  assert.doesNotMatch(audit,/safeOpen\s*=.*_printReport|safeOpen\s*=.*_printKardex|safeOpen\s*=.*_printLedger/);
+});
+
 test('Q01: native audit verifies safe routes, filters, edit previews and cancel-only destructive prompts', () => {
   const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
   for(const token of ['safeNavigate','safeFilter','safeOpen','safeConfirmAction',
