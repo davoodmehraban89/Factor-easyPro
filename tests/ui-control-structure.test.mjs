@@ -137,6 +137,13 @@ test('Q01: native CDP diagnostics preserve the failing audit action and exceptio
   }
 });
 
+test('Q01: repeated WebView2 audit evaluation avoids generic global lexical names', () => {
+  const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
+  assert.match(audit,/const q01TextOnlyConfirmCard_20261031=/);
+  assert.doesNotMatch(audit,/const safeConfirm\s*=/);
+  assert.ok(audit.includes('one long-lived WebView2 realm'));
+});
+
 test('Q01: dashboard and cheque tables remain usable in the installed narrow content pane', () => {
   const styles=fs.readFileSync(path.join(root,'src','styles','main.css'),'utf8');
   const cheques=fs.readFileSync(path.join(root,'src','views','ChequesView.js'),'utf8');
