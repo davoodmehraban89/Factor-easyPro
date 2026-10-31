@@ -246,7 +246,8 @@ test('Q01: remaining financial grid, reporting and settings inputs announce thei
     for(const label of labels)assert.ok(source.includes(label),name+' missing programmatic name: '+label);
   }
   const runner=fs.readFileSync(path.join(root,'tests','windows-vm-installed-tauri-cdp.cjs'),'utf8');
-  assert.ok(runner.includes('audit.fieldsMissingProgrammaticLabel <= 5'));
+  assert.ok(runner.includes('audit.fieldsMissingProgrammaticLabel, 0'),
+    'installed WebView2 audit must require zero visible inputs without programmatic labels');
 });
 
 test('A02: Excel imports reject destructive replacement before touching master data', () => {
