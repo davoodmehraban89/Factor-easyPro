@@ -56,6 +56,10 @@ a { color: inherit; }
   outline: 3px solid var(--primary);
   outline-offset: 3px;
 }
+.table-wrap[tabindex="0"]:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
 :where(button, a[href], [role="button"])[disabled] {
   cursor: not-allowed;
 }
@@ -317,7 +321,10 @@ a { color: inherit; }
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
 }
 .table-wrap table {
   width: 100%;
@@ -718,8 +725,14 @@ textarea.form-control { min-height: 80px; resize: vertical; }
 }
 
 /* ===== Dashboard Layout ===== */
-@media (max-width: 1024px) {
+.dash-grid-main,
+.dash-grid-main > * {
+  min-width: 0;
+}
+@media (max-width: 1200px) {
+  /* The sidebar consumes part of the viewport. Switch to one column before
+     the remaining content pane becomes narrower than the chart's intrinsic width. */
   .dash-grid-main {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: minmax(0, 1fr) !important;
   }
 }

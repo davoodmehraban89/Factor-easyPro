@@ -137,7 +137,8 @@ class ChequesViewImpl {
         <button class="btn" onclick="window.ChequesView.openChequeModal()">➕ چک جدید</button>
       </div>
 
-      <div class="table-wrap">
+      <div class="table-wrap cheques-table-scroll" tabindex="0" role="region"
+        aria-label="جدول چک‌ها؛ برای مشاهده ستون‌های بیشتر پیمایش افقی کنید">
         <table>
           <thead>
             <tr>
