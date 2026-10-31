@@ -167,6 +167,8 @@ try {
   # declaring the disposable VM laboratory successful.
   $mandatory = @(
     'activate-accounting-and-inventory',
+    'contacts-crud-form-and-tags',
+    'products-crud-form-and-nested-classifiers',
     'positive-opening-ledger-and-idempotency',
     'purchase-and-post-ledger',
     'partial-sale-and-inventory',
