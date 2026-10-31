@@ -36,7 +36,7 @@
   const safeFilter = /\.(?:_togglePreInvoice|_setStockFilter|_clearFilters|_applyCustom|refresh|setTheme)\s*\(/;
   // These handlers only open an editor/preview/diagnostic dialog. The audit
   // closes it without saving; a separate fixture-backed test owns commits.
-  const safeOpen = /\.(?:openNewInvoice|openProductModal|openUnitModal|openCategoryModal|openContactModal|openExpenseModal|openChequeModal|openAccountModal|openReceiptModal|openPaymentModal|openTransferModal|openCompanyModal|openCompanySwitcher|openExportSectionModal|openSignedLicenseModal|openAuditTrail|openWipeModal|openRestoreModal|openPeriodModal|openJournalModal|openWarehouse|openStocktakeCreate|openTransfer|openReversal|_openQuickProduct|_openQuickContact|openLedger|openKardex|openStocktake|showJournal|editInvoice|editProduct|editContact|editCheque|editAccount|changeStatus|openAdjustModal|_printInvoice|printInvoice|createCompany|checkHolooMigrationReadiness|runFinancialDiagnostics)\s*\(/;
+  const safeOpen = /\.(?:openNewInvoice|openProductModal|openUnitModal|openCategoryModal|openContactModal|openExpenseModal|openChequeModal|openAccountModal|openReceiptModal|openPaymentModal|openTransferModal|openCompanyModal|openCompanySwitcher|openExportSectionModal|openSignedLicenseModal|openAuditTrail|openWipeModal|openRestoreModal|openPeriodModal|openJournalModal|openWarehouse|openStocktakeCreate|openTransfer|openReversal|_openQuickProduct|_openQuickContact|openLedger|openKardex|openStocktake|showJournal|editInvoice|editProduct|editContact|editCheque|editAccount|changeStatus|openAdjustModal|_printInvoice|printInvoice|checkHolooMigrationReadiness|runFinancialDiagnostics)\s*\(/;
   // A delete/close-period/seed action is safe to probe only up to its
   // confirmation prompt. The audit must cancel and prove zero database writes.
   const safeConfirm = /\.(?:deleteInvoice|deleteProduct|deleteContact|deleteCheque|deleteTransaction|deleteExpense|deleteAccount|closePeriod|seedChart)\s*\(/;
@@ -129,12 +129,19 @@
     const row=all.get(k);
     const before=target().innerHTML;
     const beforeModal=!!document.querySelector('.modal-backdrop');
+    const beforeRoute=FINORA.Router.current();
+    const beforeTheme=document.documentElement.getAttribute('data-theme');
+    const beforeToasts=[...document.querySelectorAll('.toast')].map(x=>x.textContent.trim()).join('|');
     try {
       el.click(); await wait(180);
       if (!noError()) throw Error('error toast or page render error');
       const after=target()?.innerHTML||'';
       const afterModal=!!document.querySelector('.modal-backdrop');
-      const changed = before !== after || beforeModal !== afterModal;
+      const afterRoute=FINORA.Router.current();
+      const afterTheme=document.documentElement.getAttribute('data-theme');
+      const afterToasts=[...document.querySelectorAll('.toast')].map(x=>x.textContent.trim()).join('|');
+      const changed = before !== after || beforeModal !== afterModal ||
+        beforeRoute !== afterRoute || beforeTheme !== afterTheme || beforeToasts !== afterToasts;
       clicks.push({route,section,category,label:name(el),
         handler:handler(el).slice(0,170),changed,afterModal});
       if (row) {row.status='clicked';row.reason=changed?'visible-state-changed':'no-observable-DOM-change';}
