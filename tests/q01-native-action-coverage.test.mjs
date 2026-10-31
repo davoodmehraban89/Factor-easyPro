@@ -6,11 +6,11 @@ const { annotateAudit, coverageFor } = coverage;
 
 test('Q01 maps invoice and treasury handlers only when every required native scenario passed',()=>{
  const scenarios={
-  'purchase-and-post-ledger':{},'partial-sale-and-inventory':{},
-  'sale-return-immutable-stock-and-ledger':{},
-  'purchase-return-and-stock-guardrails':{},
-  'return-cash-settlement-net-credit':{},
-  'inactive-treasury-cheque-settlement':{}
+  'purchase-and-post-ledger':{purchasePosted:true},'partial-sale-and-inventory':{salePosted:true},
+  'sale-return-immutable-stock-and-ledger':{separatePostedReturn:true},
+  'purchase-return-and-stock-guardrails':{postedSupplierReturn:true},
+  'return-cash-settlement-net-credit':{netReceiptAccepted:true},
+  'inactive-treasury-cheque-settlement':{validChequeClearedExactlyOnce:true}
  };
  const evidence={nativeFunctional:scenarios};
  assert.equal(coverageFor('window.InvoiceFormView._save(false)',evidence).kind,'native-fixture-positive-and-negative');
@@ -18,6 +18,20 @@ test('Q01 maps invoice and treasury handlers only when every required native sce
  assert.equal(coverageFor('window.ContactsView.saveContact(null)',evidence),null);
  delete scenarios['purchase-return-and-stock-guardrails'];
  assert.equal(coverageFor('window.InvoiceFormView._save(false)',evidence),null);
+});
+
+test('Q01 maps contact, product, unit and category UI writes only to installed form scenarios',()=>{
+ const evidence={nativeFunctional:{
+  'contacts-crud-form-and-tags':{createdThroughForm:true,tagPersisted:true,editedThroughForm:true},
+  'products-crud-form-and-nested-classifiers':{createdThroughForm:true,nestedUnitSavedAndSelected:true,nestedCategorySavedAndSelected:true,editedThroughForm:true}
+ }};
+ assert.equal(coverageFor('window.ContactsView.saveContact(null)',evidence).kind,'native-ui-create-and-update');
+ assert.equal(coverageFor('window.ProductsView.saveProduct(null)',evidence).kind,'native-ui-create-and-update');
+ assert.equal(coverageFor('window.ProductsView.saveUnit(true)',evidence).kind,'native-ui-nested-create');
+ assert.equal(coverageFor('window.ProductsView.saveCategory(true)',evidence).kind,'native-ui-nested-create');
+ evidence.nativeFunctional['products-crud-form-and-nested-classifiers'].nestedCategorySavedAndSelected=false;
+ assert.equal(coverageFor('window.ProductsView.saveProduct(null)',evidence),null,
+  'A scenario with an explicit failed assertion must not be reported as coverage');
 });
 
 test('Q01 labels encrypted backup UI coverage only after the installed backup test passes',()=>{
@@ -31,10 +45,10 @@ test('Q01 coverage never converts an unclicked control into a clicked control',(
   {route:'products',label:'ذخیره',handler:'window.ProductsView.saveProduct(null)',status:'not-clicked'}
  ],controls:[]};
  const evidence={nativeFunctional:{
-  'purchase-and-post-ledger':{},'partial-sale-and-inventory':{},
-  'sale-return-immutable-stock-and-ledger':{},
-  'purchase-return-and-stock-guardrails':{},
-  'return-cash-settlement-net-credit':{}
+  'purchase-and-post-ledger':{purchasePosted:true},'partial-sale-and-inventory':{salePosted:true},
+  'sale-return-immutable-stock-and-ledger':{separatePostedReturn:true},
+  'purchase-return-and-stock-guardrails':{postedSupplierReturn:true},
+  'return-cash-settlement-net-credit':{netReceiptAccepted:true}
  }};
  const summary=annotateAudit(audit,evidence);
  assert.equal(summary.notClicked,2);
