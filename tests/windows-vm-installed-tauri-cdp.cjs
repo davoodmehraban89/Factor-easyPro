@@ -397,6 +397,12 @@ async function connect(url) {
       // guarded by the real synthetic functional matrix already run above.
       const auditSource = fs.readFileSync(
         path.join(__dirname, 'windows-vm-ui-interaction-audit-browser.js'), 'utf8');
+      assert.equal(auditSource.split('const safeConfirmAction =').length-1,1,
+        'native UI audit must define its cancel-only destructive matcher exactly once');
+      assert.ok(auditSource.includes('const deferredSafeActions=[]'),
+        'native UI audit must defer filters until row-scoped probes finish');
+      assert.ok(auditSource.includes('for(const group of deferredSafeActions)'),
+        'native UI audit must execute queued filters after editor/confirmation probes');
       const audit = await cdp.evaluate(auditSource, 240000);
       assert.equal(audit.environment, 'installed-Windows-Tauri-WebView2-synthetic-VM');
       assert.equal(audit.routesVisited, 10);
