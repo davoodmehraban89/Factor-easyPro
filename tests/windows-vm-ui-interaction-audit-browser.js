@@ -39,7 +39,7 @@
   const safeOpen = /\.(?:openNewInvoice|openProductModal|openUnitModal|openCategoryModal|openContactModal|openExpenseModal|openChequeModal|openAccountModal|openReceiptModal|openPaymentModal|openTransferModal|openCompanyModal|openCompanySwitcher|openExportSectionModal|openSignedLicenseModal|openAuditTrail|openWipeModal|openRestoreModal|openPeriodModal|openJournalModal|openWarehouse|openStocktakeCreate|openTransfer|openReversal|_openQuickProduct|_openQuickContact|openLedger|openKardex|openStocktake|showJournal|editInvoice|editProduct|editContact|editCheque|editAccount|changeStatus|openAdjustModal|_printInvoice|printInvoice|checkHolooMigrationReadiness|runFinancialDiagnostics)\s*\(/;
   // A delete/close-period/seed action is safe to probe only up to its
   // confirmation prompt. The audit must cancel and prove zero database writes.
-  const safeConfirm = /\.(?:deleteInvoice|deleteProduct|deleteContact|deleteCheque|deleteTransaction|deleteExpense|deleteAccount|closePeriod|seedChart)\s*\(/;
+  const safeConfirmAction = /\.(?:deleteInvoice|deleteProduct|deleteContact|deleteCheque|deleteTransaction|deleteExpense|deleteAccount|closePeriod|seedChart)\s*\(/;
   const clickables = (root) => [...root.querySelectorAll(
     'button, a, [role="button"], input[type="button"], input[type="submit"], [onclick]'
   )].filter(isVisible);
@@ -602,11 +602,11 @@
           row.status='broken-handler';row.reason='target function missing';
           failures.push({route,section:ctx.section,kind:'missing-function',callee:parsed.callee});
         } else if (el.disabled) {row.status='disabled';row.reason='disabled state';}
-        else if (!safeConfirm.test(code) && !safeNavigate.test(code) && !safeFilter.test(code) && !safeOpen.test(code) && dangerous.test(code)) {
+        else if (!safeConfirmAction.test(code) && !safeNavigate.test(code) && !safeFilter.test(code) && !safeOpen.test(code) && dangerous.test(code)) {
           row.status='not-clicked';row.reason='financial or destructive action needs explicit fixture-backed test';
         } else if (!code) {
           row.status='not-clicked';row.reason='dynamic event listener or no inline action; requires focused audit';
-        } else if (!safeTab.test(code) && !safeNavigate.test(code) && !safeFilter.test(code) && !safeOpen.test(code) && !safeConfirm.test(code)) {
+        } else if (!safeTab.test(code) && !safeNavigate.test(code) && !safeFilter.test(code) && !safeOpen.test(code) && !safeConfirmAction.test(code)) {
           row.status='not-clicked';row.reason='not on audited safe-action allowlist';
         }
       }
@@ -635,7 +635,7 @@
       const confirmSnapshot=async()=>JSON.stringify(await Promise.all(confirmStores.map(async store=>
         [store,await FINORA.Storage.getAll(store)])));
       const confirmActions=[...new Set(controls
-        .filter(el=>!el.disabled && safeConfirm.test(handler(el)))
+        .filter(el=>!el.disabled && safeConfirmAction.test(handler(el)))
         .map(el=>handler(el)))].slice(0,30);
       for(const action of confirmActions){
         await go(route);
