@@ -3,6 +3,113 @@
 // WebView2. Every write is synthetic and isolated to a disposable CI VM.
 const assert = require('node:assert/strict');
 
+async function legacyStockAdjustmentFormAndValidation() {
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const check = (value, message) => { if (!value) throw Error(message); };
+  await FINORA.Router.go('products');
+  await wait(160);
+  const product = await window.ProductController.createProduct({
+    name: 'Q01 کالای اصلاح دستی ساختگی',
+    code: 'Q01-LEGACY-ADJUST',
+    trackInventory: true,
+    buyPrice: 100,
+    sellPrice: 150
+  });
+  await window.StockKardexModal.open(product.id);
+  await wait(80);
+  const parent = FINORA.Modal.stack.at(-1);
+  check(parent?.card?.dataset.stockKardexProductId === product.id,
+    'Legacy Kardex parent dialog did not open');
+  const openAdjust = parent.card.querySelector('button[onclick*="openAdjustModal"]');
+  check(openAdjust, 'Legacy mode did not expose manual stock adjustment');
+  openAdjust.click();
+  await wait(80);
+  const child = FINORA.Modal.stack.at(-1);
+  check(FINORA.Modal.stack.length === 2 && document.getElementById('adjQty'),
+    'Manual adjustment child dialog did not open');
+  const save = () => [...child.card.querySelectorAll('.modal-footer button')]
+    .find(button => !button.disabled && /ثبت اصلاح/.test(button.textContent));
+  const saveButton = save();
+  check(saveButton, 'Manual stock adjustment save button is missing');
+  const before = (await FINORA.Storage.getAll('stock_movements'))
+    .filter(move => move.productId === product.id);
+  document.getElementById('adjQty').value = '1.2345';
+  saveButton.click();
+  await wait(80);
+  check(FINORA.Modal.stack.at(-1) === child &&
+    (await FINORA.Storage.getAll('stock_movements')).filter(move =>
+      move.productId === product.id).length === before.length,
+    'Over-precision stock adjustment was not rejected without writes');
+  document.getElementById('adjQty').value = '-1';
+  saveButton.click();
+  await wait(80);
+  check(FINORA.Modal.stack.at(-1) === child &&
+    (await FINORA.Storage.getAll('stock_movements')).filter(move =>
+      move.productId === product.id).length === before.length,
+    'Negative stock adjustment was not rejected without writes');
+  document.getElementById('adjQty').value = '3.125';
+  document.getElementById('adjNote').value = 'Q01 synthetic count';
+  saveButton.click();
+  let movement = null;
+  for (let i = 0; i < 60; i++) {
+    movement = (await FINORA.Storage.getAll('stock_movements'))
+      .find(move => move.productId === product.id && move.type === 'adjust');
+    if (movement && FINORA.Modal.stack.length === 1 &&
+        FINORA.Modal.stack.at(-1) === parent) break;
+    await wait(100);
+  }
+  check(movement?.qty === 3.125 && movement.note === 'Q01 synthetic count' &&
+    await window.ProductController.getStock(product.id) === 3.125,
+    'Valid manual stock adjustment did not persist the final counted quantity');
+  check(FINORA.Modal.stack.length === 1 && FINORA.Modal.stack.at(-1) === parent &&
+    document.querySelectorAll('.modal-backdrop').length === 1,
+    'Saving stock adjustment opened a duplicate Kardex instead of refreshing its parent');
+  await FINORA.Modal.close();
+  check(!document.querySelector('.toast-error'),
+    'Legacy stock adjustment form displayed an unexpected error');
+  return { overPrecisionRejectedWithoutWrites: true,
+    negativeRejectedWithoutWrites: true, validAdjustmentPosted: true,
+    fractionalQuantityPreserved: true, parentKardexRefreshedInPlace: true,
+    duplicateKardexPrevented: true };
+}
+
+async function integratedStockAdjustmentGuard() {
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const check = (value, message) => { if (!value) throw Error(message); };
+  await FINORA.Router.go('products');
+  await wait(160);
+  const product = await window.ProductController.createProduct({
+    name: 'Q01 کالای یکپارچه ساختگی',
+    code: 'Q01-INTEGRATED-ADJUST',
+    trackInventory: true,
+    buyPrice: 100,
+    sellPrice: 150
+  });
+  await window.StockKardexModal.open(product.id);
+  await wait(80);
+  const parent = FINORA.Modal.stack.at(-1);
+  check(parent?.card?.dataset.stockKardexProductId === product.id,
+    'Integrated Kardex parent dialog did not open');
+  const body = parent.card.querySelector('.modal-body');
+  check(body && !body.querySelector('button[onclick*="openAdjustModal"]') &&
+    body.textContent.includes('انبارگردانی'),
+    'Integrated inventory still exposes an unusable manual adjustment button');
+  const before = (await FINORA.Storage.getAll('stock_movements'))
+    .filter(move => move.productId === product.id);
+  await window.StockKardexModal.openAdjustModal(product.id);
+  check(FINORA.Modal.stack.length === 1 && !document.getElementById('adjQty'),
+    'Direct manual-adjust modal invocation bypassed integrated-mode guard');
+  await window.StockKardexModal.saveAdjust(product.id);
+  const after = (await FINORA.Storage.getAll('stock_movements'))
+    .filter(move => move.productId === product.id);
+  check(JSON.stringify(before) === JSON.stringify(after) &&
+    await window.ProductController.getStock(product.id) === 0,
+    'Integrated-mode manual adjustment guard wrote a stock movement');
+  await FINORA.Modal.close();
+  return { manualAdjustmentHidden: true, directOpenBlocked: true,
+    directSaveBlocked: true, zeroStockWrites: true };
+}
+
 async function activateAccounting() {
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   const check = (value, message) => { if (!value) throw Error(message); };
@@ -1321,7 +1428,9 @@ async function openingDryRunWithExistingActivity() {
 
 module.exports = async function nativeFunctionalMatrix(cdp) {
   const phases = [
+    ['legacy-stock-adjustment-form-and-validation', legacyStockAdjustmentFormAndValidation],
     ['activate-accounting-and-inventory', activateAccounting],
+    ['integrated-stock-adjustment-guard', integratedStockAdjustmentGuard],
     ['contacts-crud-form-and-tags', nativeContactCrudFormAndTags],
     ['products-crud-form-and-nested-classifiers', nativeProductCrudFormAndNestedClassifiers],
     ['positive-opening-ledger-and-idempotency', nativePositiveOpeningLedger],
