@@ -399,6 +399,10 @@ async function connect(url) {
         path.join(__dirname, 'windows-vm-ui-interaction-audit-browser.js'), 'utf8');
       assert.equal(auditSource.split('const safeConfirmAction =').length-1,1,
         'native UI audit must define its cancel-only destructive matcher exactly once');
+      assert.ok(auditSource.includes('const q01TextOnlyConfirmCard_20261031='),
+        'native UI audit must use a collision-resistant confirmation-card binding');
+      assert.ok(!auditSource.includes('const safeConfirm='),
+        'generic safeConfirm lexical binding can collide in the long-lived WebView2 realm');
       assert.ok(auditSource.includes('const deferredSafeActions=[]'),
         'native UI audit must defer filters until row-scoped probes finish');
       assert.ok(auditSource.includes('for(const group of deferredSafeActions)'),
