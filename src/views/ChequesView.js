@@ -83,7 +83,7 @@ class ChequesViewImpl {
           const isOverdue = diffDays < 0 && c.status === 'pending';
           const isSoon = diffDays >= 0 && diffDays <= 7 && c.status === 'pending';
 
-          let dueDisplay = Formatters.toPersianDigits(c.dueDate || '—');
+          let dueDisplay = this._esc(Formatters.toPersianDigits(c.dueDate || '—'));
           if (isOverdue) dueDisplay += ` <span class="badge badge-danger" style="font-size:9px">${Formatters.toPersianDigits(Math.abs(diffDays))} روز گذشته</span>`;
           else if (isSoon) dueDisplay += ` <span class="badge badge-warning" style="font-size:9px">${Formatters.toPersianDigits(diffDays)} روز مانده</span>`;
 
@@ -95,11 +95,11 @@ class ChequesViewImpl {
                 </span>
               </td>
               <td><strong>${this._esc(c.contactName || '—')}</strong></td>
-              <td style="font-family:monospace;font-size:11.5px">${Formatters.toPersianDigits(c.sayadNumber || '—')}</td>
+              <td style="font-family:monospace;font-size:11.5px">${this._esc(Formatters.toPersianDigits(c.sayadNumber || '—'))}</td>
               <td>${this._esc(c.bankName || '—')}</td>
               <td style="font-weight:700">${Formatters.money(c.amount)}</td>
               <td>${dueDisplay}</td>
-              <td>${Formatters.toPersianDigits(c.issueDate || '—')}</td>
+              <td>${this._esc(Formatters.toPersianDigits(c.issueDate || '—'))}</td>
               <td>
                 <span class="badge ${ChequeController.getStatusClass(c.status)}">
                   ${ChequeController.getStatusLabel(c.status)}
@@ -107,9 +107,9 @@ class ChequesViewImpl {
               </td>
               <td>
                 <div class="row-actions">
-                  <button class="icon-btn-sm" title="تغییر وضعیت" onclick="window.ChequesView.changeStatus('${c.id}')">🔄</button>
-                  <button class="icon-btn-sm" title="ویرایش" onclick="window.ChequesView.editCheque('${c.id}')">✏️</button>
-                  <button class="icon-btn-sm danger" title="حذف" onclick="window.ChequesView.deleteCheque('${c.id}')">🗑️</button>
+                  <button class="icon-btn-sm" title="تغییر وضعیت" onclick="window.ChequesView.changeStatus(${this._esc(JSON.stringify(String(c.id ?? '')))})">🔄</button>
+                  <button class="icon-btn-sm" title="ویرایش" onclick="window.ChequesView.editCheque(${this._esc(JSON.stringify(String(c.id ?? '')))})">✏️</button>
+                  <button class="icon-btn-sm danger" title="حذف" onclick="window.ChequesView.deleteCheque(${this._esc(JSON.stringify(String(c.id ?? '')))})">🗑️</button>
                 </div>
               </td>
             </tr>
@@ -120,14 +120,14 @@ class ChequesViewImpl {
       <div class="toolbar">
         <div class="search-input-wrap">
           <span class="icon">🔍</span>
-          <input type="text" class="form-control" placeholder="جستجو بر اساس طرف حساب، صیادی یا بانک..." value="${this._esc(filter.search)}" oninput="window.ChequesView._onSearch(this.value)" />
+          <input type="text" class="form-control" placeholder="جستجو بر اساس طرف حساب، صیادی یا بانک..." aria-label="جستجوی چک" value="${this._esc(filter.search)}" oninput="window.ChequesView._onSearch(this.value)" />
         </div>
-        <select class="form-control" style="width:auto;min-width:130px" onchange="window.ChequesView._onFilter('direction', this.value)">
+        <select class="form-control" style="width:auto;min-width:130px" aria-label="نوع چک" onchange="window.ChequesView._onFilter('direction', this.value)">
           <option value="">همه انواع</option>
           <option value="inbound" ${filter.direction === 'inbound' ? 'selected' : ''}>دریافتی</option>
           <option value="outbound" ${filter.direction === 'outbound' ? 'selected' : ''}>پرداختی</option>
         </select>
-        <select class="form-control" style="width:auto;min-width:130px" onchange="window.ChequesView._onFilter('status', this.value)">
+        <select class="form-control" style="width:auto;min-width:130px" aria-label="وضعیت چک" onchange="window.ChequesView._onFilter('status', this.value)">
           <option value="">همه وضعیت‌ها</option>
           <option value="pending" ${filter.status === 'pending' ? 'selected' : ''}>در جریان</option>
           <option value="cleared" ${filter.status === 'cleared' ? 'selected' : ''}>وصول شده</option>
@@ -137,7 +137,8 @@ class ChequesViewImpl {
         <button class="btn" onclick="window.ChequesView.openChequeModal()">➕ چک جدید</button>
       </div>
 
-      <div class="table-wrap">
+      <div class="table-wrap cheques-table-scroll" tabindex="0" role="region"
+        aria-label="جدول چک‌ها؛ برای مشاهده ستون‌های بیشتر پیمایش افقی کنید">
         <table>
           <thead>
             <tr>
@@ -191,7 +192,7 @@ class ChequesViewImpl {
     };
 
     const contactOptions = cache.contacts.map(c =>
-      `<option value="${c.id}" ${d.contactId === c.id ? 'selected' : ''}>${this._esc(c.name)}</option>`
+      `<option value="${this._esc(c.id)}" ${d.contactId === c.id ? 'selected' : ''}>${this._esc(c.name)}</option>`
     ).join('');
 
     const body = `
@@ -264,7 +265,7 @@ class ChequesViewImpl {
 
     const footer = `
       <button class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button>
-      <button class="btn" onclick="window.ChequesView.saveCheque(${isEdit ? `'${chequeId}'` : 'null'})">💾 ذخیره</button>
+      <button class="btn" onclick="window.ChequesView.saveCheque(${isEdit ? this._esc(JSON.stringify(String(chequeId ?? ''))) : 'null'})">💾 ذخیره</button>
     `;
 
     Modal.open({ title: isEdit ? 'ویرایش چک' : 'چک جدید', body, footer, size: 'md' });
@@ -373,7 +374,7 @@ class ChequesViewImpl {
     `;
     const footer = `
       <button class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button>
-      <button class="btn" onclick="window.ChequesView._applyStatusChange('${id}')">اعمال</button>
+      <button class="btn" onclick="window.ChequesView._applyStatusChange(${this._esc(JSON.stringify(String(id ?? '')))})">اعمال</button>
     `;
     Modal.open({ title: 'تغییر وضعیت چک', body, footer, size: 'sm' });
     this._onChequeStatusSelection();

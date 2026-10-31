@@ -254,9 +254,10 @@ test('v2 concurrent invoice number collision commits only one',async()=>{
 });
 test('v2 all partial sale returns restore every rial of original COGS',async()=>{
  await setup();
- const buy=invoice('purchase',3,33);
- buy.items[0].lineTotal=100;buy.items[0].lineSubtotal=100;buy.subtotal=100;buy.grandTotal=100;buy.remaining=100;
- await retail.issueInvoice(buy);
+ // Two genuine purchases produce an uneven 100-rial cost for three units
+ // without fabricating a row total that disagrees with quantity × price.
+ await retail.issueInvoice(invoice('purchase',2,33));
+ await retail.issueInvoice(invoice('purchase',1,34));
  const sale=await retail.issueInvoice(invoice('sale',3,200));
  for(let j=0;j<3;j++){
    const returned=invoice('sale_return',1,200,{originalInvoiceId:sale.id});
@@ -269,13 +270,14 @@ test('v2 all partial sale returns restore every rial of original COGS',async()=>
 });
 test('v2 duplicate product lines on last sale return do not overvalue returned goods',async()=>{
  await setup();
- const buy=invoice('purchase',3,33);
- buy.items[0].lineTotal=100;buy.subtotal=100;buy.grandTotal=100;buy.remaining=100;
- await retail.issueInvoice(buy);
+ // Two genuine purchases produce an uneven 100-rial cost for three units
+ // without fabricating a row total that disagrees with quantity × price.
+ await retail.issueInvoice(invoice('purchase',2,33));
+ await retail.issueInvoice(invoice('purchase',1,34));
  const sale=await retail.issueInvoice(invoice('sale',3,200));
  const returned=invoice('sale_return',3,200,{originalInvoiceId:sale.id});
- returned.items=[{...returned.items[0],qty:1,lineTotal:200},
-   {...returned.items[0],qty:2,lineTotal:400}];
+ returned.items=[{...returned.items[0],qty:1,lineSubtotal:200,lineTotal:200},
+   {...returned.items[0],qty:2,lineSubtotal:400,lineTotal:400}];
  await retail.issueInvoice(returned);
  assert.equal((await retail.stockBalances())[0].value,100);
 });
@@ -1127,4 +1129,42 @@ test('A01: immutable cheque rejects invalid or pre-issuance due dates with zero 
  assert.equal((await db.getAll('audit_events')).length,baseline.audits+1);
  const trial=await accounts.trialBalance();
  assert.equal(trial.totals.debit,trial.totals.credit);
+});
+
+
+test('A01: direct posting rejects forged line totals before any stock or journal writes',async()=>{
+ await setup(); await purchase10();
+ const forged=invoice('sale',2.5,200);
+ forged.items[0].lineSubtotal=500;
+ forged.items[0].lineTotal=50;
+ forged.subtotal=50;forged.grandTotal=50;forged.remaining=50;
+ const stocks=await db.getAll('stock_movements');
+ const journals=await db.getAll('journal_entries');
+ await assert.rejects(retail.issueInvoice(forged),/جمع خالص ردیف|ناسازگار/);
+ assert.equal(await db.get('invoices',forged.id),undefined);
+ assert.deepEqual(await db.getAll('stock_movements'),stocks);
+ assert.deepEqual(await db.getAll('journal_entries'),journals);
+});
+
+test('A01: direct posting rejects false computed discounts even if invoice total balances',async()=>{
+ await setup(); await purchase10();
+ const forged=invoice('sale',2.5,200);
+ forged.items[0].discountType='percent';
+ forged.items[0].discountInput=10;
+ forged.items[0].discount=200;
+ forged.items[0].lineTotal=300;
+ forged.subtotal=300;forged.grandTotal=300;forged.remaining=300;
+ await assert.rejects(retail.issueInvoice(forged),/تخفیف محاسبه‌شده ردیف/);
+ assert.equal(await db.get('invoices',forged.id),undefined);
+ assert.equal((await db.getAll('journal_entries')).length,1);
+});
+
+test('A01: nonadmin direct caller cannot bypass the same exact line invariant',async()=>{
+ await setup(); await purchase10();
+ Auth.currentUser={id:'synthetic-operator',role:'user',username:'operator'};
+ const forged=invoice('sale',1,200);
+ forged.items[0].lineTotal=999;
+ forged.subtotal=999;forged.grandTotal=999;forged.remaining=999;
+ await assert.rejects(retail.issueInvoice(forged),/ناسازگار/);
+ assert.equal(await db.get('invoices',forged.id),undefined);
 });
