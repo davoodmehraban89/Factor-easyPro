@@ -30,6 +30,26 @@ export const NumberInput = {
     return Number(cleaned) || 0;
   },
 
+  // Strictly validate user-visible fields before writing. Unlike parse(),
+  // malformed strings are never silently transformed into a different amount.
+  parseStrict(input, { decimals = 0, optional = false } = {}) {
+    const value = typeof input === 'string' || typeof input === 'number'
+      ? input : (input?.value ?? '');
+    const normalized = latinDigits(value).replace(/[٬،]/g, ',').trim();
+    if (optional && normalized === '') return 0;
+    if (!Number.isInteger(decimals) || decimals < 0 || decimals > 3 ||
+        !/^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/.test(normalized))
+      throw Error('ورودی عددی نامعتبر است');
+    const point = normalized.indexOf('.');
+    if (point >= 0 && normalized.length - point - 1 > decimals)
+      throw Error('تعداد رقم اعشار بیش از حد مجاز است');
+    const num = Number(normalized.replace(/,/g, ''));
+    if (!Number.isFinite(num) || num < 0 ||
+        (decimals === 0 && !Number.isSafeInteger(num)))
+      throw Error('مقدار عددی خارج از محدوده مجاز است');
+    return num;
+  },
+
   value(el) {
     return this.parse(el);
   },

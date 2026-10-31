@@ -204,7 +204,7 @@ class InvoiceFormViewImpl {
               <option value="fixed" ${d.discountType === 'fixed' ? 'selected' : ''}>مبلغ</option>
               <option value="percent" ${d.discountType === 'percent' ? 'selected' : ''}>درصد</option>
             </select>
-            <input type="text" inputmode="numeric" class="form-control" id="invDiscInput" aria-label="مقدار تخفیف کل فاکتور" style="width:110px;min-height:34px" value="${NumberInput.format(d.discountInput || 0)}" oninput="window.InvoiceFormView._recalc()" />
+            <input type="text" inputmode="numeric" class="form-control" id="invDiscInput" aria-label="مقدار تخفیف کل فاکتور" style="width:110px;min-height:34px" data-decimals="${d.discountType === 'percent' ? 2 : 0}" value="${NumberInput.format(d.discountInput ?? 0, d.discountType === 'percent' ? 2 : 0)}" oninput="window.InvoiceFormView._recalc()" />
           </div>
 
           <div id="vatRow" style="display:${d.kind === 'non_formal' ? 'none' : 'flex'};gap:8px;align-items:center;margin-bottom:10px">
@@ -308,7 +308,7 @@ class InvoiceFormViewImpl {
       <td><input type="text" inputmode="numeric" class="form-control row-price" aria-label="قیمت واحد ردیف فاکتور" style="min-height:36px;text-align:left" value="${NumberInput.format(item.price)}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'price', this.value)" /></td>
       <td>
         <div style="display:flex;gap:4px">
-          <input type="text" inputmode="numeric" class="form-control row-disc" aria-label="تخفیف ردیف فاکتور" style="min-height:36px;text-align:left;flex:1" value="${NumberInput.format(item.discountType === 'percent' ? (item.discountInput || 0) : (item.discount || 0))}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'discount', this.value)" />
+          <input type="text" inputmode="numeric" class="form-control row-disc" aria-label="تخفیف ردیف فاکتور" style="min-height:36px;text-align:left;flex:1" data-decimals="${item.discountType === 'percent' ? 2 : 0}" value="${NumberInput.format(item.discountInput ?? item.discount ?? 0, item.discountType === 'percent' ? 2 : 0)}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'discount', this.value)" />
           <select class="form-control" style="min-height:36px;width:60px;padding:0 6px;text-align:center;font-size:12px" aria-label="نوع تخفیف ردیف" onchange="window.InvoiceFormView._onDiscTypeRowChange(${idx}, this.value)">
             <option value="fixed" ${item.discountType === 'fixed' ? 'selected' : ''}>مبلغ</option>
             <option value="percent" ${item.discountType === 'percent' ? 'selected' : ''}>٪</option>
@@ -430,7 +430,12 @@ class InvoiceFormViewImpl {
     ctx.data.items[idx].discount = 0;
     ctx.data.items[idx].discountInput = 0;
     const row = document.querySelector(`#itemsBody tr[data-idx="${idx}"]`);
-    if (row) row.querySelector('.row-disc').value = 0;
+    if (row) {
+      const input = row.querySelector('.row-disc');
+      input.value = '0';
+      input.dataset.decimals = type === 'percent' ? '2' : '0';
+      input.setAttribute('inputmode', type === 'percent' ? 'decimal' : 'numeric');
+    }
     this._recalc();
   }
 
@@ -469,7 +474,10 @@ class InvoiceFormViewImpl {
 
   _onDiscTypeChange() {
     ctx.data.discountType = document.getElementById('invDiscType').value;
-    document.getElementById('invDiscInput').value = 0;
+    const input = document.getElementById('invDiscInput');
+    input.value = '0';
+    input.dataset.decimals = ctx.data.discountType === 'percent' ? '2' : '0';
+    input.setAttribute('inputmode', ctx.data.discountType === 'percent' ? 'decimal' : 'numeric');
     ctx.data.discountInput = 0;
     this._recalc();
   }
@@ -739,7 +747,36 @@ class InvoiceFormViewImpl {
       return;
     }
 
-    const validItems = ctx.data.items.filter(it => it.productId && (Number(it.qty) || 0) > 0);
+    let discountInput, vatRate;
+    try {
+      // Read raw user-visible values once, before any financial write. A
+      // loose parser must never silently convert "2x5" to 25 or bad VAT to 0.
+      ctx.data.items.forEach((item, idx) => {
+        if (!item.productId) return; // intentionally empty draft row
+        const row = document.querySelector(`#itemsBody tr[data-idx="${idx}"]`);
+        if (!row) throw Error('ردیف کالای انتخاب‌شده در فرم یافت نشد');
+        item.qty = NumberInput.parseStrict(row.querySelector('.row-qty'), { decimals: 3 });
+        if (item.qty <= 0) throw Error('مقدار کالا باید مثبت باشد');
+        item.price = NumberInput.parseStrict(row.querySelector('.row-price'), { optional: true });
+        item.discountInput = NumberInput.parseStrict(row.querySelector('.row-disc'), {
+          decimals: item.discountType === 'percent' ? 2 : 0, optional: true
+        });
+      });
+      discountInput = NumberInput.parseStrict(document.getElementById('invDiscInput'), {
+        decimals: document.getElementById('invDiscType').value === 'percent' ? 2 : 0,
+        optional: true
+      });
+      vatRate = NumberInput.parseStrict(document.getElementById('invVatRate'), {
+        decimals: 2, optional: true
+      });
+      if (document.getElementById('invPayment').value === 'partial')
+        NumberInput.parseStrict(document.getElementById('invPaidAmount'), { optional: true });
+    } catch (error) {
+      Toast.warning('ورودی عددی قابل ذخیره نیست: ' + error.message);
+      return;
+    }
+
+    const validItems = ctx.data.items.filter(it => it.productId && it.qty > 0);
     if (validItems.length === 0) {
       Toast.warning('حداقل یک ردیف معتبر (کالا با مقدار) لازم است');
       return;
@@ -755,9 +792,9 @@ class InvoiceFormViewImpl {
       contactName: contact.name,
       items: validItems,
       discountType: document.getElementById('invDiscType').value,
-      discountInput: NumberInput.parse(document.getElementById('invDiscInput').value),
+      discountInput,
       vatEnabled: document.getElementById('invVatEnabled')?.checked || false,
-      vatRate: NumberInput.parse(document.getElementById('invVatRate')?.value),
+      vatRate,
       paymentMethod: document.getElementById('invPayment').value,
       paidAmount: ctx.totals?.paidAmount ?? 0,
       originalInvoiceId: document.getElementById('invOriginalInvoice')?.value || null,
