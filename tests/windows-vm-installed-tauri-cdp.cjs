@@ -401,6 +401,7 @@ async function connect(url) {
       assert.equal(audit.shellResults.modalKeyboard.tabAndShiftTabStayInsideTopDialog, true);
       assert.equal(audit.shellResults.modalKeyboard.cancelDoesNotConfirmAndRestoresFocus, true);
       assert.equal(audit.shellResults.modalKeyboard.syntheticConfirmRunsExactlyOnce, true);
+      assert.equal(audit.shellResults.modalKeyboard.staleFinancialConfirmIgnored, true);
       assert.equal(audit.shellResults.toastResults.importantErrorsRemain, true);
       assert.equal(audit.shellResults.toastResults.dismissButtonsWork, true);
       assert.ok(audit.inventoryCount >= 25, 'Too few visible controls discovered');
