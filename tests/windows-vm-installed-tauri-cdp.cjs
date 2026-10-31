@@ -426,6 +426,15 @@ async function connect(url) {
       assert.ok(audit.fieldsMissingProgrammaticLabel <= 5,
         'Financial field accessible labels regressed: '+audit.fieldsMissingProgrammaticLabel);
       assert.ok(audit.safeClickCount >= 15, 'Safe interaction coverage unexpectedly low');
+      assert.equal(audit.uniqueActionFailed, 0, 'A native UI action click failed');
+      assert.equal(audit.brokenHandlerCount, 0, 'A visible control points to a missing handler');
+      assert.equal(audit.accessibilityNameGaps, 0, 'A visible control has no accessible name');
+      const unresolvedActionTargets=audit.problems.filter(x=>[
+        'safe-action-vanished','safe-tab-vanished','confirm-action-vanished',
+        'open-action-vanished'
+      ].includes(x.kind));
+      assert.deepEqual(unresolvedActionTargets,[],
+        'Native UI action targets disappeared during navigation/filter probes');
       assert.equal(audit.customerDataUsed, false);
       assert.equal(audit.financialActionsNotBulkClicked, true);
       assert.equal(audit.everyActionVerified, false,
