@@ -133,6 +133,7 @@ test('Q01: dashboard and cheque tables remain usable in the installed narrow con
   assert.match(styles,/\.table-wrap\s*\{[^}]*overflow-x:\s*auto/s);
   assert.match(styles,/@media\s*\(max-width:\s*1200px\)/);
   assert.match(styles,/\.dash-grid-main,\s*\.dash-grid-main\s*>\s*\*/);
+  assert.match(styles,/\.table-wrap\[tabindex="0"\]:focus-visible/);
   assert.match(cheques,/class="table-wrap cheques-table-scroll" tabindex="0" role="region"/);
   assert.match(cheques,/aria-label="جدول چک‌ها/);
   assert.match(native,/responsive-horizontal-overflow/);
