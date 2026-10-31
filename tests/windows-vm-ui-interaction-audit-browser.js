@@ -131,11 +131,14 @@
     }
     return {detected:true,valid:typeof obj==='function',callee:m[1]};
   }
-  const seenClick = new Set();
+  // De-duplicate a physical DOM node, not a handler signature. The same
+  // action is intentionally exercised in several freshly opened modal
+  // instances; signature-level de-duplication skipped those clicks and made
+  // later instances look broken even though only the first was exercised.
+  const seenClick = new WeakSet();
   async function press(el, route, section, category) {
-    const k=sig(el,route,section);
-    if (seenClick.has(k)) return;
-    seenClick.add(k);
+    if (seenClick.has(el)) return;
+    seenClick.add(el);
     const row=all.get(k);
     const before=target().innerHTML;
     const beforeModal=!!document.querySelector('.modal-backdrop');
@@ -784,12 +787,15 @@
             const initialRows=itemsBody.querySelectorAll('tr').length;
             registerControl(addRow,route,ctx.section+'/modal');
             await press(addRow,route,ctx.section+'/modal','open');
-            const afterAdd=itemsBody.querySelectorAll('tr').length;
+            // _renderItems replaces tbody.innerHTML. Re-query the live node;
+            // the original itemsBody reference is detached after a render.
+            const currentItemsBody=overlay.querySelector('#itemsBody');
+            const afterAdd=currentItemsBody?.querySelectorAll('tr').length ?? 0;
             if(afterAdd!==initialRows+1){
               failures.push({route,section:ctx.section,kind:'invoice-draft-add-row-failed',
                 initialRows,afterAdd});
             } else {
-              const lastRow=itemsBody.querySelector('tr:last-child');
+              const lastRow=currentItemsBody.querySelector('tr:last-child');
               const removeLast=clickables(lastRow).find(x=>
                 /InvoiceFormView\._removeRow\s*\(\d+\)/.test(handler(x)));
               if(!removeLast){
@@ -797,20 +803,21 @@
               } else {
                 registerControl(removeLast,route,ctx.section+'/modal');
                 await press(removeLast,route,ctx.section+'/modal','open');
-                const afterRestore=itemsBody.querySelectorAll('tr').length;
+                const afterRestore=overlay.querySelector('#itemsBody')?.querySelectorAll('tr').length ?? 0;
                 if(afterRestore!==initialRows){
                   failures.push({route,section:ctx.section,kind:'invoice-draft-row-count-not-restored',
                     initialRows,afterRestore});
                 }
               }
             }
-            const remainingFirst=clickables(itemsBody).find(x=>
+            const remainingBody=overlay.querySelector('#itemsBody');
+            const remainingFirst=clickables(remainingBody).find(x=>
               /InvoiceFormView\._removeRow\(0\)/.test(handler(x)));
-            if(remainingFirst && itemsBody.querySelectorAll('tr').length===1){
+            if(remainingFirst && remainingBody.querySelectorAll('tr').length===1){
               registerControl(remainingFirst,route,ctx.section+'/modal');
-              const beforeGuard=itemsBody.querySelectorAll('tr').length;
+              const beforeGuard=remainingBody.querySelectorAll('tr').length;
               await press(remainingFirst,route,ctx.section+'/modal','open');
-              const afterGuard=itemsBody.querySelectorAll('tr').length;
+              const afterGuard=overlay.querySelector('#itemsBody')?.querySelectorAll('tr').length ?? 0;
               if(afterGuard!==beforeGuard){
                 failures.push({route,section:ctx.section,kind:'invoice-last-row-removal-not-blocked',
                   beforeGuard,afterGuard});
