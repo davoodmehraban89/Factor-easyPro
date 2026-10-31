@@ -1,59 +1,86 @@
 // ============================================================
-// NumberInput — جداکننده‌ی هزارگان زنده برای input ها
+// NumberInput — locale-aware grouped numeric inputs
+// Keep fractional stock quantities and Persian/Arabic digits intact.
 // ============================================================
 
+// Normalize numeric glyphs without converting the value to Number first:
+// doing so would round fractional quantities and large integer strings.
+function normalizeNumeric(value) {
+  return String(value)
+    .replace(/[۰-۹]/g, digit => String(digit.charCodeAt(0) - 1776))
+    .replace(/[٠-٩]/g, digit => String(digit.charCodeAt(0) - 1632))
+    .replace(/٫/g, '.')
+    .replace(/−/g, '-')
+    .replace(/[,،٬\s\u00a0\u202f]/g, '');
+}
+
+function groupInteger(value) {
+  return value.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function formatNormalized(value) {
+  const match = /^(-?)(\d+)(\.(\d*))?$/.exec(value);
+  if (!match) return '';
+  return match[1] + groupInteger(match[2]) + (match[3] ?? '');
+}
+
 export const NumberInput = {
-  // فرمت کردن عدد → "1,234,567"
-  format(n) {
-    if (n === '' || n === null || n === undefined) return '';
-    const num = Math.round(Number(n));
-    if (isNaN(num)) return '';
-    return num.toLocaleString('en-US');
+  // Format without rounding valid decimal quantities (for example, 2.375).
+  format(value) {
+    if (value === '' || value === null || value === undefined) return '';
+    const normalized = normalizeNumeric(value);
+    const formatted = formatNormalized(normalized);
+    if (formatted) return formatted;
+    // Retain the historic empty-string behavior for malformed input.
+    return '';
   },
 
-  // تبدیل رشته یا element → عدد خالص
+  // Read an element or text with Persian and Arabic digit support.
+  // Empty/invalid inputs retain the existing 0 fallback for compatibility.
   parse(input) {
     if (input === null || input === undefined) return 0;
-    const s = typeof input === 'string' ? input : (input.value || '');
-    const cleaned = String(s).replace(/[^\d.-]/g, '');
-    return Number(cleaned) || 0;
+    const raw = typeof input === 'string' || typeof input === 'number'
+      ? input : (input.value ?? '');
+    const normalized = normalizeNumeric(raw);
+    if (!/^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return 0;
+    const number = Number(normalized);
+    return Number.isFinite(number) ? number : 0;
   },
 
-  // خواندن مقدار عددی از element
   value(el) {
     return this.parse(el);
   },
 
-  // فرمت‌دهی زنده با حفظ موقعیت cursor
+  // Format while typing; do not delete decimal separators or fractional digits.
   _formatLive(el) {
-    const cursorStart = el.selectionStart;
-    const oldValue = el.value;
+    const cursorStart = el.selectionStart ?? el.value.length;
+    const oldValue = String(el.value);
+    const normalized = normalizeNumeric(oldValue);
+    const negative = normalized.startsWith('-');
+    const numeric = normalized.replace(/[^\d.]/g, '');
+    const dot = numeric.indexOf('.');
+    const hasDecimal = dot !== -1;
+    let whole = (hasDecimal ? numeric.slice(0, dot) : numeric).replace(/^0+(?=\d)/, '');
+    if (!whole && hasDecimal) whole = '0';
+    const fractional = hasDecimal ? numeric.slice(dot + 1).replace(/\./g, '') : '';
+    const result = (negative ? '-' : '') + (whole ? groupInteger(whole) : '') +
+      (hasDecimal ? '.' + fractional : '');
+    if (result === oldValue) return;
 
-    let raw = oldValue.replace(/[^\d]/g, '');
-    if (raw.length > 1) raw = raw.replace(/^0+/, '');
-
-    const formatted = raw ? Number(raw).toLocaleString('en-US') : '';
-    if (formatted === oldValue) return;
-
-    const digitsBefore = oldValue.slice(0, cursorStart).replace(/\D/g, '').length;
-
-    el.value = formatted;
-
-    if (digitsBefore === 0) {
-      el.setSelectionRange(0, 0);
-    } else if (digitsBefore >= raw.length) {
-      el.setSelectionRange(formatted.length, formatted.length);
-    } else {
-      let pos = 0, count = 0;
-      for (let i = 0; i < formatted.length; i++) {
-        if (/\d/.test(formatted[i])) count++;
-        if (count === digitsBefore) { pos = i + 1; break; }
-      }
-      el.setSelectionRange(pos, pos);
+    // Count meaningful tokens before the caret, ignoring thousands separators.
+    const before = normalizeNumeric(oldValue.slice(0, cursorStart))
+      .replace(/[^\d.\-]/g, '').length;
+    let caret = 0;
+    let seen = 0;
+    for (; caret < result.length && seen < before; caret++) {
+      if (/[\d.\-]/.test(result[caret])) seen++;
+    }
+    el.value = result;
+    if (typeof el.setSelectionRange === 'function') {
+      el.setSelectionRange(caret, caret);
     }
   },
 
-  // بررسی اینکه آیا این input باید فرمت بشه؟
   _shouldFormat(el) {
     if (!el || el.tagName !== 'INPUT') return false;
     if (el.type === 'number') return true;
@@ -62,65 +89,40 @@ export const NumberInput = {
     return false;
   },
 
-  // تبدیل و علامت‌گذاری input ها
   _markAndFormat(el) {
     if (!this._shouldFormat(el)) return;
-
-    // تبدیل number به text
-    if (el.type === 'number') {
-      el.type = 'text';
-    }
-
-    // علامت‌گذاری
+    if (el.type === 'number') el.type = 'text';
     el.setAttribute('data-money', '1');
     el.setAttribute('inputmode', 'numeric');
     el.setAttribute('autocomplete', 'off');
-
-    // فرمت کردن مقدار اولیه اگه خالص عددی بود
-    const raw = (el.value || '').replace(/,/g, '').trim();
-    if (raw && /^-?\d+$/.test(raw) && raw !== '0') {
-      el.value = this.format(raw);
-    } else if (raw === '0') {
-      // 0 رو نگه‌دار بدون فرمت اضافی
-      el.value = '0';
+    const normalized = normalizeNumeric(el.value || '');
+    if (/^-?\d+(?:\.\d+)?$/.test(normalized)) {
+      el.value = this.format(normalized);
     }
   },
 
-  // اسکن کل DOM
   _convertAll() {
     document.querySelectorAll('input').forEach(el => {
-      if (this._shouldFormat(el)) {
-        this._markAndFormat(el);
-      }
+      if (this._shouldFormat(el)) this._markAndFormat(el);
     });
   },
 
   init() {
-    // تبدیل اولیه
     this._convertAll();
-
-    // ناظر برای ورودی‌های جدید (مودال‌ها، ردیف‌های جدید و...)
-    const observer = new MutationObserver(() => {
-      this._convertAll();
-    });
+    const observer = new MutationObserver(() => { this._convertAll(); });
     observer.observe(document.body, { childList: true, subtree: true });
 
-    // فرمت‌دهی زنده در هنگام تایپ
-    document.addEventListener('input', (e) => {
+    document.addEventListener('input', e => {
       const el = e.target;
       if (!el || !el.matches || !el.matches('input')) return;
       if (el.getAttribute('data-money') !== '1') return;
       this._formatLive(el);
     });
-
-    // پاک کردن مقدار صفر در ورودی اگه کاربر کلیک کرد و تایپ کرد
-    document.addEventListener('focus', (e) => {
+    document.addEventListener('focus', e => {
       const el = e.target;
       if (!el || !el.matches || !el.matches('input')) return;
       if (el.getAttribute('data-money') !== '1') return;
-      if (el.value === '0') {
-        el.value = '';
-      }
+      if (el.value === '0') el.value = '';
     }, true);
   }
 };
