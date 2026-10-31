@@ -211,7 +211,7 @@ class InvoiceFormViewImpl {
               <input type="checkbox" id="invVatEnabled" ${d.vatEnabled ? 'checked' : ''} onchange="window.InvoiceFormView._recalc()" />
               مالیات ارزش افزوده
             </label>
-            <input type="text" inputmode="numeric" class="form-control" id="invVatRate" aria-label="درصد مالیات بر ارزش افزوده" style="width:80px;min-height:34px" value="${NumberInput.format(d.vatRate || 10)}" oninput="window.InvoiceFormView._recalc()" />
+            <input type="text" inputmode="numeric" class="form-control" id="invVatRate" aria-label="درصد مالیات بر ارزش افزوده" style="width:80px;min-height:34px" data-decimals="2" value="${NumberInput.format(d.vatRate || 10, 2)}" oninput="window.InvoiceFormView._recalc()" />
             <span style="font-size:12.5px;color:var(--text-muted)">٪</span>
           </div>
 
@@ -303,7 +303,7 @@ class InvoiceFormViewImpl {
         </div>
       </td>
       <td><input type="text" class="form-control row-unit" aria-label="واحد کالای ردیف" style="min-height:36px;text-align:center" value="${this._esc(item.unit)}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'unit', this.value)" /></td>
-      <td><input type="text" inputmode="numeric" class="form-control row-qty" aria-label="تعداد ردیف فاکتور" style="min-height:36px;text-align:center" value="${NumberInput.format(item.qty)}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'qty', this.value)" /></td>
+      <td><input type="text" inputmode="numeric" class="form-control row-qty" aria-label="تعداد ردیف فاکتور" style="min-height:36px;text-align:center" data-decimals="3" value="${NumberInput.format(item.qty, 3)}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'qty', this.value)" /></td>
       <td><input type="text" inputmode="numeric" class="form-control row-price" aria-label="قیمت واحد ردیف فاکتور" style="min-height:36px;text-align:left" value="${NumberInput.format(item.price)}" oninput="window.InvoiceFormView._onFieldChange(${idx}, 'price', this.value)" /></td>
       <td>
         <div style="display:flex;gap:4px">

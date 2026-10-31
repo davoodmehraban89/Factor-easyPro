@@ -408,7 +408,7 @@ class ProductsViewImpl {
 
       <div class="form-group" id="minStockBox" style="display:${data.trackInventory !== false ? 'block' : 'none'}">
         <label class="form-label">نقطه سفارش (حداقل موجودی)</label>
-        <input type="text" inputmode="numeric" class="form-control" id="pMinStock" value="${NumberInput.format(data.minStock || 0)}" />
+        <input type="text" inputmode="numeric" class="form-control" id="pMinStock" data-decimals="3" value="${NumberInput.format(data.minStock || 0, 3)}" />
         <small style="color:var(--text-muted);font-size:11.5px;display:block;margin-top:4px">
           وقتی موجودی به این عدد یا کمتر رسید، هشدار «کم‌موجود» نمایش داده می‌شه.
         </small>
