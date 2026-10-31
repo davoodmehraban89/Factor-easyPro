@@ -37,7 +37,7 @@
   const safeFilter = /\.(?:_togglePreInvoice|_setStockFilter|_clearFilters|_applyCustom|_switchPeriod|_setPreset|refresh|setTheme)\s*\(/;
   // These handlers only open an editor/preview/diagnostic dialog. The audit
   // closes it without saving; a separate fixture-backed test owns commits.
-  const safeOpen = /\.(?:openNewInvoice|openProductModal|openUnitModal|openCategoryModal|openContactModal|openExpenseModal|openChequeModal|openAccountModal|openReceiptModal|openPaymentModal|openTransferModal|openCompanyModal|openCompanySwitcher|openExportSectionModal|openSignedLicenseModal|openAuditTrail|openWipeModal|openRestoreModal|openPeriodModal|openJournalModal|openWarehouse|openStocktakeCreate|openTransfer|openReversal|_openQuickProduct|_openQuickContact|openLedger|openKardex|openStocktake|showJournal|editInvoice|editProduct|editContact|editCheque|editAccount|openAdjustModal|printInvoice|checkHolooMigrationReadiness|runFinancialDiagnostics)\s*\(/;
+  const safeOpen = /\.(?:openNewInvoice|openProductModal|openUnitModal|openCategoryModal|openContactModal|openExpenseModal|openChequeModal|openAccountModal|openReceiptModal|openPaymentModal|openTransferModal|openCompanyModal|openCompanySwitcher|openExportSectionModal|openSignedLicenseModal|openAuditTrail|openWipeModal|openRestoreModal|openPeriodModal|openJournalModal|openWarehouse|openStocktakeCreate|openTransfer|openReversal|_openQuickProduct|_openQuickContact|openLedger|openKardex|openStocktake|showJournal|editInvoice|editProduct|editContact|editCheque|editAccount|openAdjustModal|_printInvoice|printInvoice|_preview|checkHolooMigrationReadiness|runFinancialDiagnostics)\s*\(/;
   // A delete/close-period/seed action is safe to probe only up to its
   // confirmation prompt. The audit must cancel and prove zero database writes.
   const safeConfirmAction = /\.(?:deleteInvoice|deleteProduct|deleteContact|deleteCheque|deleteTransaction|deleteExpense|deleteAccount|closePeriod|seedChart)\s*\(/;
@@ -70,6 +70,15 @@
         status:explicit?'programmatic-label-found':'needs-accessibility-review'
       });
     }
+  }
+  function registerControl(el, route, section) {
+    const key=sig(el,route,section);
+    if(!all.has(key)) all.set(key,{
+      route,section,tag:el.tagName.toLowerCase(),label:name(el),
+      handler:handler(el).slice(0,220),disabled:!!el.disabled,
+      hasAccessibleName:!!name(el),status:'not-clicked',reason:''
+    });
+    return all.get(key);
   }
   function inventory(route, section) {
     const controls = clickables(target());
@@ -130,6 +139,8 @@
     const row=all.get(k);
     const before=target().innerHTML;
     const beforeModal=!!document.querySelector('.modal-backdrop');
+    const beforeModalDepth=FINORA.Modal.stack.length;
+    const beforeModalMarkup=FINORA.Modal.stack.at(-1)?.card.innerHTML||'';
     const beforeRoute=FINORA.Router.current();
     const beforeTheme=document.documentElement.getAttribute('data-theme');
     const beforeToasts=[...document.querySelectorAll('.toast')].map(x=>x.textContent.trim()).join('|');
@@ -138,10 +149,13 @@
       if (!noError()) throw Error('error toast or page render error');
       const after=target()?.innerHTML||'';
       const afterModal=!!document.querySelector('.modal-backdrop');
+      const afterModalDepth=FINORA.Modal.stack.length;
+      const afterModalMarkup=FINORA.Modal.stack.at(-1)?.card.innerHTML||'';
       const afterRoute=FINORA.Router.current();
       const afterTheme=document.documentElement.getAttribute('data-theme');
       const afterToasts=[...document.querySelectorAll('.toast')].map(x=>x.textContent.trim()).join('|');
       const changed = before !== after || beforeModal !== afterModal ||
+        beforeModalDepth !== afterModalDepth || beforeModalMarkup !== afterModalMarkup ||
         beforeRoute !== afterRoute || beforeTheme !== afterTheme || beforeToasts !== afterToasts;
       clicks.push({route,section,category,label:name(el),
         handler:handler(el).slice(0,170),changed,afterModal});
@@ -718,6 +732,106 @@
             const key=[x.route,x.section,x.tag,x.label,x.handler].join('|');
             if(!all.has(key))all.set(key,x);
           });
+
+          // Exercise safe nested dialogs inside the parent editor, then close
+          // only the child. This verifies quick-contact/product and invoice
+          // preview openers without ever invoking Save or physical Print.
+          const nestedOpenActions=nested.filter(x=>!x.disabled &&
+            safeOpen.test(handler(x)) &&
+            /_openQuickContact|_openQuickProduct|InvoicePrint\._preview/.test(handler(x)));
+          for(const nestedAction of nestedOpenActions){
+            const parentDepth=FINORA.Modal.stack.length;
+            const parentCard=FINORA.Modal.stack.at(-1)?.card;
+            registerControl(nestedAction,route,ctx.section+'/modal');
+            await press(nestedAction,route,ctx.section+'/modal','open');
+            await wait(60);
+            if(FINORA.Modal.stack.length!==parentDepth+1){
+              failures.push({route,section:ctx.section,kind:'nested-safe-action-did-not-open-dialog',
+                handler:handler(nestedAction)});
+              continue;
+            }
+            const child=FINORA.Modal.stack.at(-1);
+            const childDialog=child?.card;
+            if(!childDialog || childDialog.getAttribute('role')!=='dialog' ||
+               childDialog.getAttribute('aria-modal')!=='true' ||
+               !childDialog.contains(document.activeElement)){
+              failures.push({route,section:ctx.section,kind:'nested-modal-a11y-missing',
+                handler:handler(nestedAction)});
+            }
+            auditFields(childDialog,route,ctx.section+'/nested-modal');
+            const childCancel=clickables(childDialog).find(x=>
+              /FINORA\.Modal\.close|Modal\.closeAll/.test(handler(x)) ||
+              /^(انصراف|بستن|بازگشت|✕|×)$/.test(name(x)));
+            if(childCancel){
+              registerControl(childCancel,route,ctx.section+'/nested-modal');
+              await press(childCancel,route,ctx.section+'/nested-modal','open');
+            } else {
+              childDialog?.querySelector('.modal-close')?.click();
+              await wait(60);
+            }
+            if(FINORA.Modal.stack.length!==parentDepth ||
+               FINORA.Modal.stack.at(-1)?.card!==parentCard){
+              failures.push({route,section:ctx.section,kind:'nested-modal-cancel-did-not-restore-parent',
+                handler:handler(nestedAction)});
+              dismiss();
+            }
+          }
+
+          // Exercise invoice draft row operations without persisting them.
+          const itemsBody=overlay.querySelector('#itemsBody');
+          const addRow=nested.find(x=>/InvoiceFormView\._addRow\s*\(/.test(handler(x)));
+          if(itemsBody && addRow){
+            const initialRows=itemsBody.querySelectorAll('tr').length;
+            registerControl(addRow,route,ctx.section+'/modal');
+            await press(addRow,route,ctx.section+'/modal','open');
+            const afterAdd=itemsBody.querySelectorAll('tr').length;
+            if(afterAdd!==initialRows+1){
+              failures.push({route,section:ctx.section,kind:'invoice-draft-add-row-failed',
+                initialRows,afterAdd});
+            } else {
+              const lastRow=itemsBody.querySelector('tr:last-child');
+              const removeLast=clickables(lastRow).find(x=>
+                /InvoiceFormView\._removeRow\s*\(\d+\)/.test(handler(x)));
+              if(!removeLast){
+                failures.push({route,section:ctx.section,kind:'invoice-draft-remove-new-row-missing'});
+              } else {
+                registerControl(removeLast,route,ctx.section+'/modal');
+                await press(removeLast,route,ctx.section+'/modal','open');
+                const afterRestore=itemsBody.querySelectorAll('tr').length;
+                if(afterRestore!==initialRows){
+                  failures.push({route,section:ctx.section,kind:'invoice-draft-row-count-not-restored',
+                    initialRows,afterRestore});
+                }
+              }
+            }
+            const remainingFirst=clickables(itemsBody).find(x=>
+              /InvoiceFormView\._removeRow\(0\)/.test(handler(x)));
+            if(remainingFirst && itemsBody.querySelectorAll('tr').length===1){
+              registerControl(remainingFirst,route,ctx.section+'/modal');
+              const beforeGuard=itemsBody.querySelectorAll('tr').length;
+              await press(remainingFirst,route,ctx.section+'/modal','open');
+              const afterGuard=itemsBody.querySelectorAll('tr').length;
+              if(afterGuard!==beforeGuard){
+                failures.push({route,section:ctx.section,kind:'invoice-last-row-removal-not-blocked',
+                  beforeGuard,afterGuard});
+              }
+            }
+          }
+
+          // Adding a contact tag changes only the unsaved form DOM. Verify it,
+          // then let the parent Cancel discard it; never click Save.
+          const tagAction=nested.find(x=>/ContactsView\.addNewTag\s*\(/.test(handler(x)));
+          const tagInput=overlay.querySelector('#newTagInput');
+          if(tagAction && tagInput){
+            const testTag='Q01-AUDIT-TAG';
+            tagInput.value=testTag;
+            registerControl(tagAction,route,ctx.section+'/modal');
+            await press(tagAction,route,ctx.section+'/modal','open');
+            if(!overlay.querySelector('.tagCheckbox[value="'+testTag+'"]')){
+              failures.push({route,section:ctx.section,kind:'unsaved-contact-tag-not-added'});
+            }
+          }
+
           // Exercise a real cancel/close button when present.
           const cancel=nested.find(x=>/FINORA\.Modal\.close|Modal\.closeAll/.test(handler(x)) ||
             /^(انصراف|بستن|بازگشت|✕|×)$/.test(name(x)));
