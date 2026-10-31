@@ -51,6 +51,174 @@ async function activateAccounting() {
     integration: 'enabled', warehouse: 'created' };
 }
 
+async function nativeContactCrudFormAndTags() {
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const check = (value, message) => { if (!value) throw Error(message); };
+  await FINORA.Router.go('contacts');
+  await wait(180);
+  const view = window.ContactsView;
+  check(view, 'Native contacts view is unavailable');
+  await view.openContactModal();
+  await wait(80);
+  check(document.getElementById('cName') && document.getElementById('newTagInput'),
+    'Native contact creation form is incomplete');
+  const originalName = 'Q01 شخص فرم ساختگی';
+  const updatedName = 'Q01 شخص ویرایش‌شده';
+  const tag = 'Q01-NATIVE-CONTACT-TAG';
+  document.getElementById('cName').value = originalName;
+  document.getElementById('cRole').value = 'both';
+  document.getElementById('newTagInput').value = tag;
+  const addTag = [...document.querySelectorAll('.modal-card button')]
+    .find(button => /ContactsView\.addNewTag/.test(button.getAttribute('onclick') || ''));
+  check(addTag, 'Native contact tag action is missing');
+  addTag.click();
+  check(document.querySelector('.tagCheckbox[value="' + tag + '"]')?.checked,
+    'New contact tag was not added and selected');
+  const saveContact = () => [...document.querySelectorAll('.modal-card .modal-footer button')]
+    .find(button => !button.disabled && /ذخیره/.test(button.textContent));
+  const createButton = saveContact();
+  check(createButton, 'Native contact create button is missing');
+  createButton.click();
+  let created = null;
+  for (let i = 0; i < 60; i++) {
+    created = (await FINORA.Storage.getAll('contacts'))
+      .find(contact => contact.name === originalName);
+    if (created && FINORA.Modal.stack.length === 0) break;
+    await wait(100);
+  }
+  check(created && created.tags.includes(tag),
+    'Contact form did not persist the new contact and selected tag');
+  await view.editContact(created.id);
+  await wait(80);
+  check(document.getElementById('cName')?.value === originalName,
+    'Contact edit form did not load the persisted record');
+  document.getElementById('cName').value = updatedName;
+  check(document.querySelector('.tagCheckbox[value="' + tag + '"]')?.checked,
+    'Contact edit form did not restore the saved tag selection');
+  const updateButton = saveContact();
+  check(updateButton, 'Native contact update button is missing');
+  updateButton.click();
+  let updated = null;
+  for (let i = 0; i < 60; i++) {
+    updated = await FINORA.Storage.get('contacts', created.id);
+    if (updated?.name === updatedName && FINORA.Modal.stack.length === 0) break;
+    await wait(100);
+  }
+  check(updated?.name === updatedName && updated.tags.includes(tag),
+    'Contact form update did not preserve identity and tags');
+  check(!document.querySelector('.toast-error'),
+    'Native contact CRUD form displayed an unexpected error');
+  return { createdThroughForm: true, tagPersisted: true,
+    editedThroughForm: true, stableRecordId: true };
+}
+
+async function nativeProductCrudFormAndNestedClassifiers() {
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const check = (value, message) => { if (!value) throw Error(message); };
+  await FINORA.Router.go('products');
+  await wait(180);
+  const view = window.ProductsView;
+  check(view, 'Native products view is unavailable');
+  view._switchTab('products');
+  await view.openProductModal();
+  await wait(80);
+  const parentDepth = FINORA.Modal.stack.length;
+  check(parentDepth === 1 && document.getElementById('pName'),
+    'Native product parent form is missing');
+  const unitName = 'Q01-UNIT-UI';
+  const unitButton = document.querySelector('.modal-card button[onclick*="openUnitModal(true)"]');
+  check(unitButton, 'Nested unit creation button is missing');
+  unitButton.click();
+  await wait(60);
+  check(FINORA.Modal.stack.length === parentDepth + 1 &&
+    document.getElementById('uName') && document.getElementById('uSymbol'),
+    'Nested unit form did not open');
+  document.getElementById('uName').value = unitName;
+  document.getElementById('uSymbol').value = 'q1';
+  const saveTopModal = () => [...FINORA.Modal.stack.at(-1).card.querySelectorAll('.modal-footer button')]
+    .find(button => !button.disabled && /ذخیره/.test(button.textContent));
+  const saveUnit = saveTopModal();
+  check(saveUnit, 'Nested unit save action is missing');
+  saveUnit.click();
+  let unitId = '';
+  for (let i = 0; i < 60; i++) {
+    unitId = document.getElementById('pUnit')?.value || '';
+    if (FINORA.Modal.stack.length === parentDepth && unitId &&
+        (await FINORA.Storage.getAll('units')).some(unit => unit.id === unitId && unit.name === unitName)) break;
+    await wait(100);
+  }
+  check(FINORA.Modal.stack.length === parentDepth && unitId &&
+    (await FINORA.Storage.getAll('units')).some(unit => unit.id === unitId && unit.name === unitName),
+    'Saving a nested unit did not restore parent and select persisted unit');
+
+  const categoryName = 'Q01-CATEGORY-UI';
+  const categoryButton = document.querySelector('.modal-card button[onclick*="openCategoryModal(true)"]');
+  check(categoryButton, 'Nested category creation button is missing');
+  categoryButton.click();
+  await wait(60);
+  check(FINORA.Modal.stack.length === parentDepth + 1 &&
+    document.getElementById('cName') && document.getElementById('cParent'),
+    'Nested category form did not open');
+  document.getElementById('cName').value = categoryName;
+  const saveCategory = saveTopModal();
+  check(saveCategory, 'Nested category save action is missing');
+  saveCategory.click();
+  let categoryId = '';
+  for (let i = 0; i < 60; i++) {
+    categoryId = document.getElementById('pCategory')?.value || '';
+    if (FINORA.Modal.stack.length === parentDepth && categoryId &&
+        (await FINORA.Storage.getAll('categories')).some(category => category.id === categoryId && category.name === categoryName)) break;
+    await wait(100);
+  }
+  check(FINORA.Modal.stack.length === parentDepth && categoryId &&
+    (await FINORA.Storage.getAll('categories')).some(category => category.id === categoryId && category.name === categoryName),
+    'Saving a nested category did not restore parent and select persisted category');
+
+  const productName = 'Q01 کالای فرم ساختگی';
+  document.getElementById('pCode').value = 'Q01-UI-PRODUCT';
+  document.getElementById('pName').value = productName;
+  document.getElementById('pBuyPrice').value = '1200';
+  document.getElementById('pSellPrice').value = '2400';
+  document.getElementById('pMinStock').value = '2.125';
+  const saveProduct = saveTopModal();
+  check(saveProduct, 'Native product create button is missing');
+  saveProduct.click();
+  let created = null;
+  for (let i = 0; i < 60; i++) {
+    created = (await FINORA.Storage.getAll('products'))
+      .find(product => product.code === 'Q01-UI-PRODUCT');
+    if (created && FINORA.Modal.stack.length === 0) break;
+    await wait(100);
+  }
+  check(created && created.name === productName && created.unitId === unitId &&
+    created.categoryId === categoryId && created.buyPrice === 1200 &&
+    created.sellPrice === 2400 && created.minStock === 2.125,
+    'Product form failed to persist prices, reorder point, unit or category');
+  await view.editProduct(created.id);
+  await wait(80);
+  check(document.getElementById('pName')?.value === productName,
+    'Product edit form did not load the persisted record');
+  const updatedName = 'Q01 کالای ویرایش‌شده';
+  document.getElementById('pName').value = updatedName;
+  const updateProduct = saveTopModal();
+  check(updateProduct, 'Native product update button is missing');
+  updateProduct.click();
+  let updated = null;
+  for (let i = 0; i < 60; i++) {
+    updated = await FINORA.Storage.get('products', created.id);
+    if (updated?.name === updatedName && FINORA.Modal.stack.length === 0) break;
+    await wait(100);
+  }
+  check(updated?.name === updatedName && updated.unitId === unitId &&
+    updated.categoryId === categoryId && updated.sellPrice === 2400,
+    'Product form update did not preserve selected classifiers and financial fields');
+  check(!document.querySelector('.toast-error'),
+    'Native product CRUD form displayed an unexpected error');
+  return { createdThroughForm: true, nestedUnitSavedAndSelected: true,
+    nestedCategorySavedAndSelected: true, fractionalReorderPointPreserved: true,
+    editedThroughForm: true, stableRecordId: true };
+}
+
 async function nativePositiveOpeningLedger() {
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   const check = (value, message) => { if (!value) throw Error(message); };
@@ -1154,6 +1322,8 @@ async function openingDryRunWithExistingActivity() {
 module.exports = async function nativeFunctionalMatrix(cdp) {
   const phases = [
     ['activate-accounting-and-inventory', activateAccounting],
+    ['contacts-crud-form-and-tags', nativeContactCrudFormAndTags],
+    ['products-crud-form-and-nested-classifiers', nativeProductCrudFormAndNestedClassifiers],
     ['positive-opening-ledger-and-idempotency', nativePositiveOpeningLedger],
     ['purchase-and-post-ledger', purchaseInvoice],
     ['partial-sale-and-inventory', saleInvoice],
