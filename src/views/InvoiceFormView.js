@@ -413,7 +413,11 @@ class InvoiceFormViewImpl {
   }
 
   _onFieldChange(idx, field, value) {
-    if (field === 'qty' || field === 'price' || field === 'discount') {
+    if (field === 'discount') {
+      // The textbox contains raw percent/rial input, not the computed rial
+      // discount. _recalc() sets item.discount only after using this value.
+      ctx.data.items[idx].discountInput = NumberInput.parse(value);
+    } else if (field === 'qty' || field === 'price') {
       ctx.data.items[idx][field] = NumberInput.parse(value);
     } else {
       ctx.data.items[idx][field] = value;

@@ -45,7 +45,14 @@ class InvoiceControllerImpl {
       // Reject quantities with >3 decimals and monetary overflow before writes.
       const lineSubtotal = lineGrossRials(qty, price);
       let lineDiscount = 0;
-      const discInput = Number(it.discount) || 0;
+      // The form stores the USER'S percentage in discountInput and the
+      // resulting rial discount in discount. Reusing discount as a percent
+      // would apply the reduction twice when saving a line.
+      const discInput = Number(it.discountInput ?? it.discount ?? 0);
+      if (!Number.isFinite(discInput) || discInput < 0 ||
+          (it.discountType === 'percent' ? discInput > 100 : !Number.isSafeInteger(discInput))) {
+        throw Error('تخفیف ردیف فاکتور نامعتبر است');
+      }
       if (it.discountType === 'percent') {
         lineDiscount = Math.round(lineSubtotal * discInput / 100);
       } else {
