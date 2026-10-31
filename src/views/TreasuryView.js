@@ -347,7 +347,7 @@ class TreasuryViewImpl {
       branchCode: document.getElementById('accBranchCode')?.value || '',
       ownerName: document.getElementById('accOwnerName').value,
       color: document.getElementById('accColor').value,
-      initialBalance: NumberInput.parse(document.getElementById('accInitialBalance').value)
+      initialBalance: NumberInput.parseStrict(document.getElementById('accInitialBalance'))
     };
 
     if (!data.name.trim()) { Toast.warning('نام حساب الزامی است'); return; }
@@ -612,7 +612,9 @@ class TreasuryViewImpl {
   }
 
   async _saveTransaction(type) {
-    const amount = NumberInput.parse(document.getElementById('txAmount').value);
+    let amount;
+    try { amount = NumberInput.parseStrict(document.getElementById('txAmount')); }
+    catch (error) { Toast.warning('مبلغ معتبر نیست: ' + error.message); return; }
     if (amount <= 0) { Toast.warning('مبلغ معتبر نیست'); return; }
 
     const contactSelect = document.getElementById('txContact');

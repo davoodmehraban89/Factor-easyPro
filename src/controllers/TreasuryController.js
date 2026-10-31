@@ -6,6 +6,7 @@ import { StorageService } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
 import { DataScope } from '../core/DataScope.js';
 import { RetailPostingService } from '../core/RetailPostingService.js';
+import { amount, positiveAmount } from '../core/RetailFinanceCore.mjs';
 
 class TreasuryControllerImpl {
   // ============================================================
@@ -55,7 +56,7 @@ class TreasuryControllerImpl {
       branchCode: (data.branchCode || '').trim(),
       ownerName: (data.ownerName || '').trim(),
       color: data.color || '#0d9488',
-      initialBalance: Number(data.initialBalance) || 0,
+      initialBalance: amount(data.initialBalance ?? 0, 'مانده اولیه حساب'),
       isDefault: false,
       isActive: true
     };
@@ -86,7 +87,7 @@ class TreasuryControllerImpl {
       branchCode: (data.branchCode || '').trim(),
       ownerName: (data.ownerName || '').trim(),
       color: data.color || existing.color,
-      initialBalance: Number(data.initialBalance) || 0
+      initialBalance: amount(data.initialBalance ?? 0, 'مانده اولیه حساب')
     };
     return await StorageService.put('treasury', await DataScope.stamp('treasury', updated));
   }
@@ -208,13 +209,22 @@ class TreasuryControllerImpl {
 
   async createTransaction(data) {
     const user = Auth.current();
+    if (!['receipt','payment','transfer'].includes(data.type))
+      throw Error('نوع تراکنش نامعتبر است');
+    const transactionAmount = positiveAmount(data.amount, 'مبلغ تراکنش');
+    if (data.type === 'receipt' && !data.toAccountId)
+      throw Error('حساب مقصد دریافت الزامی است');
+    if (data.type === 'payment' && !data.fromAccountId)
+      throw Error('حساب مبدا پرداخت الزامی است');
+    if (data.type === 'transfer' && (!data.fromAccountId || !data.toAccountId || data.fromAccountId === data.toAccountId))
+      throw Error('حساب مبدا و مقصد انتقال باید متفاوت و مشخص باشند');
     const tx = {
       id: StorageService.uid('tx_'),
       recordType: 'transaction',
       ownerUserId: user.id,
       type: data.type,                       // receipt | payment | transfer
       date: data.date || this._todayJalali(),
-      amount: Number(data.amount) || 0,
+      amount: transactionAmount,
       fromAccountId: data.fromAccountId || null,
       toAccountId: data.toAccountId || null,
       contactId: data.contactId || null,
