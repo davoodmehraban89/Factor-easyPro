@@ -398,7 +398,8 @@ test('Q01: filter clicks are deferred until row-scoped confirmation and editor p
   assert.ok(audit.includes("tabAction:tabActions[0]||null"));
   assert.ok(audit.includes("const pending=[...group.actions]"));
   assert.ok(audit.includes("for(const candidate of clickables(target()).filter(x=>"));
-  assert.doesNotMatch(audit,/safeOpen = .*changeStatus|safeOpen = .*_printInvoice/);
+  assert.doesNotMatch(audit,/safeOpen = .*changeStatus|safeOpen = .*_printReport|safeOpen = .*_printKardex|safeOpen = .*_printLedger/);
+  assert.match(audit,/safeOpen = .*_printInvoice/);
 });
 
 test('Q01: safe navigation audit re-resolves same-handler controls by stable tag', () => {
