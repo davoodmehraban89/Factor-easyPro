@@ -375,6 +375,13 @@ test('Q01: native WebView2 runner validates the exact injected audit source befo
   assert.ok(runner.includes("auditSource.includes('for(const group of deferredSafeActions)')"));
 });
 
+test('Q01: partial-payment amount field has an explicit associated label', () => {
+  const view=fs.readFileSync(path.join(root,'src','views','InvoiceFormView.js'),'utf8');
+  assert.match(view,/label for="invPaidAmount"/);
+  assert.match(view,/id="invPaidAmount"/);
+  assert.match(view,/مبلغ پرداخت‌شده/);
+});
+
 test('Q01: native click audit separates unique action signatures from repeated tab instances', () => {
   const audit = fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
   const native = fs.readFileSync(path.join(root,'tests','windows-vm-installed-tauri-cdp.cjs'),'utf8');
