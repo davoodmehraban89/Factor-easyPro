@@ -153,7 +153,7 @@ test('Q01: dashboard and cheque tables remain usable in the installed narrow con
 
 test('Q01: native audit verifies safe routes, filters, edit previews and cancel-only destructive prompts', () => {
   const audit=fs.readFileSync(path.join(root,'tests','windows-vm-ui-interaction-audit-browser.js'),'utf8');
-  for(const token of ['safeNavigate','safeFilter','safeOpen','safeConfirm',
+  for(const token of ['safeNavigate','safeFilter','safeOpen','safeConfirmAction',
     'confirm-request','confirm-cancel','confirmation-prompt-missing',
     'cancel-mutated-persistent-data','FINORA.Storage.getAll(store)',
     'safe-action-vanished','editInvoice','editProduct','editContact',
