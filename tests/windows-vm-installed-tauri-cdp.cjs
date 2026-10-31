@@ -469,7 +469,11 @@ async function connect(url) {
       assert.ok(audit.fieldsInspected >= 15, 'Visible form-field inventory unexpectedly small');
       assert.ok(Number.isInteger(audit.fieldsMissingProgrammaticLabel), 'No programmatic label coverage reported');
       assert.equal(audit.fieldsMissingProgrammaticLabel, 0,
-        'Every visible financial input must have a programmatic label');
+        'Every visible financial input must have a programmatic label: ' +
+        JSON.stringify((audit.fieldsWithoutLabels || []).map(field => ({
+          route: field.route, section: field.section,
+          id: field.id, tag: field.tag, type: field.type
+        }))));
       assert.ok(audit.safeClickCount >= 15, 'Safe interaction coverage unexpectedly low');
       assert.equal(audit.uniqueActionFailed, 0, 'A native UI action click failed');
       assert.equal(audit.brokenHandlerCount, 0, 'A visible control points to a missing handler');
