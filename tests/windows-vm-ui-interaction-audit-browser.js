@@ -31,9 +31,9 @@
     handler(el).replace(/\s+/g,' ').slice(0,180)
   ].join('|');
   const dangerous = /(?:^|[.\s])(?:_?(?:save|delete|wipe|restore|post|submit|confirm|activate|seed|commit|final|approve|logout|export|import|download|print|settle|apply|reset|changeStatus|remove)\w*)\s*\(/i;
-  const safeTab = /\.(?:_switchTab|switchTab|_switchPeriod|_setPreset)\s*\(/;
+  const safeTab = /\.(?:_switchTab|switchTab)\s*\(/;
   const safeNavigate = /FINORA\.Router\.go\s*\(/;
-  const safeFilter = /\.(?:_togglePreInvoice|_setStockFilter|_clearFilters|_applyCustom|refresh|setTheme)\s*\(/;
+  const safeFilter = /\.(?:_togglePreInvoice|_setStockFilter|_clearFilters|_applyCustom|_switchPeriod|_setPreset|refresh|setTheme)\s*\(/;
   // These handlers only open an editor/preview/diagnostic dialog. The audit
   // closes it without saving; a separate fixture-backed test owns commits.
   const safeOpen = /\.(?:openNewInvoice|openProductModal|openUnitModal|openCategoryModal|openContactModal|openExpenseModal|openChequeModal|openAccountModal|openReceiptModal|openPaymentModal|openTransferModal|openCompanyModal|openCompanySwitcher|openExportSectionModal|openSignedLicenseModal|openAuditTrail|openWipeModal|openRestoreModal|openPeriodModal|openJournalModal|openWarehouse|openStocktakeCreate|openTransfer|openReversal|_openQuickProduct|_openQuickContact|openLedger|openKardex|openStocktake|showJournal|editInvoice|editProduct|editContact|editCheque|editAccount|openAdjustModal|printInvoice|checkHolooMigrationReadiness|runFinancialDiagnostics)\s*\(/;
@@ -576,8 +576,8 @@
     // Evaluate each known safe top-level tab. The router is reset between
     // clicks to avoid mutating references after HTML rerendering.
     const tabActions=[...new Set(tabs.map(el=>handler(el)))];
-    const contexts=[{section:'root',tabAction:null}];
-    for (const action of tabActions) contexts.push({section:'tab-'+contexts.length,tabAction:action});
+    const contexts=[{section:'root',tabAction:tabActions[0]||null}];
+    for (const action of tabActions.slice(1)) contexts.push({section:'tab-'+contexts.length,tabAction:action});
     // Delay filters until all row-scoped edit and confirmation actions have
     // been inspected. A filter can hide the very rows needed by later probes.
     const deferredSafeActions=[];
@@ -740,7 +740,12 @@
     // Only now click reversible navigation and filter controls. Keeping this
     // after every row-scoped action prevents filters hiding edit/delete targets.
     for(const group of deferredSafeActions){
-      for(const action of group.actions){
+      const pending=[...group.actions];
+      const seen=new Set(pending.map(action=>JSON.stringify([
+        action.tag,action.label,action.handler
+      ])));
+      for(let index=0;index<pending.length;index++){
+        const action=pending[index];
         window.__Q01_AUDIT_STAGE='safe-action:'+route+':'+action.handler;
         await go(route);
         if(group.tabAction){
@@ -750,7 +755,7 @@
             continue;
           }
           inventory(route,'root');
-          tab.click();await wait(160);
+          tab.click();await wait(320);
         }
         const el=clickables(target()).find(x=>
           handler(x)===action.handler && name(x)===action.label &&
@@ -763,6 +768,19 @@
         inventory(route,group.section);
         await press(el,route,group.section,
           safeNavigate.test(action.handler)?'navigation':'filter');
+        // Preset/toggle controls can reveal a second safe control (for example
+        // the custom-report Apply button). Discover and verify that state too.
+        if(safeFilter.test(action.handler)){
+          await wait(80);
+          inventory(route,group.section);
+          for(const candidate of clickables(target()).filter(x=>
+            !x.disabled && safeFilter.test(handler(x)))){
+            const next={handler:handler(candidate),label:name(candidate),
+              tag:candidate.tagName.toLowerCase()};
+            const key=JSON.stringify([next.tag,next.label,next.handler]);
+            if(!seen.has(key)){seen.add(key);pending.push(next);}
+          }
+        }
       }
     }
   }
