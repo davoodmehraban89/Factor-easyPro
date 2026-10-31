@@ -12,6 +12,7 @@ import { numberToWords } from '../utils/NumberToWords.js';
 import { NumberInput } from '../utils/NumberInput.js';
 import { SettingsController } from '../controllers/SettingsController.js';
 import { RetailPostingService } from '../core/RetailPostingService.js';
+import { lineGrossRials } from '../core/RetailFinanceCore.mjs';
 
 let ctx = {
   editId: null,
@@ -493,7 +494,13 @@ class InvoiceFormViewImpl {
       ctx.data.items.forEach((item, idx) => {
         const qty = Number(item.qty) || 0;
         const price = Number(item.price) || 0;
-        const lineSubtotal = qty * price;
+        // While an input is incomplete/invalid, show a provisional zero; the
+        // persistence boundary rejects it rather than silently changing it.
+        let lineSubtotal = 0;
+        if (qty > 0 && Number.isSafeInteger(price) && price >= 0) {
+          try { lineSubtotal = lineGrossRials(qty, price); }
+          catch (_) { lineSubtotal = 0; }
+        }
         let lineDiscount = 0;
         const discInput = Number(item.discountInput !== undefined ? item.discountInput : item.discount) || 0;
         if (item.discountType === 'percent') {

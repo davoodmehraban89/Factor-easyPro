@@ -9,6 +9,7 @@ import { SettingsController } from './SettingsController.js';
 import { LicenseService } from '../core/LicenseService.js';
 import { DataScope } from '../core/DataScope.js';
 import { RetailPostingService } from '../core/RetailPostingService.js';
+import { amount, lineGrossRials } from '../core/RetailFinanceCore.mjs';
 
 class InvoiceControllerImpl {
   // شماره‌ی بعدی سریال (بر اساس نوع سند)
@@ -38,9 +39,11 @@ class InvoiceControllerImpl {
     }
     const user = Auth.current();
     const items = (data.items || []).map(it => {
-      const qty = Number(it.qty) || 0;
-      const price = Number(it.price) || 0;
-      const lineSubtotal = qty * price;
+      const qty = Number(it.qty);
+      const price = amount(it.price ?? 0, 'قیمت');
+      // Both UI and persisted invoice use the exact same whole-rial rule.
+      // Reject quantities with >3 decimals and monetary overflow before writes.
+      const lineSubtotal = lineGrossRials(qty, price);
       let lineDiscount = 0;
       const discInput = Number(it.discount) || 0;
       if (it.discountType === 'percent') {
