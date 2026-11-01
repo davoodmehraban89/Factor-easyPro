@@ -164,6 +164,24 @@ class ReportsViewImpl {
   }
 
   // ============================================================
+  // Transparent costing disclosure: legacy invoices are only estimates.
+  // The posted general ledger remains the source for formal financial reports.
+  // ============================================================
+  _costBasisWarning(basis) {
+    const estimated = Number(basis?.estimatedLines) || 0;
+    const missing = Number(basis?.missingCostLines) || 0;
+    if (!estimated && !missing) return '';
+    const details = [
+      estimated ? Formatters.number(estimated) + ' ردیف با قیمت خرید فعلی برآورد شده' : '',
+      missing ? Formatters.number(missing) + ' ردیف بدون اطلاعات بهای تمام‌شده' : ''
+    ].filter(Boolean).join('؛ ');
+    return `<div role="status" class="card" style="border-right:4px solid var(--warning);padding:13px;margin-bottom:16px;line-height:1.9">
+      <strong>⚠️ این سود و زیان قطعی نیست.</strong> ${details}.
+      قیمت خرید امروز جایگزین بهای تاریخی فروش نمی‌شود؛ برای صورت مالی قابل استناد، دفتر کل و اسناد قطعی را ملاک قرار دهید.
+    </div>`;
+  }
+
+  // ============================================================
   // تب ۱: سود و زیان
   // ============================================================
   renderPLTab() {
@@ -199,6 +217,7 @@ class ReportsViewImpl {
     const marginLabel = pl.netProfit >= 0 ? 'حاشیه سود خالص' : 'حاشیه زیان خالص';
 
     return `
+      ${this._costBasisWarning(pl.costBasis)}
       <div class="grid-kpi">
         <div class="card kpi-card" style="margin:0;border-top:3px solid var(--primary)">
           <div class="kpi-card-icon" style="background:#eff6ff;color:var(--primary)">📊</div>
@@ -385,6 +404,7 @@ class ReportsViewImpl {
     const totalProfit = list.reduce((s, p) => s + p.profit, 0);
 
     return `
+      ${this._costBasisWarning(cache.pl?.costBasis)}
       <div class="grid-kpi">
         <div class="card kpi-card" style="margin:0">
           <div class="kpi-card-icon" style="background:#eff6ff;color:var(--primary)">📦</div>
@@ -579,6 +599,7 @@ class ReportsViewImpl {
     if (currentTab === 'pl') {
       return `
         <h2>صورت سود و زیان</h2>
+        ${this._costBasisWarning(pl.costBasis)}
         <table>
           <tr><td style="width:60%">فروش ناخالص</td><td>${Formatters.money(pl.grossSales)}</td></tr>
           <tr><td>تخفیف فروش</td><td style="color:#dc2626">- ${Formatters.money(pl.salesDiscounts)}</td></tr>
@@ -603,6 +624,7 @@ class ReportsViewImpl {
       const list = cache.products || [];
       return `
         <h2>سودآوری کالاها (${Formatters.number(list.length)} کالا)</h2>
+        ${this._costBasisWarning(pl.costBasis)}
         <table>
           <thead><tr><th>#</th><th>نام کالا</th><th>تعداد</th><th>فروش کل</th><th>بهای تمام‌شده</th><th>سود خالص</th><th>حاشیه سود</th></tr></thead>
           <tbody>
