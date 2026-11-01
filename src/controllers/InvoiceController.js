@@ -57,7 +57,8 @@ class InvoiceControllerImpl {
       } else {
         lineDiscount = amount(it.discountInput ?? it.discount ?? 0,'تخفیف ثابت ردیف');
       }
-      lineDiscount = Math.max(0, Math.min(lineDiscount, lineSubtotal));
+      if (lineDiscount > lineSubtotal)
+        throw Error('تخفیف ردیف بیش از مبلغ ناخالص است');
       const lineTotal = lineSubtotal - lineDiscount;
       return {
         productId: it.productId || null,
@@ -101,7 +102,9 @@ class InvoiceControllerImpl {
     const grandTotal = amount(afterDiscount + vatAmount, 'جمع کل فاکتور');
 
     // پرداخت
-    const paidAmount = Math.min(amount(data.paidAmount ?? 0,'مبلغ پرداخت'), grandTotal);
+    const paidAmount = amount(data.paidAmount ?? 0, 'مبلغ پرداخت');
+    if (paidAmount > grandTotal)
+      throw Error('مبلغ پرداخت بیش از مبلغ فاکتور است');
     const remaining = Math.max(0, grandTotal - paidAmount);
 
     const baseData = {

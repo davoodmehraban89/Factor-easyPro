@@ -57,6 +57,27 @@ test('invalid row discount must fail before creating a financial invoice or prei
   }
 });
 
+test('preinvoice rejects fixed row discount above gross before writing', async () => {
+  await setup();
+  const payload = base(0);
+  payload.items[0].discountType = 'fixed';
+  payload.items[0].discountInput = 3001;
+  payload.items[0].discount = 3001;
+  await assert.rejects(InvoiceController.save(payload), /تخفیف ردیف بیش از مبلغ ناخالص است/);
+  assert.deepEqual(await StorageService.getByCompany('invoices', 'discount-test-company'), []);
+});
+
+test('overpayment above invoice total is rejected before writing a preinvoice', async () => {
+  await setup();
+  await assert.rejects(InvoiceController.save({ ...base(10), paidAmount: 2701 }), /مبلغ پرداخت بیش از مبلغ فاکتور است/);
+  assert.deepEqual(await StorageService.getByCompany('invoices', 'discount-test-company'), []);
+});
+
+test('partial payment form rejects amounts above the invoice total before save', () => {
+  const view = readFileSync(new URL('../src/views/InvoiceFormView.js', import.meta.url), 'utf8');
+  assert.match(view, /partialPaidAmount !== undefined && partialPaidAmount > ctx\.totals\.grandTotal/);
+});
+
 test('UI updates discountInput, not already-calculated rial discount, when typing', () => {
   const view = readFileSync(new URL('../src/views/InvoiceFormView.js', import.meta.url), 'utf8');
   assert.match(view, /if \(field === 'discount'\) \{[\s\S]*?ctx\.data\.items\[idx\]\.discountInput = NumberInput\.parseStrict\(value/);

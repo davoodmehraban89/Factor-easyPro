@@ -763,7 +763,7 @@ class InvoiceFormViewImpl {
       return;
     }
 
-    let discountInput, vatRate;
+    let discountInput, vatRate, partialPaidAmount;
     try {
       // Read raw user-visible values once, before any financial write. A
       // loose parser must never silently convert "2x5" to 25 or bad VAT to 0.
@@ -791,7 +791,7 @@ class InvoiceFormViewImpl {
         decimals: 2, optional: true
       });
       if (document.getElementById('invPayment').value === 'partial')
-        NumberInput.parseStrict(document.getElementById('invPaidAmount'), { optional: true });
+        partialPaidAmount = NumberInput.parseStrict(document.getElementById('invPaidAmount'), { optional: true });
     } catch (error) {
       Toast.warning('ورودی عددی قابل ذخیره نیست: ' + error.message);
       return;
@@ -804,6 +804,10 @@ class InvoiceFormViewImpl {
     }
 
     this._recalc(); // read payment state from the same calculation shown in the summary
+    if (partialPaidAmount !== undefined && partialPaidAmount > ctx.totals.grandTotal) {
+      Toast.warning('مبلغ پرداخت‌شده نمی‌تواند از مبلغ کل فاکتور بیشتر باشد');
+      return;
+    }
     const data = {
       kind: document.getElementById('invKind').value,
       number: document.getElementById('invNumber')?.value,
