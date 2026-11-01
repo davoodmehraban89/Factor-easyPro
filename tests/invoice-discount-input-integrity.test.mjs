@@ -122,3 +122,8 @@ test('global fixed discount equal to subtotal is valid and produces zero total',
   assert.equal(invoice.grandTotal, 0);
   assert.equal(invoice.remaining, 0);
 });
+test('invoice form rejects excessive global fixed discount before invoking persistence', () => {
+  const view = readFileSync(new URL('../src/views/InvoiceFormView.js', import.meta.url), 'utf8');
+  assert.match(view, /discountInput > ctx\.totals\.subtotal/);
+  assert.match(view, /تخفیف کل نمی‌تواند بیشتر از مبلغ فاکتور باشد/);
+});

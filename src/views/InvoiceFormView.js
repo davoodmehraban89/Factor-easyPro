@@ -804,6 +804,10 @@ class InvoiceFormViewImpl {
     }
 
     this._recalc(); // read payment state from the same calculation shown in the summary
+    if (document.getElementById('invDiscType').value === 'fixed' && discountInput > ctx.totals.subtotal) {
+      Toast.warning('تخفیف کل نمی‌تواند بیشتر از مبلغ فاکتور باشد');
+      return;
+    }
     if (partialPaidAmount !== undefined && partialPaidAmount > ctx.totals.grandTotal) {
       Toast.warning('مبلغ پرداخت‌شده نمی‌تواند از مبلغ کل فاکتور بیشتر باشد');
       return;
