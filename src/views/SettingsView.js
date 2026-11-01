@@ -728,6 +728,7 @@ class SettingsViewImpl {
       const rows = report.issues.map(issue =>
         '<div style="padding:9px 0;border-bottom:1px solid var(--border)">' +
           '<strong>' + this._esc(names[issue.code] || issue.code) + '</strong>' +
+          ' <small>' + (issue.classification === 'unverified' ? '(شواهد ناکافی)' : '(مغایرت یا داده نامعتبر)') + '</small>' +
           '<div style="font-size:12px;color:var(--text-muted)">شناسه فاکتور: ' +
           this._esc(issue.documentId) +
           (Number.isSafeInteger(issue.lineIndex) ? ' | ردیف: ' + (issue.lineIndex + 1) : '') +
@@ -737,7 +738,8 @@ class SettingsViewImpl {
         '<p>فاکتورهای صادرشده بررسی‌شده: <strong>' + Formatters.number(report.checkedInvoices) + '</strong>' +
         ' | فاقد نشان ثبت قطعی حسابداری: <strong>' + Formatters.number(report.legacyDirectInvoices) + '</strong>' +
         ' | فاکتورهای نیازمند بررسی: <strong>' + Formatters.number(report.affectedInvoices) + '</strong>' +
-        ' | موارد ثبت‌شده: <strong>' + Formatters.number(report.issueCount) + '</strong></p>' +
+        ' | فاقد شواهد کافی: <strong>' + Formatters.number(report.unverifiedCount) + '</strong>' +
+        ' | مغایرت/مقدار نامعتبر: <strong>' + Formatters.number(report.inconsistentCount) + '</strong></p>' +
         '<p style="font-size:12px;color:var(--text-muted)">' +
         'نبود نرخ یا ورودی اولیه به معنای صفر بودن مالیات یا تخفیف نیست. ' +
         'گزارش فقط شواهد موجود را کنترل می‌کند؛ هیچ عدد تاریخی را حدس نمی‌زند یا تغییر نمی‌دهد.</p>' +

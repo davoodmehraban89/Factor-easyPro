@@ -12,7 +12,10 @@ export function auditStoredInvoiceProvenance(invoice) {
 
   const issues = [];
   const add = (code, lineIndex) => {
-    const issue = { code };
+    // Missing source evidence is not the same as an arithmetic mismatch.
+    const classification = /(?:_MISSING|_UNKNOWN|_UNVERIFIABLE)$/.test(code)
+      ? 'unverified' : 'inconsistent';
+    const issue = { code, classification };
     if (lineIndex !== undefined) issue.lineIndex = lineIndex;
     issues.push(issue);
   };

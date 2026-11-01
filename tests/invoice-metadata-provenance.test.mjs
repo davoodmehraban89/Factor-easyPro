@@ -55,6 +55,9 @@ test('A01 metadata: missing historical percentage and VAT provenance is flagged,
   assert.equal(report.checkedInvoices,1);
   assert.equal(report.legacyDirectInvoices,1);
   assert.equal(report.affectedInvoices,1);
+  assert.equal(report.unverifiedCount,3);
+  assert.equal(report.inconsistentCount,0);
+  assert.ok(report.issues.every(x=>x.classification==='unverified'));
   assert.deepEqual(report.issues.map(x=>x.code).sort(),[
     'GLOBAL_DISCOUNT_INPUT_MISSING','LINE_DISCOUNT_INPUT_MISSING','VAT_TREATMENT_UNKNOWN'
   ]);
@@ -72,6 +75,7 @@ test('A01 metadata: inconsistent explicitly-stored inputs are distinguished from
     vatAmount:25, discountInput:9,
     items:[{qty:2,price:150,discountType:'percent',discountInput:20,discount:30}]
   });
+  assert.ok(auditStoredInvoiceProvenance(bad).every(x=>x.classification==='inconsistent'));
   assert.deepEqual(auditStoredInvoiceProvenance(bad).map(x=>x.code).sort(),[
     'GLOBAL_DISCOUNT_AMOUNT_MISMATCH','LINE_DISCOUNT_AMOUNT_MISMATCH','VAT_AMOUNT_MISMATCH'
   ]);
@@ -108,4 +112,14 @@ test('A01 metadata: diagnostics exposed as admin-only read-only UI action',()=>{
   assert.match(s,/inspectInvoiceMetadataProvenance\(\{ maxIssues: 50 \}\)/);
   assert.match(s,/this\._esc\(issue\.documentId\)/);
   assert.ok(!/const rate = .*vatAmount/.test(s));
+});
+
+
+test('A01 metadata: non-admin direct invocation is rejected before reading company invoices',async()=>{
+  await setup();
+  await StorageService.put('invoices',valid({id:'confidential-admin-invoice'}));
+  Auth.currentUser={id:'a01-staff',role:'user',username:'staff'};
+  await assert.rejects(inspectInvoiceMetadataProvenance(),/فقط برای مدیر/);
+  Auth.currentUser=null;
+  await assert.rejects(inspectInvoiceMetadataProvenance(),/فقط برای مدیر/);
 });
