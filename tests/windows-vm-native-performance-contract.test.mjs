@@ -24,3 +24,25 @@ test('A08 installed VM runner rejects incomplete report or encrypted-backup meas
  assert.match(lab,/\$encryptedBackup\.bytes -lt 100000/);
  assert.match(lab,/reportsRendered = 4/);
 });
+
+
+test('Q01 Windows native matrix requires the additional invoice, print, expense, ledger and stocktake workflows',()=>{
+ const matrix=read('tests/windows-vm-native-functional-matrix.cjs');
+ const lab=read('scripts/windows-vm-native-lab.ps1');
+ const scenarios=[
+  'invoice-quick-add-and-save-print',
+  'auxiliary-rtl-print-rendering',
+  'expense-form-category-and-posting',
+  'manual-journal-reversal-and-exports',
+  'inventory-transfer-and-stocktake'
+ ];
+ for(const scenario of scenarios){
+  assert.ok(matrix.includes("['"+scenario+"'"),'Native functional matrix omitted '+scenario);
+  assert.ok(lab.includes("'"+scenario+"'"),'Windows VM mandatory acceptance omitted '+scenario);
+ }
+ assert.match(matrix,/window\.InvoiceFormView\._save\(true\)/);
+ assert.match(matrix,/window\.StockKardexModal\._printKardex/);
+ assert.match(matrix,/window\.ContactLedgerModal\._printLedger/);
+ assert.match(matrix,/window\.AccountingView\.saveTransfer/);
+ assert.match(matrix,/window\.AccountingView\.finishStocktake/);
+});

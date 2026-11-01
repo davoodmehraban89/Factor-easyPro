@@ -69,3 +69,55 @@ test('Q01 coverage never converts an unclicked control into a clicked control',(
  assert.equal(audit.uniqueActions[0].fixtureCoverage.kind,'native-fixture-positive-and-negative');
  assert.equal(audit.uniqueActions[1].fixtureCoverage,null);
 });
+
+
+test('Q01 maps quick invoice creation and print handlers only to the installed quick-add scenario',()=>{
+ const evidence={nativeFunctional:{'invoice-quick-add-and-save-print':{
+  quickContactCreated:true,quickProductCreated:true,saveAndPrintOpened:true,
+  invoicePrintRendered:true,invoicePosted:true
+ }}};
+ for(const handler of [
+  'window.InvoiceFormView._save(true)','window.InvoiceFormView._saveQuickContact()',
+  'window.InvoiceFormView._saveQuickProduct()','window.InvoicePrint._print()'
+ ]) assert.ok(coverageFor(handler,evidence),handler);
+});
+
+test('Q01 maps native print, expense and ledger operations only after their installed fixtures pass',()=>{
+ const evidence={nativeFunctional:{
+  'auxiliary-rtl-print-rendering':{kardexPrints:4,contactLedgerPrints:7,reportsPrintRendered:true,allDocumentsRtl:true},
+  'expense-form-category-and-posting':{expenseCreatedThroughForm:true,customCategorySelected:true,expenseJournalPosted:true},
+  'manual-journal-reversal-and-exports':{chartAccountCreated:true,journalRowAdded:true,draftJournalSaved:true,journalPosted:true,reversalPosted:true,ledgerCsvExported:true,reconciliationCsvExported:true}
+ }};
+ assert.equal(coverageFor("window.StockKardexModal._printKardex('prod_1')",evidence).kind,'native-rtl-print-render');
+ assert.equal(coverageFor('window.ContactLedgerModal._printLedger("contact_1")',evidence).kind,'native-rtl-print-render');
+ assert.equal(coverageFor('window.ReportsView._printReport()',evidence).kind,'native-rtl-print-render');
+ assert.equal(coverageFor('window.ExpensesView._promptNewCategory()',evidence).kind,'native-ui-category-create');
+ assert.equal(coverageFor('window.ExpensesView.saveExpense(null)',evidence).kind,'native-ui-financial-posting');
+ assert.equal(coverageFor("window.AccountingView.saveJournal('posted')",evidence).kind,'native-ui-final-posting');
+ assert.equal(coverageFor('window.AccountingView.saveReversal()',evidence).kind,'native-ui-reversal-posting');
+ assert.equal(coverageFor('window.AccountingView.exportReports()',evidence).kind,'native-csv-export');
+ assert.equal(coverageFor('window.AccountingView.exportReconciliation()',evidence).kind,'native-csv-export');
+});
+
+test('Q01 transfer coverage requires both rejected inactive and successful active-account transfer evidence',()=>{
+ const evidence={nativeFunctional:{'inactive-treasury-cheque-settlement':{
+  inactiveTransferRejected:true,validTransferPosted:true,treasuryAccountEditPersisted:true
+ }}};
+ assert.equal(coverageFor("window.TreasuryView._saveTransaction('transfer')",evidence).kind,
+  'native-fixture-positive-and-negative');
+ assert.equal(coverageFor('window.TreasuryView.saveAccount("acc_1")',evidence).kind,
+  'native-ui-create-and-update');
+ evidence.nativeFunctional['inactive-treasury-cheque-settlement'].validTransferPosted=false;
+ assert.equal(coverageFor("window.TreasuryView._saveTransaction('transfer')",evidence),null);
+});
+
+test('Q01 maps stock transfer and stocktake UI actions only to exact balance-preserving native evidence',()=>{
+ const evidence={nativeFunctional:{'inventory-transfer-and-stocktake':{
+  secondWarehouseCreated:true,transferPosted:true,exactInventoryMoved:true,
+  stocktakeCreated:true,stocktakeCountsSaved:true,stocktakeFinalized:true
+ }}};
+ for(const handler of [
+  'window.AccountingView.saveTransfer()','window.AccountingView.createStocktake()',
+  'window.AccountingView.saveStocktake()','window.AccountingView.finishStocktake()'
+ ]) assert.ok(coverageFor(handler,evidence),handler);
+});
