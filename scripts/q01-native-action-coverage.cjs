@@ -13,7 +13,7 @@ const RULES = [
     }, kind:'native-ui-create-and-update',
     note:'ثبت و ویرایش شخص از فرم واقعی و ماندگاری برچسب در WebView2' },
   { match:'window.ProductsView.saveProduct(', checks:{
-      'products-crud-form-and-nested-classifiers':['createdThroughForm','editedThroughForm','fractionalReorderPointPreserved']
+      'products-crud-form-and-nested-classifiers':['createdThroughForm','editedThroughForm','fractionalReorderPointPreserved','nestedUnitSavedAndSelected','nestedCategorySavedAndSelected']
     }, kind:'native-ui-create-and-update',
     note:'ثبت و ویرایش کالا از فرم واقعی با قیمت، نقطه سفارش و طبقه‌بندی انتخاب‌شده' },
   { match:'window.ProductsView.saveUnit(true)', checks:{

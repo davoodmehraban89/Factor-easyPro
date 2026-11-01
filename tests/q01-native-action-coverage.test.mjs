@@ -101,7 +101,7 @@ test('Q01 maps native print, expense and ledger operations only after their inst
 
 test('Q01 transfer coverage requires both rejected inactive and successful active-account transfer evidence',()=>{
  const evidence={nativeFunctional:{'inactive-treasury-cheque-settlement':{
-  inactiveTransferRejected:true,validTransferPosted:true,treasuryAccountEditPersisted:true
+  inactiveTransferRejected:true,invalidTransferRolledBack:true,validTransferPosted:true,treasuryAccountEditPersisted:true
  }}};
  assert.equal(coverageFor("window.TreasuryView._saveTransaction('transfer')",evidence).kind,
   'native-fixture-positive-and-negative');
@@ -156,7 +156,7 @@ test('Q01 accounting period and warehouse form coverage requires positive instal
  },'fiscal-close-atomic-guardrails':{successfulCloseCommitted:true,duplicateCloseRejected:true}}};
  assert.equal(coverageFor('window.AccountingView.savePeriod()',evidence).kind,'native-ui-period-create');
  assert.equal(coverageFor('window.AccountingView.saveWarehouse()',evidence).kind,'native-ui-warehouse-create');
- evidence.nativeFunctional['activate-accounting-and-inventory'].warehouseCreated=false;
+ evidence.nativeFunctional['activate-accounting-and-inventory'].warehouseCreatedByForm=false;
  assert.equal(coverageFor('window.AccountingView.saveWarehouse()',evidence),null);
 });
 
