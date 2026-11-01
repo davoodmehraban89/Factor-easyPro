@@ -131,11 +131,15 @@
     }
     return {detected:true,valid:typeof obj==='function',callee:m[1]};
   }
-  const seenClick = new Set();
+  // De-duplicate a physical DOM node, not a handler signature. The same
+  // action is intentionally exercised in several freshly opened modal
+  // instances; signature-level de-duplication skipped those clicks and made
+  // later instances look broken even though only the first was exercised.
+  const seenClick = new WeakSet();
   async function press(el, route, section, category) {
+    if (seenClick.has(el)) return;
+    seenClick.add(el);
     const k=sig(el,route,section);
-    if (seenClick.has(k)) return;
-    seenClick.add(k);
     const row=all.get(k);
     const before=target().innerHTML;
     const beforeModal=!!document.querySelector('.modal-backdrop');
@@ -165,6 +169,11 @@
         if (expectedNoop) {
           if (row) row.reason='idempotent-click-on-already-selected-or-clear-filter-state';
         } else {
+          // A non-idempotent safe action that produced no observable state
+          // change is a failed control, not a successful click. Propagate this
+          // into uniqueActionFailed so the native acceptance gate cannot hide
+          // it behind the separate problems array.
+          if (row) {row.status='failed';row.reason='no-observable-DOM-change';}
           failures.push({route,section,kind:'no-visible-change',
             label:name(el),handler:handler(el).slice(0,170)});
         }
@@ -738,7 +747,7 @@
           // preview openers without ever invoking Save or physical Print.
           const nestedOpenActions=nested.filter(x=>!x.disabled &&
             safeOpen.test(handler(x)) &&
-            /_openQuickContact|_openQuickProduct|InvoicePrint\._preview/.test(handler(x)));
+            /_openQuickContact|_openQuickProduct|ProductsView\.openUnitModal|ProductsView\.openCategoryModal|StockKardexModal\.openAdjustModal|InvoicePrint\._preview/.test(handler(x)));
           for(const nestedAction of nestedOpenActions){
             const parentDepth=FINORA.Modal.stack.length;
             const parentCard=FINORA.Modal.stack.at(-1)?.card;
@@ -759,9 +768,16 @@
                 handler:handler(nestedAction)});
             }
             auditFields(childDialog,route,ctx.section+'/nested-modal');
-            const childCancel=clickables(childDialog).find(x=>
+            // Inventory every child-dialog action, including save controls
+            // that are deliberately not clicked in this generic sweep. Their
+            // positive/negative behavior must be covered by a dedicated
+            // synthetic workflow or remain explicitly unverified.
+            const childControls=clickables(childDialog);
+            childControls.forEach(control=>
+              registerControl(control,route,ctx.section+'/nested-modal'));
+            const childCancel=childControls.find(x=>
               /FINORA\.Modal\.close|Modal\.closeAll/.test(handler(x)) ||
-              /^(انصراف|بستن|بازگشت|✕|×)$/.test(name(x)));
+              /^(انصراف|بستن|بستن پنجره|بازگشت|✕|×)$/.test(name(x)));
             if(childCancel){
               registerControl(childCancel,route,ctx.section+'/nested-modal');
               await press(childCancel,route,ctx.section+'/nested-modal','open');
@@ -784,12 +800,15 @@
             const initialRows=itemsBody.querySelectorAll('tr').length;
             registerControl(addRow,route,ctx.section+'/modal');
             await press(addRow,route,ctx.section+'/modal','open');
-            const afterAdd=itemsBody.querySelectorAll('tr').length;
+            // Re-query after the row render so the assertion reads the current
+            // modal's live table rather than relying on pre-click row children.
+            const currentItemsBody=overlay.querySelector('#itemsBody');
+            const afterAdd=currentItemsBody?.querySelectorAll('tr').length ?? 0;
             if(afterAdd!==initialRows+1){
               failures.push({route,section:ctx.section,kind:'invoice-draft-add-row-failed',
                 initialRows,afterAdd});
             } else {
-              const lastRow=itemsBody.querySelector('tr:last-child');
+              const lastRow=currentItemsBody.querySelector('tr:last-child');
               const removeLast=clickables(lastRow).find(x=>
                 /InvoiceFormView\._removeRow\s*\(\d+\)/.test(handler(x)));
               if(!removeLast){
@@ -797,20 +816,21 @@
               } else {
                 registerControl(removeLast,route,ctx.section+'/modal');
                 await press(removeLast,route,ctx.section+'/modal','open');
-                const afterRestore=itemsBody.querySelectorAll('tr').length;
+                const afterRestore=overlay.querySelector('#itemsBody')?.querySelectorAll('tr').length ?? 0;
                 if(afterRestore!==initialRows){
                   failures.push({route,section:ctx.section,kind:'invoice-draft-row-count-not-restored',
                     initialRows,afterRestore});
                 }
               }
             }
-            const remainingFirst=clickables(itemsBody).find(x=>
+            const remainingBody=overlay.querySelector('#itemsBody');
+            const remainingFirst=clickables(remainingBody).find(x=>
               /InvoiceFormView\._removeRow\(0\)/.test(handler(x)));
-            if(remainingFirst && itemsBody.querySelectorAll('tr').length===1){
+            if(remainingFirst && remainingBody.querySelectorAll('tr').length===1){
               registerControl(remainingFirst,route,ctx.section+'/modal');
-              const beforeGuard=itemsBody.querySelectorAll('tr').length;
+              const beforeGuard=remainingBody.querySelectorAll('tr').length;
               await press(remainingFirst,route,ctx.section+'/modal','open');
-              const afterGuard=itemsBody.querySelectorAll('tr').length;
+              const afterGuard=overlay.querySelector('#itemsBody')?.querySelectorAll('tr').length ?? 0;
               if(afterGuard!==beforeGuard){
                 failures.push({route,section:ctx.section,kind:'invoice-last-row-removal-not-blocked',
                   beforeGuard,afterGuard});
@@ -834,7 +854,7 @@
 
           // Exercise a real cancel/close button when present.
           const cancel=nested.find(x=>/FINORA\.Modal\.close|Modal\.closeAll/.test(handler(x)) ||
-            /^(انصراف|بستن|بازگشت|✕|×)$/.test(name(x)));
+            /^(انصراف|بستن|بستن پنجره|بازگشت|✕|×)$/.test(name(x)));
           if(cancel){
             cancel.click();await wait(70);
             clicks.push({route,section:ctx.section+'/modal',category:'cancel',

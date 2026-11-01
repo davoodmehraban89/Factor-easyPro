@@ -302,7 +302,9 @@ class ExpensesViewImpl {
     const kind = document.querySelector('input[name="expKind"]:checked')?.value || 'expense';
     const category = document.getElementById('expCategory').value;
     const date = document.getElementById('expDate').value.trim();
-    const amount = NumberInput.parse(document.getElementById('expAmount').value);
+    let amount;
+    try { amount = NumberInput.parseStrict(document.getElementById('expAmount')); }
+    catch (error) { Toast.warning('مبلغ معتبر نیست: ' + error.message); return; }
     const method = document.getElementById('expMethod').value;
     const refNumber = document.getElementById('expRef').value;
     const description = document.getElementById('expDesc').value;

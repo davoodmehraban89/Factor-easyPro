@@ -2,7 +2,7 @@
 // ReportController — محاسبات سود و زیان و تحلیل مالی
 // ============================================================
 
-import { StorageService } from '../core/StorageService.js';
+import { allocateDiscount } from '../core/RetailFinanceCore.mjs';
 import { Auth } from '../core/Auth.js';
 import { DataScope } from '../core/DataScope.js';
 import { Jalali } from '../utils/Jalali.js';
@@ -11,15 +11,16 @@ class ReportControllerImpl {
   async _loadData() {
     const user = Auth.current();
     if (!user) throw new Error('کاربر یافت نشد');
-    const [invoices, products, expenses, contacts, cheques, treasury] = await Promise.all([
+    const [invoices, products, expenses, contacts, cheques, treasury, stockMovements] = await Promise.all([
       DataScope.list('invoices'),
       DataScope.list('products'),
       DataScope.list('expenses'),
       DataScope.list('contacts'),
       DataScope.list('cheques'),
-      DataScope.list('treasury')
+      DataScope.list('treasury'),
+      DataScope.list('stock_movements')
     ]);
-    return { invoices: invoices || [], products: products || [], expenses: expenses || [], contacts: contacts || [], cheques: cheques || [], treasury: treasury || [] };
+    return { invoices: invoices || [], products: products || [], expenses: expenses || [], contacts: contacts || [], cheques: cheques || [], treasury: treasury || [], stockMovements: stockMovements || [] };
   }
 
   _parseJalali(str) {
@@ -104,68 +105,249 @@ class ReportControllerImpl {
     return { from, to };
   }
 
+  _netInvoiceLines(invoice) {
+    const source = Array.isArray(invoice?.items) ? invoice.items : [];
+    if (!source.length) return { items: [], allocationComplete: true };
+    const items = [];
+    for (const item of source) {
+      let lineTotal = Number(item.lineTotal);
+      if (!Number.isSafeInteger(lineTotal) || lineTotal < 0) {
+        const gross = Number(item.qty) * Number(item.price);
+        const rowDiscount = Number(item.discount ?? 0);
+        const fallback = Math.round(gross) - rowDiscount;
+        if (!Number.isSafeInteger(fallback) || fallback < 0) {
+          return {
+            items: source.map(row => ({ ...row, netLineTotal: Number(row.lineTotal) || 0 })),
+            allocationComplete: false
+          };
+        }
+        lineTotal = fallback;
+      }
+      items.push({ ...item, lineTotal });
+    }
+    const total = items.reduce((sum, item) => {
+      const next = sum + item.lineTotal;
+      return Number.isSafeInteger(next) ? next : NaN;
+    }, 0);
+    const discount = Number(invoice.totalDiscount ?? 0);
+    if (!Number.isSafeInteger(total) || !Number.isSafeInteger(discount) ||
+        discount < 0 || discount > total) {
+      return {
+        items: items.map(item => ({ ...item, netLineTotal: item.lineTotal })),
+        allocationComplete: false
+      };
+    }
+    try {
+      return { items: allocateDiscount(items, discount), allocationComplete: true };
+    } catch {
+      return {
+        items: items.map(item => ({ ...item, netLineTotal: item.lineTotal })),
+        allocationComplete: false
+      };
+    }
+  }
+
+  _invoiceTotals(invoice) {
+    const normalized = this._netInvoiceLines(invoice);
+    const fallbackSubtotal = normalized.items.reduce((sum, item) => {
+      const next = sum + item.lineTotal;
+      return Number.isSafeInteger(next) ? next : NaN;
+    }, 0);
+    const storedSubtotal = Number(invoice.subtotal);
+    const subtotal = Number.isSafeInteger(storedSubtotal) && storedSubtotal >= 0
+      ? storedSubtotal : fallbackSubtotal;
+    const storedDiscount = Number(invoice.totalDiscount ?? 0);
+    const validDiscount = Number.isSafeInteger(subtotal) &&
+      Number.isSafeInteger(storedDiscount) && storedDiscount >= 0 && storedDiscount <= subtotal;
+    const normalizedSubtotal = normalized.items.reduce((sum, item) => {
+      const next = sum + item.lineTotal;
+      return Number.isSafeInteger(next) ? next : NaN;
+    }, 0);
+    const discount = validDiscount ? storedDiscount : 0;
+    return {
+      subtotal,
+      discount,
+      net: Number.isSafeInteger(subtotal) ? subtotal - discount : 0,
+      valid: validDiscount && normalized.allocationComplete &&
+        Number.isSafeInteger(normalizedSubtotal) && normalizedSubtotal === subtotal
+    };
+  }
+
+  _stockMovementCostIndex(stockMovements = []) {
+    const costs = new Map();
+    for (const movement of stockMovements) {
+      if (movement.refType !== 'invoice' || !movement.refId || !movement.productId ||
+          !['in', 'out'].includes(movement.type) ||
+          !Number.isSafeInteger(movement.cost) || movement.cost < 0) continue;
+      const key = JSON.stringify([movement.refId, movement.productId, movement.type]);
+      const next = (costs.get(key) || 0) + movement.cost;
+      if (!Number.isSafeInteger(next)) throw Error('سرریز بهای تمام‌شده در گردش انبار');
+      costs.set(key, next);
+    }
+    return costs;
+  }
+
+  _invoiceProductCosts(invoice, productsById, movementCosts) {
+    const direction = invoice.kind === 'sale' ? 'out' :
+      invoice.kind === 'sale_return' ? 'in' : null;
+    const quantities = new Map();
+    for (const item of (invoice.items || [])) {
+      if (!item.productId) continue;
+      const qty = Number(item.qty);
+      const previous = quantities.get(item.productId) || 0;
+      const next = previous + qty;
+      if (!Number.isFinite(qty) || qty < 0 || !Number.isFinite(next))
+        throw Error('مقدار کالا برای گزارش سودآوری نامعتبر است');
+      quantities.set(item.productId, next);
+    }
+    const byProduct = new Map();
+    const counts = { historical: 0, estimated: 0, unknown: 0 };
+    for (const [productId, qty] of quantities) {
+      const movementKey = JSON.stringify([invoice.id, productId, direction]);
+      if (direction && movementCosts.has(movementKey)) {
+        byProduct.set(productId, { cost: movementCosts.get(movementKey), basis: 'historical' });
+        counts.historical++;
+        continue;
+      }
+      const product = productsById.get(productId);
+      if (product && product.trackInventory === false) {
+        byProduct.set(productId, { cost: 0, basis: 'not-applicable' });
+        continue;
+      }
+      const buyPrice = Number(product?.buyPrice);
+      const estimated = buyPrice * qty;
+      if (product && Number.isSafeInteger(buyPrice) && buyPrice >= 0 &&
+          Number.isSafeInteger(Math.round(estimated)) && estimated >= 0) {
+        byProduct.set(productId, { cost: Math.round(estimated), basis: 'estimated' });
+        counts.estimated++;
+      } else {
+        byProduct.set(productId, { cost: 0, basis: 'unknown' });
+        counts.unknown++;
+      }
+    }
+    return { byProduct, counts };
+  }
+
+  _costBasisSummary(counts) {
+    const historical = counts.historical || 0;
+    const estimated = counts.estimated || 0;
+    const unknown = counts.unknown || 0;
+    const basis = unknown ? 'incomplete' :
+      (historical && estimated) ? 'mixed' :
+      estimated ? 'estimated' :
+      historical ? 'historical' : 'not-applicable';
+    return { basis, historical, estimated, unknown };
+  }
+
+  _buildProductStats(invoices, products, stockMovements) {
+    const productsById = new Map(products.map(product => [product.id, product]));
+    const movementCosts = this._stockMovementCostIndex(stockMovements);
+    const stats = new Map();
+    for (const invoice of invoices) {
+      if (!['sale', 'sale_return'].includes(invoice.kind) || invoice.isPreInvoice) continue;
+      const isReturn = invoice.kind === 'sale_return';
+      const sign = isReturn ? -1 : 1;
+      const normalized = this._netInvoiceLines(invoice);
+      const byProduct = new Map();
+      for (const item of normalized.items) {
+        const productId = item.productId || null;
+        const key = productId || 'unknown_' + (item.productName || '');
+        const row = byProduct.get(key) || {
+          productId,
+          productName: item.productName || 'ناشناس',
+          unit: item.unit || 'عدد',
+          qty: 0,
+          totalSales: 0
+        };
+        row.qty += Number(item.qty) || 0;
+        row.totalSales += Number(item.netLineTotal) || 0;
+        byProduct.set(key, row);
+      }
+      const costs = this._invoiceProductCosts(invoice, productsById, movementCosts);
+      for (const [key, item] of byProduct) {
+        const row = stats.get(key) || {
+          productId: item.productId,
+          productName: item.productName,
+          unit: item.unit,
+          qty: 0,
+          totalSales: 0,
+          cogs: 0,
+          profit: 0,
+          margin: 0,
+          count: 0,
+          returnCount: 0,
+          costBasisCounts: { historical: 0, estimated: 0, unknown: 0 },
+          discountAllocationIncomplete: false
+        };
+        row.qty += sign * item.qty;
+        row.totalSales += sign * item.totalSales;
+        if (isReturn) row.returnCount++;
+        else row.count++;
+        if (item.productId) {
+          const cost = costs.byProduct.get(item.productId);
+          if (cost?.basis === 'historical' || cost?.basis === 'estimated') {
+            row.cogs += sign * cost.cost;
+            row.costBasisCounts[cost.basis]++;
+          } else if (cost?.basis === 'unknown') {
+            row.costBasisCounts.unknown++;
+          }
+        }
+        row.discountAllocationIncomplete ||= !normalized.allocationComplete;
+        stats.set(key, row);
+      }
+    }
+    return [...stats.values()].map(row => {
+      row.profit = row.totalSales - row.cogs;
+      row.margin = row.totalSales > 0 ? (row.profit / row.totalSales) * 100 : 0;
+      row.costBasis = this._costBasisSummary(row.costBasisCounts).basis;
+      row.costBasisDetails = this._costBasisSummary(row.costBasisCounts);
+      return row;
+    });
+  }
+
   // ============================================================
   // ۱. سود و زیان
   // ============================================================
-  async getProfitLoss(filter = {}) {
-    const { invoices, products, expenses } = await this._loadData();
+  async getProfitLoss(filter = {}, data = null) {
+    const { invoices, products, expenses, stockMovements = [] } = data || await this._loadData();
     const { from, to } = this._getRange(filter);
-
-    // فقط فاکتورهای فروش (بدون پیش‌فاکتور)
-    const salesInRange = invoices.filter(i =>
-      i.kind === 'sale' &&
-      !i.isPreInvoice &&
-      this._inRange(i.date, from, to)
+    const inRange = invoices.filter(invoice => this._inRange(invoice.date, from, to));
+    const salesInRange = inRange.filter(invoice =>
+      invoice.kind === 'sale' && !invoice.isPreInvoice
+    );
+    const returnsInRange = inRange.filter(invoice =>
+      invoice.kind === 'sale_return' && !invoice.isPreInvoice
     );
 
-    // برگشت از فروش
-    const returnsInRange = invoices.filter(i =>
-      i.kind === 'sale_return' &&
-      !i.isPreInvoice &&
-      this._inRange(i.date, from, to)
-    );
-
-    // فروش ناخالص = مجموع فروش بدون مالیات و تخفیف نهایی
-    const grossSales = salesInRange.reduce((s, i) => s + (Number(i.subtotal) || 0), 0);
-    const salesDiscounts = salesInRange.reduce((s, i) => s + (Number(i.totalDiscount) || 0), 0);
-    const returnsAmount = returnsInRange.reduce((s, i) => s + (Number(i.subtotal) || 0), 0);
+    const salesTotals = salesInRange.map(invoice => this._invoiceTotals(invoice));
+    const returnTotals = returnsInRange.map(invoice => this._invoiceTotals(invoice));
+    const grossSales = salesTotals.reduce((sum, totals) => sum + totals.subtotal, 0);
+    const salesDiscounts = salesTotals.reduce((sum, totals) => sum + totals.discount, 0);
+    const returnsAmount = returnTotals.reduce((sum, totals) => sum + totals.net, 0);
     const netSales = grossSales - salesDiscounts - returnsAmount;
 
-    // بهای تمام‌شده (COGS) — از قیمت خرید هر کالا
+    const productsById = new Map(products.map(product => [product.id, product]));
+    const movementCosts = this._stockMovementCostIndex(stockMovements);
+    const costCounts = { historical: 0, estimated: 0, unknown: 0 };
     let cogs = 0;
-    const productMap = {};
-    products.forEach(p => productMap[p.id] = p);
+    for (const [rows, sign] of [[salesInRange, 1], [returnsInRange, -1]]) {
+      for (const invoice of rows) {
+        const result = this._invoiceProductCosts(invoice, productsById, movementCosts);
+        for (const cost of result.byProduct.values()) cogs += sign * cost.cost;
+        for (const key of Object.keys(costCounts)) costCounts[key] += result.counts[key];
+      }
+    }
 
-    salesInRange.forEach(inv => {
-      (inv.items || []).forEach(it => {
-        const p = productMap[it.productId];
-        const buyPrice = p ? (Number(p.buyPrice) || 0) : 0;
-        const qty = Number(it.qty) || 0;
-        cogs += buyPrice * qty;
-      });
-    });
-
-    // برگشت‌ها رو از COGS کم کن
-    returnsInRange.forEach(inv => {
-      (inv.items || []).forEach(it => {
-        const p = productMap[it.productId];
-        const buyPrice = p ? (Number(p.buyPrice) || 0) : 0;
-        const qty = Number(it.qty) || 0;
-        cogs -= buyPrice * qty;
-      });
-    });
-
-    cogs = Math.max(0, cogs);
-    const grossProfit = netSales - cogs;
-    const grossMargin = netSales > 0 ? (grossProfit / netSales) * 100 : 0;
-
-    // هزینه‌های عملیاتی و سایر درآمدها
-    const expensesInRange = expenses.filter(e => this._inRange(e.date, from, to));
-    const operatingExpenses = expensesInRange.filter(e => e.kind === 'expense').reduce((s, e) => s + (Number(e.amount) || 0), 0);
-    const otherIncome = expensesInRange.filter(e => e.kind === 'income').reduce((s, e) => s + (Number(e.amount) || 0), 0);
-
-    const netProfit = grossProfit - operatingExpenses + otherIncome;
-    const netMargin = netSales > 0 ? (netProfit / netSales) * 100 : 0;
+    const expensesInRange = expenses.filter(expense => this._inRange(expense.date, from, to));
+    const operatingExpenses = expensesInRange
+      .filter(expense => expense.kind === 'expense')
+      .reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+    const otherIncome = expensesInRange
+      .filter(expense => expense.kind === 'income')
+      .reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+    const netProfit = netSales - cogs - operatingExpenses + otherIncome;
+    const netMargin = netSales !== 0 ? (netProfit / netSales) * 100 : 0;
+    const costBasisDetails = this._costBasisSummary(costCounts);
 
     return {
       grossSales,
@@ -173,8 +355,8 @@ class ReportControllerImpl {
       returnsAmount,
       netSales,
       cogs,
-      grossProfit,
-      grossMargin,
+      grossProfit: netSales - cogs,
+      grossMargin: netSales !== 0 ? ((netSales - cogs) / netSales) * 100 : 0,
       operatingExpenses,
       otherIncome,
       netProfit,
@@ -182,190 +364,136 @@ class ReportControllerImpl {
       invoiceCount: salesInRange.length,
       returnCount: returnsInRange.length,
       periodFrom: from,
-      periodTo: to
+      periodTo: to,
+      costBasis: costBasisDetails.basis,
+      costBasisDetails,
+      discountAllocationIncomplete: [...salesTotals, ...returnTotals].some(totals => !totals.valid)
     };
   }
 
-  // ============================================================
-  // ۲. تحلیل فروش (Top Products & Customers)
-  // ============================================================
-  async getSalesAnalysis(filter = {}) {
-    const { invoices, products, contacts } = await this._loadData();
+  async getSalesAnalysis(filter = {}, data = null) {
+    const { invoices, products, stockMovements = [] } = data || await this._loadData();
     const { from, to } = this._getRange(filter);
-
-    const salesInRange = invoices.filter(i =>
-      i.kind === 'sale' &&
-      !i.isPreInvoice &&
-      this._inRange(i.date, from, to)
+    const rows = invoices.filter(invoice =>
+      ['sale', 'sale_return'].includes(invoice.kind) &&
+      !invoice.isPreInvoice &&
+      this._inRange(invoice.date, from, to)
     );
-
-    // محصولات
-    const productStats = {};
-    const productMap = {};
-    products.forEach(p => productMap[p.id] = p);
-
-    salesInRange.forEach(inv => {
-      (inv.items || []).forEach(it => {
-        const key = it.productId || 'unknown_' + (it.productName || '');
-        if (!productStats[key]) {
-          productStats[key] = {
-            productId: it.productId,
-            productName: it.productName || 'ناشناس',
-            qty: 0,
-            totalSales: 0,
-            cogs: 0,
-            count: 0
-          };
-        }
-        const qty = Number(it.qty) || 0;
-        const lineTotal = Number(it.lineTotal) || (qty * (Number(it.price) || 0));
-        const p = productMap[it.productId];
-        const buyPrice = p ? (Number(p.buyPrice) || 0) : 0;
-        productStats[key].qty += qty;
-        productStats[key].totalSales += lineTotal;
-        productStats[key].cogs += buyPrice * qty;
-        productStats[key].count += 1;
-      });
-    });
-
-    const topProductsBySales = Object.values(productStats)
-      .map(s => ({ ...s, profit: s.totalSales - s.cogs }))
+    const productStats = this._buildProductStats(rows, products, stockMovements);
+    const topProductsBySales = [...productStats]
       .sort((a, b) => b.totalSales - a.totalSales)
       .slice(0, 10);
-
-    const topProductsByQty = Object.values(productStats)
+    const topProductsByQty = [...productStats]
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 10);
 
-    // مشتریان
     const contactStats = {};
-    salesInRange.forEach(inv => {
-      const key = inv.contactId || 'unknown';
+    rows.forEach(invoice => {
+      const key = invoice.contactId || 'unknown';
       if (!contactStats[key]) {
         contactStats[key] = {
-          contactId: inv.contactId,
-          contactName: inv.contactName || 'ناشناس',
+          contactId: invoice.contactId,
+          contactName: invoice.contactName || 'ناشناس',
           invoiceCount: 0,
+          returnCount: 0,
           totalSales: 0,
+          totalReturns: 0,
+          netSales: 0,
           totalPaid: 0,
           totalRemaining: 0
         };
       }
-      contactStats[key].invoiceCount += 1;
-      contactStats[key].totalSales += Number(inv.grandTotal) || 0;
-      contactStats[key].totalPaid += Number(inv.paidAmount) || 0;
-      contactStats[key].totalRemaining += Number(inv.remaining) || 0;
+      if (invoice.kind === 'sale') {
+        contactStats[key].invoiceCount += 1;
+        contactStats[key].totalSales += Number(invoice.grandTotal) || 0;
+        contactStats[key].totalPaid += Number(invoice.paidAmount) || 0;
+        contactStats[key].totalRemaining += Number(invoice.remaining) || 0;
+      } else {
+        contactStats[key].returnCount += 1;
+        contactStats[key].totalReturns += Number(invoice.grandTotal) || 0;
+      }
     });
 
     const topCustomers = Object.values(contactStats)
-      .sort((a, b) => b.totalSales - a.totalSales)
+      .map(customer => ({ ...customer, netSales: customer.totalSales - customer.totalReturns }))
+      .sort((a, b) => b.netSales - a.netSales)
       .slice(0, 10);
-
     return {
       topProductsBySales,
       topProductsByQty,
       topCustomers,
-      invoiceCount: salesInRange.length
+      invoiceCount: rows.filter(invoice => invoice.kind === 'sale').length
     };
   }
 
-  // ============================================================
-  // ۳. سودآوری کالا (همه کالاها)
-  // ============================================================
-  async getProductProfitability(filter = {}) {
-    const { invoices, products } = await this._loadData();
+  async getProductProfitability(filter = {}, data = null) {
+    const { invoices, products, stockMovements = [] } = data || await this._loadData();
     const { from, to } = this._getRange(filter);
-
-    const salesInRange = invoices.filter(i =>
-      i.kind === 'sale' &&
-      !i.isPreInvoice &&
-      this._inRange(i.date, from, to)
+    const rows = invoices.filter(invoice =>
+      ['sale', 'sale_return'].includes(invoice.kind) &&
+      !invoice.isPreInvoice &&
+      this._inRange(invoice.date, from, to)
     );
-
-    const productMap = {};
-    products.forEach(p => productMap[p.id] = p);
-
-    const stats = {};
-    salesInRange.forEach(inv => {
-      (inv.items || []).forEach(it => {
-        const key = it.productId || 'unknown_' + (it.productName || '');
-        if (!stats[key]) {
-          const p = productMap[it.productId];
-          stats[key] = {
-            productId: it.productId,
-            productName: it.productName || 'ناشناس',
-            unit: it.unit || 'عدد',
-            qty: 0,
-            totalSales: 0,
-            cogs: 0,
-            profit: 0,
-            margin: 0
-          };
-        }
-        const qty = Number(it.qty) || 0;
-        const lineTotal = Number(it.lineTotal) || (qty * (Number(it.price) || 0));
-        const p = productMap[it.productId];
-        const buyPrice = p ? (Number(p.buyPrice) || 0) : 0;
-        stats[key].qty += qty;
-        stats[key].totalSales += lineTotal;
-        stats[key].cogs += buyPrice * qty;
-      });
-    });
-
-    const rows = Object.values(stats).map(s => {
-      s.profit = s.totalSales - s.cogs;
-      s.margin = s.totalSales > 0 ? (s.profit / s.totalSales) * 100 : 0;
-      return s;
-    }).sort((a, b) => b.profit - a.profit);
-
-    return rows;
+    return this._buildProductStats(rows, products, stockMovements)
+      .sort((a, b) => b.profit - a.profit);
   }
 
-  // ============================================================
-  // ۴. گزارش مشتریان
-  // ============================================================
-  async getCustomerReport(filter = {}) {
-    const { invoices, contacts } = await this._loadData();
+  async getCustomerReport(filter = {}, data = null) {
+    const { invoices, contacts } = data || await this._loadData();
     const { from, to } = this._getRange(filter);
-
     const contactMap = {};
-    contacts.forEach(c => contactMap[c.id] = c);
+    contacts.forEach(contact => { contactMap[contact.id] = contact; });
 
     const stats = {};
-    invoices.forEach(inv => {
-      if (inv.isPreInvoice) return;
-      if (!this._inRange(inv.date, from, to)) return;
-      const key = inv.contactId || 'unknown';
+    invoices.forEach(invoice => {
+      if (!['sale', 'sale_return'].includes(invoice.kind) || invoice.isPreInvoice) return;
+      if (!this._inRange(invoice.date, from, to)) return;
+      const key = invoice.contactId || 'unknown';
       if (!stats[key]) {
-        const c = contactMap[inv.contactId];
+        const contact = contactMap[invoice.contactId];
         stats[key] = {
-          contactId: inv.contactId,
-          contactName: inv.contactName || 'ناشناس',
-          entityType: c?.entityType || 'natural',
+          contactId: invoice.contactId,
+          contactName: invoice.contactName || contact?.name || 'ناشناس',
+          entityType: contact?.entityType || 'natural',
           totalInvoices: 0,
+          returnCount: 0,
           totalSales: 0,
           totalReturns: 0,
+          netSales: 0,
           totalPaid: 0,
           totalRemaining: 0,
           lastInvoiceDate: ''
         };
       }
-      const isSale = inv.kind === 'sale';
-      const isReturn = inv.kind === 'sale_return';
-      if (isSale) {
+      if (invoice.kind === 'sale') {
         stats[key].totalInvoices += 1;
-        stats[key].totalSales += Number(inv.grandTotal) || 0;
-        stats[key].totalPaid += Number(inv.paidAmount) || 0;
-        stats[key].totalRemaining += Number(inv.remaining) || 0;
-      } else if (isReturn) {
-        stats[key].totalReturns += Number(inv.grandTotal) || 0;
+        stats[key].totalSales += Number(invoice.grandTotal) || 0;
+        stats[key].totalPaid += Number(invoice.paidAmount) || 0;
+        stats[key].totalRemaining += Number(invoice.remaining) || 0;
+      } else {
+        stats[key].returnCount += 1;
+        stats[key].totalReturns += Number(invoice.grandTotal) || 0;
       }
-      if (inv.date > (stats[key].lastInvoiceDate || '')) {
-        stats[key].lastInvoiceDate = inv.date;
-      }
+      if (invoice.date > (stats[key].lastInvoiceDate || ''))
+        stats[key].lastInvoiceDate = invoice.date;
     });
 
-    return Object.values(stats).sort((a, b) => b.totalSales - a.totalSales);
+    return Object.values(stats)
+      .map(customer => ({ ...customer, netSales: customer.totalSales - customer.totalReturns }))
+      .sort((a, b) => b.netSales - a.netSales);
+  }
+
+  // Load one company-scoped snapshot and reuse it across all report calculations.
+  // The standalone methods keep their existing behavior when no snapshot is passed.
+  async getReportBundle(filter = {}) {
+    const data = await this._loadData();
+    const [pl, sales, products, customers] = await Promise.all([
+      this.getProfitLoss(filter, data),
+      this.getSalesAnalysis(filter, data),
+      this.getProductProfitability(filter, data),
+      this.getCustomerReport(filter, data)
+    ]);
+    return { pl, sales, products, customers };
   }
 
   // ============================================================

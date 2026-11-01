@@ -649,6 +649,14 @@ class InvoiceFormViewImpl {
     const name = document.getElementById('qpName').value.trim();
     if (!name) { Toast.warning('نام کالا الزامی است'); return; }
 
+    let buyPrice, sellPrice;
+    try {
+      buyPrice = NumberInput.parseStrict(document.getElementById('qpBuyPrice'), { optional: true });
+      sellPrice = NumberInput.parseStrict(document.getElementById('qpSellPrice'), { optional: true });
+    } catch (error) {
+      Toast.warning('قیمت کالای جدید نامعتبر است: ' + error.message);
+      return;
+    }
     const data = {
       code: document.getElementById('qpCode').value,
       barcode: '',
@@ -656,8 +664,8 @@ class InvoiceFormViewImpl {
       unit: document.getElementById('qpUnit').value || 'عدد',
       unitId: null,
       categoryId: null,
-      buyPrice: NumberInput.parse(document.getElementById('qpBuyPrice').value),
-      sellPrice: NumberInput.parse(document.getElementById('qpSellPrice').value),
+      buyPrice,
+      sellPrice,
       trackInventory: document.getElementById('qpTrackInventory').checked,
       isActiveSell: true,
       isActiveBuy: true,
@@ -755,7 +763,7 @@ class InvoiceFormViewImpl {
       return;
     }
 
-    let discountInput, vatRate;
+    let discountInput, vatRate, partialPaidAmount;
     try {
       // Read raw user-visible values once, before any financial write. A
       // loose parser must never silently convert "2x5" to 25 or bad VAT to 0.
@@ -783,7 +791,7 @@ class InvoiceFormViewImpl {
         decimals: 2, optional: true
       });
       if (document.getElementById('invPayment').value === 'partial')
-        NumberInput.parseStrict(document.getElementById('invPaidAmount'), { optional: true });
+        partialPaidAmount = NumberInput.parseStrict(document.getElementById('invPaidAmount'), { optional: true });
     } catch (error) {
       Toast.warning('ورودی عددی قابل ذخیره نیست: ' + error.message);
       return;
@@ -796,6 +804,14 @@ class InvoiceFormViewImpl {
     }
 
     this._recalc(); // read payment state from the same calculation shown in the summary
+    if (document.getElementById('invDiscType').value === 'fixed' && discountInput > ctx.totals.subtotal) {
+      Toast.warning('تخفیف کل نمی‌تواند بیشتر از مبلغ فاکتور باشد');
+      return;
+    }
+    if (partialPaidAmount !== undefined && partialPaidAmount > ctx.totals.grandTotal) {
+      Toast.warning('مبلغ پرداخت‌شده نمی‌تواند از مبلغ کل فاکتور بیشتر باشد');
+      return;
+    }
     const data = {
       kind: document.getElementById('invKind').value,
       number: document.getElementById('invNumber')?.value,

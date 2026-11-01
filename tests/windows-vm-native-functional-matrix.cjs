@@ -3,6 +3,121 @@
 // WebView2. Every write is synthetic and isolated to a disposable CI VM.
 const assert = require('node:assert/strict');
 
+async function legacyStockAdjustmentFormAndValidation() {
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const check = (value, message) => { if (!value) throw Error(message); };
+  await FINORA.Router.go('products');
+  await wait(160);
+  const product = await window.ProductController.createProduct({
+    name: 'Q01 کالای اصلاح دستی ساختگی',
+    code: 'Q01-LEGACY-ADJUST',
+    trackInventory: true,
+    buyPrice: 100,
+    sellPrice: 150
+  });
+  await window.StockKardexModal.open(product.id);
+  await wait(80);
+  const parent = FINORA.Modal.stack.at(-1);
+  check(parent?.card?.dataset.stockKardexProductId === product.id,
+    'Legacy Kardex parent dialog did not open');
+  const openAdjust = parent.card.querySelector('button[onclick*="openAdjustModal"]');
+  check(openAdjust, 'Legacy mode did not expose manual stock adjustment');
+  openAdjust.click();
+  await wait(80);
+  const child = FINORA.Modal.stack.at(-1);
+  check(FINORA.Modal.stack.length === 2 && document.getElementById('adjQty'),
+    'Manual adjustment child dialog did not open');
+  const save = () => [...child.card.querySelectorAll('.modal-footer button')]
+    .find(button => !button.disabled && /ثبت اصلاح/.test(button.textContent));
+  const saveButton = save();
+  check(saveButton, 'Manual stock adjustment save button is missing');
+  const before = (await FINORA.Storage.getAll('stock_movements'))
+    .filter(move => move.productId === product.id);
+  document.getElementById('adjQty').value = '1.2345';
+  saveButton.click();
+  await wait(80);
+  check(FINORA.Modal.stack.at(-1) === child &&
+    (await FINORA.Storage.getAll('stock_movements')).filter(move =>
+      move.productId === product.id).length === before.length,
+    'Over-precision stock adjustment was not rejected without writes');
+  document.getElementById('adjQty').value = '-1';
+  saveButton.click();
+  await wait(80);
+  check(FINORA.Modal.stack.at(-1) === child &&
+    (await FINORA.Storage.getAll('stock_movements')).filter(move =>
+      move.productId === product.id).length === before.length,
+    'Negative stock adjustment was not rejected without writes');
+  document.getElementById('adjQty').value = '3.125';
+  document.getElementById('adjNote').value = 'Q01 synthetic count';
+  saveButton.click();
+  let movement = null;
+  for (let i = 0; i < 60; i++) {
+    movement = (await FINORA.Storage.getAll('stock_movements'))
+      .find(move => move.productId === product.id && move.type === 'adjust');
+    if (movement && FINORA.Modal.stack.length === 1 &&
+        FINORA.Modal.stack.at(-1) === parent) break;
+    await wait(100);
+  }
+  check(movement?.qty === 3.125 && movement.note === 'Q01 synthetic count' &&
+    await window.ProductController.getStock(product.id) === 3.125,
+    'Valid manual stock adjustment did not persist the final counted quantity');
+  check(FINORA.Modal.stack.length === 1 && FINORA.Modal.stack.at(-1) === parent &&
+    document.querySelectorAll('.modal-backdrop').length === 1,
+    'Saving stock adjustment opened a duplicate Kardex instead of refreshing its parent');
+  await FINORA.Modal.close();
+  check(!document.querySelector('.toast-error'),
+    'Legacy stock adjustment form displayed an unexpected error');
+  // Remove only this scenario's synthetic legacy movement and product. The
+  // following activation scenario deliberately refuses any pre-existing
+  // stock movement, so the disposable fixture must leave the company empty.
+  await FINORA.Storage.delete('stock_movements', movement.id);
+  await FINORA.Storage.delete('products', product.id);
+  check(!(await FINORA.Storage.getAll('stock_movements')).some(move => move.productId === product.id) &&
+    !(await FINORA.Storage.getAll('products')).some(row => row.id === product.id),
+    'Synthetic legacy stock-adjustment fixture cleanup failed');
+  return { overPrecisionRejectedWithoutWrites: true,
+    negativeRejectedWithoutWrites: true, validAdjustmentPosted: true,
+    fractionalQuantityPreserved: true, parentKardexRefreshedInPlace: true,
+    duplicateKardexPrevented: true, syntheticFixtureCleanedBeforeActivation: true };
+}
+
+async function integratedStockAdjustmentGuard() {
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const check = (value, message) => { if (!value) throw Error(message); };
+  await FINORA.Router.go('products');
+  await wait(160);
+  const product = await window.ProductController.createProduct({
+    name: 'Q01 کالای یکپارچه ساختگی',
+    code: 'Q01-INTEGRATED-ADJUST',
+    trackInventory: true,
+    buyPrice: 100,
+    sellPrice: 150
+  });
+  await window.StockKardexModal.open(product.id);
+  await wait(80);
+  const parent = FINORA.Modal.stack.at(-1);
+  check(parent?.card?.dataset.stockKardexProductId === product.id,
+    'Integrated Kardex parent dialog did not open');
+  const body = parent.card.querySelector('.modal-body');
+  check(body && !body.querySelector('button[onclick*="openAdjustModal"]') &&
+    body.textContent.includes('انبارگردانی'),
+    'Integrated inventory still exposes an unusable manual adjustment button');
+  const before = (await FINORA.Storage.getAll('stock_movements'))
+    .filter(move => move.productId === product.id);
+  await window.StockKardexModal.openAdjustModal(product.id);
+  check(FINORA.Modal.stack.length === 1 && !document.getElementById('adjQty'),
+    'Direct manual-adjust modal invocation bypassed integrated-mode guard');
+  await window.StockKardexModal.saveAdjust(product.id);
+  const after = (await FINORA.Storage.getAll('stock_movements'))
+    .filter(move => move.productId === product.id);
+  check(JSON.stringify(before) === JSON.stringify(after) &&
+    await window.ProductController.getStock(product.id) === 0,
+    'Integrated-mode manual adjustment guard wrote a stock movement');
+  await FINORA.Modal.close();
+  return { manualAdjustmentHidden: true, directOpenBlocked: true,
+    directSaveBlocked: true, zeroStockWrites: true };
+}
+
 async function activateAccounting() {
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   const check = (value, message) => { if (!value) throw Error(message); };
@@ -13,6 +128,7 @@ async function activateAccounting() {
   check(view && document.getElementById('pageContent')?.textContent.includes('حسابداری دوبل'),
     'actual accounting route missing');
   await view.switchTab('periods');
+  let periodCreatedByForm = false;
   if (!view.periods.length) {
     view.openPeriodModal();
     check(document.getElementById('acPeriodName'), 'fiscal period form absent');
@@ -20,6 +136,7 @@ async function activateAccounting() {
     document.getElementById('acPeriodStart').value = '1405/01/01';
     document.getElementById('acPeriodEnd').value = '1405/12/29';
     await view.savePeriod();
+    periodCreatedByForm = true;
   }
   check(view.periods.length > 0, 'period did not persist');
   await view.switchTab('accounts');
@@ -47,8 +164,245 @@ async function activateAccounting() {
   await view.saveWarehouse();
   check((await FINORA.Storage.getAll('warehouses')).some(w => w.name === 'انبار ماشین مجازی'),
     'warehouse did not persist');
-  return { fiscalPeriods: view.periods.length, accountCount: view.accounts.length,
-    integration: 'enabled', warehouse: 'created' };
+  return { fiscalPeriods: view.periods.length, periodCreatedByForm,
+    accountCount: view.accounts.length, chartAvailable: view.accounts.some(a => a.code === '402'),
+    integration: 'enabled', integrationEnabled: true, warehouse: 'created', warehouseCreatedByForm: true };
+}
+
+async function nativeContactCrudFormAndTags() {
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const check = (value, message) => { if (!value) throw Error(message); };
+  await FINORA.Router.go('contacts');
+  await wait(180);
+  const view = window.ContactsView;
+  check(view, 'Native contacts view is unavailable');
+  await view.openContactModal();
+  await wait(80);
+  check(document.getElementById('cName') && document.getElementById('newTagInput'),
+    'Native contact creation form is incomplete');
+  const originalName = 'Q01 شخص فرم ساختگی';
+  const updatedName = 'Q01 شخص ویرایش‌شده';
+  const tag = 'Q01-NATIVE-CONTACT-TAG';
+  document.getElementById('cName').value = originalName;
+  document.getElementById('cRole').value = 'both';
+  document.getElementById('newTagInput').value = tag;
+  const addTag = [...document.querySelectorAll('.modal-card button')]
+    .find(button => /ContactsView\.addNewTag/.test(button.getAttribute('onclick') || ''));
+  check(addTag, 'Native contact tag action is missing');
+  addTag.click();
+  check(document.querySelector('.tagCheckbox[value="' + tag + '"]')?.checked,
+    'New contact tag was not added and selected');
+  const saveContact = () => [...document.querySelectorAll('.modal-card .modal-footer button')]
+    .find(button => !button.disabled && /ذخیره/.test(button.textContent));
+  const createButton = saveContact();
+  check(createButton, 'Native contact create button is missing');
+  createButton.click();
+  let created = null;
+  for (let i = 0; i < 60; i++) {
+    created = (await FINORA.Storage.getAll('contacts'))
+      .find(contact => contact.name === originalName);
+    if (created && FINORA.Modal.stack.length === 0) break;
+    await wait(100);
+  }
+  check(created && created.tags.includes(tag),
+    'Contact form did not persist the new contact and selected tag');
+  await view.editContact(created.id);
+  await wait(80);
+  check(document.getElementById('cName')?.value === originalName,
+    'Contact edit form did not load the persisted record');
+  document.getElementById('cName').value = updatedName;
+  check(document.querySelector('.tagCheckbox[value="' + tag + '"]')?.checked,
+    'Contact edit form did not restore the saved tag selection');
+  const updateButton = saveContact();
+  check(updateButton, 'Native contact update button is missing');
+  updateButton.click();
+  let updated = null;
+  for (let i = 0; i < 60; i++) {
+    updated = await FINORA.Storage.get('contacts', created.id);
+    if (updated?.name === updatedName && FINORA.Modal.stack.length === 0) break;
+    await wait(100);
+  }
+  check(updated?.name === updatedName && updated.tags.includes(tag),
+    'Contact form update did not preserve identity and tags');
+  check(!document.querySelector('.toast-error'),
+    'Native contact CRUD form displayed an unexpected error');
+  return { createdThroughForm: true, tagPersisted: true,
+    editedThroughForm: true, stableRecordId: true };
+}
+
+async function nativeProductCrudFormAndNestedClassifiers() {
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const check = (value, message) => { if (!value) throw Error(message); };
+  await FINORA.Router.go('products');
+  await wait(180);
+  const view = window.ProductsView;
+  check(view, 'Native products view is unavailable');
+  view._switchTab('products');
+  await view.openProductModal();
+  await wait(80);
+  const parentDepth = FINORA.Modal.stack.length;
+  check(parentDepth === 1 && document.getElementById('pName'),
+    'Native product parent form is missing');
+  const unitName = 'Q01-UNIT-UI';
+  const unitButton = document.querySelector('.modal-card button[onclick*="openUnitModal(true)"]');
+  check(unitButton, 'Nested unit creation button is missing');
+  unitButton.click();
+  await wait(60);
+  check(FINORA.Modal.stack.length === parentDepth + 1 &&
+    document.getElementById('uName') && document.getElementById('uSymbol'),
+    'Nested unit form did not open');
+  document.getElementById('uName').value = unitName;
+  document.getElementById('uSymbol').value = 'q1';
+  const saveTopModal = () => [...FINORA.Modal.stack.at(-1).card.querySelectorAll('.modal-footer button')]
+    .find(button => !button.disabled && /ذخیره/.test(button.textContent));
+  const saveUnit = saveTopModal();
+  check(saveUnit, 'Nested unit save action is missing');
+  saveUnit.click();
+  let unitId = '';
+  for (let i = 0; i < 60; i++) {
+    unitId = document.getElementById('pUnit')?.value || '';
+    if (FINORA.Modal.stack.length === parentDepth && unitId &&
+        (await FINORA.Storage.getAll('units')).some(unit => unit.id === unitId && unit.name === unitName)) break;
+    await wait(100);
+  }
+  check(FINORA.Modal.stack.length === parentDepth && unitId &&
+    (await FINORA.Storage.getAll('units')).some(unit => unit.id === unitId && unit.name === unitName),
+    'Saving a nested unit did not restore parent and select persisted unit');
+
+  const categoryName = 'Q01-CATEGORY-UI';
+  const categoryButton = document.querySelector('.modal-card button[onclick*="openCategoryModal(true)"]');
+  check(categoryButton, 'Nested category creation button is missing');
+  categoryButton.click();
+  await wait(60);
+  check(FINORA.Modal.stack.length === parentDepth + 1 &&
+    document.getElementById('cName') && document.getElementById('cParent'),
+    'Nested category form did not open');
+  document.getElementById('cName').value = categoryName;
+  const saveCategory = saveTopModal();
+  check(saveCategory, 'Nested category save action is missing');
+  saveCategory.click();
+  let categoryId = '';
+  for (let i = 0; i < 60; i++) {
+    categoryId = document.getElementById('pCategory')?.value || '';
+    if (FINORA.Modal.stack.length === parentDepth && categoryId &&
+        (await FINORA.Storage.getAll('categories')).some(category => category.id === categoryId && category.name === categoryName)) break;
+    await wait(100);
+  }
+  check(FINORA.Modal.stack.length === parentDepth && categoryId &&
+    (await FINORA.Storage.getAll('categories')).some(category => category.id === categoryId && category.name === categoryName),
+    'Saving a nested category did not restore parent and select persisted category');
+
+  const productName = 'Q01 کالای فرم ساختگی';
+  document.getElementById('pCode').value = 'Q01-UI-PRODUCT';
+  document.getElementById('pName').value = productName;
+  document.getElementById('pBuyPrice').value = '1200';
+  document.getElementById('pSellPrice').value = '2400';
+  document.getElementById('pMinStock').value = '2.125';
+  const saveProduct = saveTopModal();
+  check(saveProduct, 'Native product create button is missing');
+  saveProduct.click();
+  let created = null;
+  for (let i = 0; i < 60; i++) {
+    created = (await FINORA.Storage.getAll('products'))
+      .find(product => product.code === 'Q01-UI-PRODUCT');
+    if (created && FINORA.Modal.stack.length === 0) break;
+    await wait(100);
+  }
+  check(created && created.name === productName && created.unitId === unitId &&
+    created.categoryId === categoryId && created.buyPrice === 1200 &&
+    created.sellPrice === 2400 && created.minStock === 2.125,
+    'Product form failed to persist prices, reorder point, unit or category');
+  await view.editProduct(created.id);
+  await wait(80);
+  check(document.getElementById('pName')?.value === productName,
+    'Product edit form did not load the persisted record');
+  const updatedName = 'Q01 کالای ویرایش‌شده';
+  document.getElementById('pName').value = updatedName;
+  const updateProduct = saveTopModal();
+  check(updateProduct, 'Native product update button is missing');
+  updateProduct.click();
+  let updated = null;
+  for (let i = 0; i < 60; i++) {
+    updated = await FINORA.Storage.get('products', created.id);
+    if (updated?.name === updatedName && FINORA.Modal.stack.length === 0) break;
+    await wait(100);
+  }
+  check(updated?.name === updatedName && updated.unitId === unitId &&
+    updated.categoryId === categoryId && updated.sellPrice === 2400,
+    'Product form update did not preserve selected classifiers and financial fields');
+
+  // Standalone unit/category forms (false flag) and destructive row actions are
+  // tested only against unused synthetic records in this disposable VM.
+  const standaloneUnitName = 'Q01-UNIT-STANDALONE';
+  view._switchTab('units');
+  view.openUnitModal(false);
+  document.getElementById('uName').value = standaloneUnitName;
+  document.getElementById('uSymbol').value = 'q1s';
+  const standaloneUnitSave = saveTopModal();
+  check(standaloneUnitSave, 'Standalone unit save button is missing');
+  standaloneUnitSave.click();
+  let standaloneUnit = null;
+  for (let i = 0; i < 60; i++) {
+    standaloneUnit = (await FINORA.Storage.getAll('units')).find(x => x.name === standaloneUnitName);
+    if (standaloneUnit && FINORA.Modal.stack.length === 0) break;
+    await wait(100);
+  }
+  check(standaloneUnit && FINORA.Modal.stack.length === 0,
+    'Standalone unit did not persist through the unit form');
+  view._switchTab('units');
+  const deleteUnitButton = [...document.querySelectorAll('#products-tab-content button[onclick*="deleteUnit"]')]
+    .find(button => button.getAttribute('onclick').includes(standaloneUnit.id));
+  check(deleteUnitButton, 'Standalone synthetic unit delete action is missing');
+  deleteUnitButton.click();
+  await wait(30);
+  const confirmUnitDelete = FINORA.Modal.stack.at(-1)?.card.querySelector('[data-action="confirm"]');
+  check(confirmUnitDelete, 'Standalone unit delete confirmation is missing');
+  confirmUnitDelete.click();
+  let unitDeleted = false;
+  for (let i = 0; i < 60; i++) {
+    unitDeleted = !(await FINORA.Storage.get('units', standaloneUnit.id));
+    if (unitDeleted && FINORA.Modal.stack.length === 0) break;
+    await wait(100);
+  }
+  check(unitDeleted, 'Standalone synthetic unit was not deleted through its row action');
+
+  const standaloneCategoryName = 'Q01-CATEGORY-STANDALONE';
+  view._switchTab('categories');
+  view.openCategoryModal(false);
+  document.getElementById('cName').value = standaloneCategoryName;
+  const standaloneCategorySave = saveTopModal();
+  check(standaloneCategorySave, 'Standalone category save button is missing');
+  standaloneCategorySave.click();
+  let standaloneCategory = null;
+  for (let i = 0; i < 60; i++) {
+    standaloneCategory = (await FINORA.Storage.getAll('categories')).find(x => x.name === standaloneCategoryName);
+    if (standaloneCategory && FINORA.Modal.stack.length === 0) break;
+    await wait(100);
+  }
+  check(standaloneCategory && FINORA.Modal.stack.length === 0,
+    'Standalone category did not persist through the category form');
+  view._switchTab('categories');
+  const deleteCategoryButton = [...document.querySelectorAll('#products-tab-content button[onclick*="deleteCategory"]')]
+    .find(button => button.getAttribute('onclick').includes(standaloneCategory.id));
+  check(deleteCategoryButton, 'Standalone synthetic category delete action is missing');
+  deleteCategoryButton.click();
+  await wait(30);
+  const confirmCategoryDelete = FINORA.Modal.stack.at(-1)?.card.querySelector('[data-action="confirm"]');
+  check(confirmCategoryDelete, 'Standalone category delete confirmation is missing');
+  confirmCategoryDelete.click();
+  let categoryDeleted = false;
+  for (let i = 0; i < 60; i++) {
+    categoryDeleted = !(await FINORA.Storage.get('categories', standaloneCategory.id));
+    if (categoryDeleted && FINORA.Modal.stack.length === 0) break;
+    await wait(100);
+  }
+  check(categoryDeleted, 'Standalone synthetic category was not deleted through its row action');
+  check(!document.querySelector('.toast-error'),
+    'Native product CRUD form displayed an unexpected error');
+  return { createdThroughForm: true, nestedUnitSavedAndSelected: true,
+    nestedCategorySavedAndSelected: true, fractionalReorderPointPreserved: true,
+    editedThroughForm: true, stableRecordId: true,
+    standaloneUnitCreatedAndDeleted: true, standaloneCategoryCreatedAndDeleted: true };
 }
 
 async function nativePositiveOpeningLedger() {
@@ -517,9 +871,15 @@ async function nativeInactiveBankSettlementGuard() {
   document.getElementById('accName').value='VM-only inactive bank A05';
   document.getElementById('accInitialBalance').value='0';
   await tv.saveAccount(null);
-  const secondary=(await db.getAll('treasury')).find(x=>
+  let secondary=(await db.getAll('treasury')).find(x=>
     x.companyId===company.id&&x.recordType==='account'&&x.name==='VM-only inactive bank A05');
   check(secondary?.ledgerAccountId,'Actual treasury account creation failed');
+  await tv.openAccountModal(secondary.id);
+  document.getElementById('accOwnerName').value='VM-only treasury account owner edit';
+  await tv.saveAccount(secondary.id);
+  secondary=await db.get('treasury',secondary.id);
+  check(secondary.ownerName==='VM-only treasury account owner edit',
+    'Treasury account edit did not persist through the installed form');
   await db.put('treasury',{...secondary,isActive:false});
   const counts=async()=>({
     journals:(await db.getAll('journal_entries')).length,
@@ -578,6 +938,24 @@ async function nativeInactiveBankSettlementGuard() {
   FINORA.Modal.close();
   await db.put('treasury',active);
   await db.put('treasury',{...secondary,isActive:true});
+  await FINORA.Router.go('treasury');await wait(180);await tv.reload();
+  const transferCountBefore=(await db.getAll('treasury')).filter(x=>
+    x.companyId===company.id&&x.recordType==='transaction'&&x.type==='transfer').length;
+  tv.openTransferModal();
+  check(document.getElementById('txFromAccount')&&document.getElementById('txToAccount'),
+    'Native positive transfer form did not open');
+  document.getElementById('txDate').value='1405/07/21';
+  document.getElementById('txAmount').value='1';
+  document.getElementById('txFromAccount').value=active.id;
+  document.getElementById('txToAccount').value=secondary.id;
+  await tv._saveTransaction('transfer');
+  const transfer=(await db.getAll('treasury')).find(x=>
+    x.companyId===company.id&&x.recordType==='transaction'&&x.type==='transfer'&&
+    x.amount===1&&x.fromAccountId===active.id&&x.toAccountId===secondary.id);
+  check(transfer&&(await db.getAll('treasury')).filter(x=>
+    x.companyId===company.id&&x.recordType==='transaction'&&x.type==='transfer').length===transferCountBefore+1,
+    'Valid transfer between active accounts did not persist exactly once');
+  await FINORA.Router.go('cheques');await wait(180);await cv.reload();
   await cv.changeStatus(cheque.id);
   document.getElementById('newStatus').value='cleared';
   document.getElementById('chqEventDate').value='1405/07/20';
@@ -586,12 +964,20 @@ async function nativeInactiveBankSettlementGuard() {
   check([...selected.options].some(x=>x.value===secondary.id),
     'Actual secondary bank not selectable in clearing UI');
   selected.value=secondary.id; // bank other than the default
+  // The successful transfer above intentionally added a journal entry. Take
+  // a fresh baseline immediately before cheque approval, and scope the cash
+  // assertion to this cheque so unrelated valid postings cannot fail it.
+  const journalCountBeforeApproval=(await db.getAll('journal_entries')).length;
+  const chequeSettlementsBeforeApproval=(await db.getAll('treasury')).filter(t=>
+    t.refChequeId===cheque.id).length;
   await cv._applyStatusChange(cheque.id);
   const approve=document.querySelector('.modal-backdrop:last-of-type [data-action="confirm"]');
   check(approve&&approve.textContent.includes('تأیید و ثبت وصول'),
     'Actual bank clearance missing explicit secondary confirmation');
   check((await db.get('cheques',cheque.id)).status==='pending'&&
-    (await db.getAll('journal_entries')).length===journalCount,
+    (await db.getAll('journal_entries')).length===journalCountBeforeApproval&&
+    (await db.getAll('treasury')).filter(t=>t.refChequeId===cheque.id).length===
+      chequeSettlementsBeforeApproval,
     'Cheque cleared before approval');
   approve.click();
   let cleared;
@@ -614,7 +1000,8 @@ async function nativeInactiveBankSettlementGuard() {
   check(!document.querySelector('.toast-error')&&!document.querySelector('.modal-backdrop'),
     'A05 native treasury scenario left error toast/modal');
   return { inactiveTransferRejected:true, invalidTransferRolledBack:true,
-    disabledChequeClearingRejected:true, validChequeClearedExactlyOnce:true,
+    validTransferPosted:true,treasuryAccountCreatedThroughForm:true,treasuryAccountEditPersisted:true,
+    chequeCreatedThroughForm:true,disabledChequeClearingRejected:true, validChequeClearedExactlyOnce:true,
     chequeEventDateDifferentFromDueDate:true,
     explicitNondefaultClearingAccount:true,confirmationRequiredBeforeCash:true };
 }
@@ -1151,12 +1538,395 @@ async function openingDryRunWithExistingActivity() {
   };
 }
 
+
+
+async function nativeInvoiceQuickAddAndPrint() {
+  const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  const check=(ok,msg)=>{if(!ok)throw Error(msg);};
+  const db=FINORA.Storage,company=await FINORA.Company.current();
+  check(company?.id&&FINORA.Auth.isAdmin(),'Q01 invoice quick-add test requires the synthetic administrator');
+  await FINORA.Router.go('invoices');await wait(160);
+  await window.InvoiceFormView.open();await wait(120);
+  window.InvoiceFormView._openQuickContact();
+  document.getElementById('qcName').value='VM-only Q01 quick contact';
+  document.getElementById('qcMobile').value='09120000001';
+  await window.InvoiceFormView._saveQuickContact();
+  const contactId=document.getElementById('invContact').value;
+  check(contactId&&document.getElementById('invContactSearch').value==='VM-only Q01 quick contact',
+    'Quick contact was not selected in the parent invoice');
+  window.InvoiceFormView._openQuickProduct();
+  document.getElementById('qpCode').value='VM-Q01-QUICK-PRODUCT';
+  document.getElementById('qpName').value='VM-only Q01 quick service';
+  document.getElementById('qpUnit').value='عدد';
+  document.getElementById('qpBuyPrice').value='100';
+  document.getElementById('qpSellPrice').value='500';
+  document.getElementById('qpTrackInventory').checked=false;
+  await window.InvoiceFormView._saveQuickProduct();
+  const productId=document.querySelector('#itemsBody .row-product')?.value;
+  check(productId&&document.querySelector('.row-product-search')?.value==='VM-only Q01 quick service',
+    'Quick product was not selected in the parent invoice');
+  document.getElementById('invDate').value='1405/07/18';
+  document.getElementById('invDescription').value='VM-only Q01 quick invoice print';
+  document.querySelector('.row-qty').value='2';
+  window.InvoiceFormView._onFieldChange(0,'qty','2');
+  document.querySelector('.row-price').value='500';
+  window.InvoiceFormView._onFieldChange(0,'price','500');
+  await window.InvoiceFormView._save(true);
+  await wait(550);
+  const invoice=(await db.getAll('invoices')).find(x=>
+    x.companyId===company.id&&x.contactId===contactId&&
+    x.description==='VM-only Q01 quick invoice print');
+  check(invoice?.financePosted&&invoice.items?.some(x=>x.productId===productId),
+    'Save-and-print did not commit the quick invoice and its quick-added product');
+  check(window.InvoicePrint?.currentInvoiceId===invoice.id&&document.getElementById('prPaper'),
+    'Save-and-print did not open the actual invoice print settings modal');
+  const original=window.InvoicePrint._openPrintWindow;
+  let rendered='';
+  try {
+    window.InvoicePrint._openPrintWindow=html=>{rendered=String(html);};
+    await window.InvoicePrint._print();
+  } finally {
+    window.InvoicePrint._openPrintWindow=original;
+  }
+  check(rendered.includes('dir="rtl"')&&rendered.includes('VM-only Q01 quick contact')&&
+    rendered.includes('VM-only Q01 quick service'),
+    'Actual invoice print handler did not render the saved invoice in RTL');
+  check(!document.querySelector('.modal-backdrop'),'Invoice print test left a modal open');
+  return {quickContactCreated:true,quickProductCreated:true,saveAndPrintOpened:true,
+    invoicePrintRendered:true,invoicePosted:true};
+}
+
+async function nativeAuxiliaryPrintRendering() {
+  const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  const check=(ok,msg)=>{if(!ok)throw Error(msg);};
+  const company=await FINORA.Company.current(),db=FINORA.Storage;
+  const products=(await db.getAll('products')).filter(x=>x.companyId===company.id);
+  const contacts=(await db.getAll('contacts')).filter(x=>x.companyId===company.id);
+  check(products.length>0&&contacts.length>0,'Synthetic product/contact fixtures are missing for print rendering');
+  const originalOpen=window.open;
+  let capture=null,productPrints=0,contactPrints=0;
+  window.open=()=>({
+    document:{
+      write(value){capture.html+=String(value);},
+      close(){capture.closed=true;}
+    },
+    focus(){capture.focused=true;},
+    print(){capture.printed=true;}
+  });
+  try {
+    for(const product of products) {
+      capture={html:'',closed:false,focused:false,printed:false};
+      await window.StockKardexModal._printKardex(product.id);
+      await wait(650);
+      check(capture.html.includes('<html lang="fa" dir="rtl">')&&
+        capture.html.includes('کاردکس کالا')&&capture.html.includes(product.name)&&
+        capture.closed&&capture.printed,
+        'Kardex print did not produce a complete RTL document for '+product.id);
+      productPrints++;
+    }
+    for(const contact of contacts) {
+      capture={html:'',closed:false,focused:false,printed:false};
+      await window.ContactLedgerModal._printLedger(contact.id);
+      await wait(650);
+      check(capture.html.includes('<html lang="fa" dir="rtl">')&&
+        capture.html.includes('صورت‌حساب شخص')&&capture.html.includes(contact.name)&&
+        capture.closed&&capture.printed,
+        'Contact ledger print did not produce a complete RTL document for '+contact.id);
+      contactPrints++;
+    }
+    await FINORA.Router.go('reports');await wait(260);
+    capture={html:'',closed:false,focused:false,printed:false};
+    window.ReportsView._printReport();
+    await wait(650);
+    check(capture.html.includes('<html lang="fa" dir="rtl">')&&
+      capture.html.includes('گزارش سود و زیان')&&capture.closed&&capture.printed,
+      'Reports print did not produce a complete RTL document');
+  } finally {
+    window.open=originalOpen;
+  }
+  return {kardexPrints:productPrints,contactLedgerPrints:contactPrints,
+    reportsPrintRendered:true,allDocumentsRtl:true,physicalPrinter:'not-tested'};
+}
+
+async function nativeExpenseFormAndCategory() {
+  const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  const check=(ok,msg)=>{if(!ok)throw Error(msg);};
+  const db=FINORA.Storage,company=await FINORA.Company.current();
+  check(company?.id&&FINORA.Auth.isAdmin(),'Expense UI test requires a synthetic administrator');
+  await FINORA.Router.go('expenses');await wait(160);
+  const view=window.ExpensesView;
+  await view.openExpenseModal();
+  const originalPrompt=window.prompt;
+  try {
+    window.prompt=()=> 'VM-only Q01 expense category';
+    await view._promptNewCategory();
+  } finally {
+    window.prompt=originalPrompt;
+  }
+  check(document.getElementById('expCategory')?.value==='VM-only Q01 expense category',
+    'New expense category was not selected in the form');
+  document.getElementById('expDate').value='1405/07/18';
+  document.getElementById('expAmount').value='1234';
+  document.getElementById('expMethod').value='cash';
+  document.getElementById('expRef').value='Q01-EXPENSE-001';
+  document.getElementById('expDesc').value='VM-only Q01 expense form';
+  await view.saveExpense(null);await wait(180);
+  const expense=(await db.getAll('expenses')).find(x=>
+    x.companyId===company.id&&x.refNumber==='Q01-EXPENSE-001');
+  check(expense?.amount===1234&&expense.kind==='expense'&&
+    expense.category==='VM-only Q01 expense category'&&expense.financePosted===true,
+    'Expense UI did not persist and post the synthetic expense');
+  check((await db.getAll('journal_entries')).some(x=>
+    x.companyId===company.id&&x.sourceId===expense.id&&x.status==='posted'),
+    'Expense UI did not create its posted journal');
+
+  // A posted expense is immutable through the edit form. Attempt the real UI
+  // path and prove the record and posted journal remain unchanged.
+  const postedBeforeEdit = JSON.stringify(await db.get('expenses', expense.id));
+  await view.editExpense(expense.id);
+  await wait(60);
+  document.getElementById('expDesc').value = 'must not overwrite posted expense';
+  const postedEditSave = [...FINORA.Modal.stack.at(-1).card.querySelectorAll('.modal-footer button')]
+    .find(button => !button.disabled && /ذخیره/.test(button.textContent));
+  check(postedEditSave, 'Posted expense edit form save button is missing');
+  postedEditSave.click();
+  await wait(100);
+  check(JSON.stringify(await db.get('expenses', expense.id)) === postedBeforeEdit &&
+    FINORA.Modal.stack.length === 1 && !!document.querySelector('.toast-error'),
+    'Posted expense was changed by the direct edit UI path');
+  FINORA.Modal.close();
+  document.querySelectorAll('.toast .toast-close').forEach(button => button.click());
+
+  const draftId = 'exp_q01_synthetic_edit_draft';
+  const user = FINORA.Auth.current();
+  await db.put('expenses', {
+    id: draftId, companyId: company.id, ownerUserId: user.id,
+    kind: 'expense', category: 'Q01 draft-only edit', amount: 4321,
+    date: '1405/07/18', method: 'cash', description: 'before UI edit',
+    refNumber: 'Q01-EXPENSE-DRAFT-EDIT', financePosted: false
+  });
+  try {
+    await view.editExpense(draftId);
+    await wait(60);
+    check(document.getElementById('expDesc')?.value === 'before UI edit',
+      'Expense edit form did not load the draft fixture');
+    document.getElementById('expDesc').value = 'after UI edit';
+    const editSave = [...FINORA.Modal.stack.at(-1).card.querySelectorAll('.modal-footer button')]
+      .find(button => !button.disabled && /ذخیره/.test(button.textContent));
+    check(editSave, 'Expense edit save button is missing');
+    editSave.click();
+    let edited = null;
+    for (let i = 0; i < 60; i++) {
+      edited = await db.get('expenses', draftId);
+      if (edited?.description === 'after UI edit' && FINORA.Modal.stack.length === 0) break;
+      await wait(100);
+    }
+    check(edited?.description === 'after UI edit' && edited.financePosted === false,
+      'Draft expense did not persist through the edit form');
+  } finally {
+    if (await db.get('expenses', draftId)) await db.delete('expenses', draftId);
+  }
+  return {expenseCreatedThroughForm:true,customCategorySelected:true,
+    expenseJournalPosted:true,postedExpenseEditRejected:true,draftExpenseEditedThroughForm:true};
+}
+
+async function nativeAccountingJournalAndExports() {
+  const check=(ok,msg)=>{if(!ok)throw Error(msg);};
+  const db=FINORA.Storage,company=await FINORA.Company.current();
+  check(company?.id&&FINORA.Auth.isAdmin(),'Manual journal UI test requires a synthetic administrator');
+  await FINORA.Router.go('accounting');
+  const view=window.AccountingView;
+  await view.refresh();
+  const period=view.periods.find(x=>!x.closed);
+  check(period,'An open fiscal period is required for manual journal UI testing');
+  const postable=view.accounts.filter(a=>a.level!=='group'&&a.active!==false&&
+    a.postable!==false&&!view.accounts.some(child=>child.parentCode===a.code));
+  check(postable.length>=2,'Two postable accounts are required for a balanced manual journal');
+  const used=new Set(view.accounts.map(a=>String(a.code)));
+  const groupCode=['9','8','7','6','0'].find(x=>!used.has(x));
+  check(groupCode,'No unused synthetic group account code available');
+  view.openAccountModal();
+  document.getElementById('acCode').value=groupCode;
+  document.getElementById('acName').value='VM-only Q01 journal test group';
+  document.getElementById('acLevel').value='group';
+  document.getElementById('acType').value='expense';
+  view.toggleParent();
+  await view.saveAccount();
+  check(view.accounts.some(x=>String(x.code)===groupCode&&x.level==='group'),
+    'Manual chart-of-accounts form did not persist the synthetic group');
+  const description='VM-only Q01 manual journal draft';
+  await view.openJournalModal();
+  check(document.getElementById('acJournalLines'),'Manual journal form did not open');
+  const initialRows=document.querySelectorAll('#acJournalLines .ac-journal-line');
+  check(initialRows.length===2,'Manual journal must start with two rows');
+  view.addJournalRow();
+  check(document.querySelectorAll('#acJournalLines .ac-journal-line').length===3,
+    'Add journal row did not append a third line');
+  const addedRow = document.querySelectorAll('#acJournalLines .ac-journal-line')[2];
+  const removeAddedRow = addedRow.querySelector('button[onclick*="closest"]');
+  check(removeAddedRow, 'Added journal row remove button is missing');
+  removeAddedRow.click();
+  check(document.querySelectorAll('#acJournalLines .ac-journal-line').length===2,
+    'Journal row remove button did not restore the original two-row draft');
+  document.getElementById('acJournalPeriod').value=period.id;
+  document.getElementById('acJournalDate').value=period.startDate;
+  document.getElementById('acJournalDescription').value=description;
+  const rows=[...document.querySelectorAll('#acJournalLines .ac-journal-line')];
+  rows[0].querySelector('.ac-line-account').value=postable[0].id;
+  rows[0].querySelector('.ac-line-debit').value='100';
+  rows[0].querySelector('.ac-line-credit').value='0';
+  rows[1].querySelector('.ac-line-account').value=postable[1].id;
+  rows[1].querySelector('.ac-line-debit').value='0';
+  rows[1].querySelector('.ac-line-credit').value='100';
+  await view.saveJournal('draft');
+  let draft=(await db.getAll('journal_entries')).find(x=>
+    x.companyId===company.id&&x.description===description&&x.status==='draft');
+  check(draft,'Manual journal draft did not persist');
+  const postedDescription='VM-only Q01 manual journal posted';
+  await view.openJournalModal(draft.id);
+  document.getElementById('acJournalDescription').value=postedDescription;
+  await view.saveJournal('posted');
+  const posted=(await db.getAll('journal_entries')).find(x=>
+    x.companyId===company.id&&x.description===postedDescription&&x.status==='posted');
+  check(posted&&posted.debit===100&&posted.credit===100,
+    'Balanced draft was not posted through the manual journal form');
+  await view.showJournal(posted.id);
+  const detailsDialog = FINORA.Modal.stack.at(-1)?.card;
+  check(detailsDialog?.textContent.includes(postedDescription),
+    'Posted journal details did not open from the UI');
+  const closeDetails = detailsDialog.querySelector('.modal-footer button');
+  check(closeDetails, 'Posted journal details close action is missing');
+  closeDetails.click();
+  check(FINORA.Modal.stack.length === 0, 'Posted journal details dialog did not close');
+  view.openReversal(posted.id);
+  check(document.getElementById('acReversalId'),'Manual journal reversal form did not open');
+  document.getElementById('acReversalPeriod').value=period.id;
+  document.getElementById('acReversalDate').value=period.startDate;
+  await view.saveReversal();
+  const originalAfter=await db.get('journal_entries',posted.id);
+  const reversal=(await db.getAll('journal_entries')).find(x=>
+    x.companyId===company.id&&x.reversalOfId===posted.id&&x.status==='posted');
+  check(originalAfter?.reversedById===reversal?.id&&reversal?.debit===100&&reversal?.credit===100,
+    'Manual journal reversal did not preserve the original and post a balanced reversal');
+  const downloads=[],originalClick=HTMLAnchorElement.prototype.click,
+    originalCreateObjectURL=URL.createObjectURL;
+  try {
+    URL.createObjectURL=function(blob){
+      const url=originalCreateObjectURL.call(URL,blob);
+      downloads.push({blob,url,filename:''});
+      return url;
+    };
+    HTMLAnchorElement.prototype.click=function(){
+      const item=downloads.find(x=>x.url===this.href);
+      if(item)item.filename=this.download;
+    };
+    await view.exportReports();
+    await view.exportReconciliation();
+    check(downloads.length===2,'Accounting report and reconciliation exports did not both download');
+    const content=await Promise.all(downloads.map(async item=>({
+      filename:item.filename,text:await item.blob.text()
+    })));
+    check(content.some(x=>x.filename==='factor-easypro-ledger.csv'&&
+      x.text.includes('account_code')&&x.text.includes(postedDescription)),
+      'Ledger CSV export omitted the posted synthetic journal');
+    check(content.some(x=>x.filename==='factor-easypro-reconciliation.csv'&&
+      x.text.includes('code')&&x.text.includes('reference')),
+      'Reconciliation CSV export omitted its expected schema');
+  } finally {
+    URL.createObjectURL=originalCreateObjectURL;
+    HTMLAnchorElement.prototype.click=originalClick;
+  }
+  return {chartAccountCreated:true,journalRowAdded:true,journalRowRemoveButtonClicked:true,
+    draftJournalSaved:true,journalPosted:true,journalDetailsOpened:true,
+    reversalFormOpened:true,reversalPosted:true,ledgerCsvExported:true,
+    reconciliationCsvExported:true};
+}
+
+async function nativeInventoryTransferAndStocktake() {
+  const check=(ok,msg)=>{if(!ok)throw Error(msg);};
+  const db=FINORA.Storage,company=await FINORA.Company.current();
+  check(company?.id&&FINORA.Auth.isAdmin(),'Inventory transfer UI test requires a synthetic administrator');
+  const balances=(await db.getAll('inventory_balances')).filter(x=>
+    x.companyId===company.id&&x.quantityUnits>0);
+  check(balances.length,'No positive synthetic inventory balance exists for transfer');
+  const sourceBalance=balances[0];
+  const product=await db.get('products',sourceBalance.productId);
+  const warehouses=(await db.getAll('warehouses')).filter(x=>x.companyId===company.id);
+  const source=warehouses.find(x=>x.id===sourceBalance.warehouseId);
+  check(product?.trackInventory!==false&&source,'Transfer source product/warehouse is invalid');
+  await FINORA.Router.go('accounting');
+  const view=window.AccountingView;
+  await view.refresh();
+  const secondName='VM-only Q01 transfer destination';
+  view.openWarehouse();
+  document.getElementById('acWhName').value=secondName;
+  await view.saveWarehouse();
+  const destination=(await db.getAll('warehouses')).find(x=>
+    x.companyId===company.id&&x.name===secondName);
+  check(destination,'Second warehouse was not created through the UI');
+  const quantity=Math.min(0.1,sourceBalance.quantityUnits/1000);
+  const transferUnits=Math.round(quantity*1000);
+  const beforeRows=await db.getAll('inventory_balances');
+  const beforeFrom=beforeRows.find(x=>x.companyId===company.id&&
+    x.warehouseId===source.id&&x.productId===product.id)?.quantityUnits||0;
+  const beforeTo=beforeRows.find(x=>x.companyId===company.id&&
+    x.warehouseId===destination.id&&x.productId===product.id)?.quantityUnits||0;
+  await view.openTransfer();
+  check(document.getElementById('acTrProduct')&&document.getElementById('acTrFrom')&&
+    document.getElementById('acTrTo'),'Stock transfer form did not open');
+  document.getElementById('acTrProduct').value=product.id;
+  document.getElementById('acTrFrom').value=source.id;
+  document.getElementById('acTrTo').value=destination.id;
+  document.getElementById('acTrQty').value=String(quantity);
+  document.getElementById('acTrDate').value='1405/07/22';
+  await view.saveTransfer();
+  const afterRows=await db.getAll('inventory_balances');
+  const afterFrom=afterRows.find(x=>x.companyId===company.id&&
+    x.warehouseId===source.id&&x.productId===product.id)?.quantityUnits||0;
+  const afterTo=afterRows.find(x=>x.companyId===company.id&&
+    x.warehouseId===destination.id&&x.productId===product.id)?.quantityUnits||0;
+  check(afterFrom===beforeFrom-transferUnits&&afterTo===beforeTo+transferUnits,
+    'Stock transfer did not move the exact milli-unit quantity between warehouses');
+  await view.openStocktakeCreate();
+  document.getElementById('acStWarehouse').value=source.id;
+  document.getElementById('acStDate').value='1405/07/23';
+  await view.createStocktake();
+  const stocktakeId=document.getElementById('acStocktakeId')?.value;
+  check(stocktakeId,'Stocktake create action did not open the count sheet');
+  const countRows=[...document.querySelectorAll('#acTakeRows tr[data-product]')];
+  check(countRows.length>0,'Stocktake did not snapshot the source warehouse balances');
+  for(const row of countRows){
+    const expected=Number(row.querySelector('td:nth-child(2)').textContent.trim());
+    row.querySelector('.ac-count').value=String(expected);
+  }
+  await view.saveStocktake();
+  await view.openStocktake(stocktakeId);
+  await view.finishStocktake();
+  const stocktake=await db.get('stocktakes',stocktakeId);
+  const lines=await db.getAll('stocktake_lines');
+  const ownLines=lines.filter(x=>x.companyId===company.id&&x.stocktakeId===stocktakeId);
+  check(stocktake?.status==='posted'&&ownLines.length>0&&
+    ownLines.every(x=>x.countedUnits===x.expectedUnits),
+    'Stocktake did not save all counts and finalize without an inventory delta');
+  return {secondWarehouseCreated:true,transferPosted:true,exactInventoryMoved:true,
+    stocktakeCreated:true,stocktakeCountsSaved:true,stocktakeFinalized:true};
+}
+
 module.exports = async function nativeFunctionalMatrix(cdp) {
   const phases = [
+    ['legacy-stock-adjustment-form-and-validation', legacyStockAdjustmentFormAndValidation],
     ['activate-accounting-and-inventory', activateAccounting],
+    ['integrated-stock-adjustment-guard', integratedStockAdjustmentGuard],
+    ['contacts-crud-form-and-tags', nativeContactCrudFormAndTags],
+    ['products-crud-form-and-nested-classifiers', nativeProductCrudFormAndNestedClassifiers],
     ['positive-opening-ledger-and-idempotency', nativePositiveOpeningLedger],
     ['purchase-and-post-ledger', purchaseInvoice],
     ['partial-sale-and-inventory', saleInvoice],
+    ['invoice-quick-add-and-save-print', nativeInvoiceQuickAddAndPrint],
+    ['auxiliary-rtl-print-rendering', nativeAuxiliaryPrintRendering],
+    ['expense-form-category-and-posting', nativeExpenseFormAndCategory],
+    ['manual-journal-reversal-and-exports', nativeAccountingJournalAndExports],
+    ['inventory-transfer-and-stocktake', nativeInventoryTransferAndStocktake],
     ['inactive-treasury-cheque-settlement', nativeInactiveBankSettlementGuard],
     ['cheque-third-party-endorsement', nativeChequeThirdPartyEndorsement],
     ['treasury-cheque-reconciliation-readonly', nativeTreasuryChequeReconciliation],

@@ -6,6 +6,7 @@ import { StorageService } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
 import { DataScope } from '../core/DataScope.js';
 import { RetailPostingService } from '../core/RetailPostingService.js';
+import { positiveAmount } from '../core/RetailFinanceCore.mjs';
 
 class ChequeControllerImpl {
   async getAll(filter = {}) {
@@ -35,6 +36,9 @@ class ChequeControllerImpl {
 
   async create(data) {
     const user = Auth.current();
+    if (!['inbound','outbound'].includes(data.direction || 'inbound'))
+      throw Error('جهت چک نامعتبر است');
+    const chequeAmount = positiveAmount(data.amount, 'مبلغ چک');
     const cheque = {
       id: StorageService.uid('chq_'),
       ownerUserId: user.id,
@@ -47,7 +51,7 @@ class ChequeControllerImpl {
       branchName: (data.branchName || '').trim(),
       accountNumber: (data.accountNumber || '').trim(),
       holderName: (data.holderName || '').trim(),
-      amount: Number(data.amount) || 0,
+      amount: chequeAmount,
       issueDate: data.issueDate || this._todayJalali(),
       dueDate: data.dueDate || this._todayJalali(),
       status: data.status || 'pending',         // pending | cleared | bounced | returned | spent
@@ -64,6 +68,9 @@ class ChequeControllerImpl {
     const existing = await StorageService.get('cheques', id);
     if (!existing || existing.companyId !== await DataScope.companyId()) throw new Error('چک در شرکت فعال یافت نشد');
     if (existing.financePosted) throw new Error('مشخصات چک دارای سند مالی قطعی قابل ویرایش مستقیم نیست');
+    if (data.direction !== undefined && !['inbound','outbound'].includes(data.direction))
+      throw Error('جهت چک نامعتبر است');
+    const chequeAmount = positiveAmount(data.amount, 'مبلغ چک');
     const updated = {
       ...existing,
       direction: data.direction || existing.direction,
@@ -75,7 +82,7 @@ class ChequeControllerImpl {
       branchName: (data.branchName || '').trim(),
       accountNumber: (data.accountNumber || '').trim(),
       holderName: (data.holderName || '').trim(),
-      amount: Number(data.amount) || 0,
+      amount: chequeAmount,
       issueDate: data.issueDate || existing.issueDate,
       dueDate: data.dueDate || existing.dueDate,
       refInvoiceId: data.refInvoiceId || existing.refInvoiceId,

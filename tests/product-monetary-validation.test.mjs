@@ -77,3 +77,34 @@ test('missing optional numeric values retain the zero default', async () => {
   assert.equal(row.sellPrice, 0);
   assert.equal(row.minStock, 0);
 });
+
+
+test('manual legacy stock movement rejects company/type/negative/overprecision',async()=>{
+ await setup();
+ const p=await ProductController.createProduct({name:'Synthetic item',buyPrice:100,minStock:0.5});
+ for(const [type,qty,id] of [
+  ['in',0,p.id],['out',-1,p.id],['adjust',-1,p.id],['in',1.2345,p.id],
+  ['adjust','bad',p.id],['unknown',1,p.id],['in',1,'not-a-product']
+ ]) {
+  await assert.rejects(ProductController.addStockMovement(id,type,qty),/نامعتبر|شرکت فعال|مقدار کالا/);
+  assert.deepEqual(await StorageService.getByCompany('stock_movements','product-validation-company'),[]);
+ }
+ await ProductController.addStockMovement(p.id,'in',1.25);
+ await ProductController.addStockMovement(p.id,'adjust',0);
+ const moves=await StorageService.getByCompany('stock_movements','product-validation-company');
+ assert.equal(moves.length,2);
+ assert.deepEqual(moves.map(m=>m.qty).sort((a,b)=>a-b),[0,1.25]);
+});
+
+test('product price and stock editors validate text strictly before writes',async()=>{
+ const fs=await import('node:fs');
+ const source=path=>fs.readFileSync(new URL('../'+path,import.meta.url),'utf8');
+ for(const [path,fragment] of [
+  ['src/views/ProductsView.js',"NumberInput.parseStrict(document.getElementById('pBuyPrice')"],
+  ['src/views/ProductsView.js',"NumberInput.parseStrict(document.getElementById('pSellPrice')"],
+  ['src/views/ProductsView.js',"NumberInput.parseStrict(document.getElementById('pMinStock')"],
+  ['src/views/StockKardexModal.js',"NumberInput.parseStrict(document.getElementById('adjQty')"],
+  ['src/views/InvoiceFormView.js',"NumberInput.parseStrict(document.getElementById('qpBuyPrice')"],
+  ['src/views/InvoiceFormView.js',"NumberInput.parseStrict(document.getElementById('qpSellPrice')"]
+ ]) assert.ok(source(path).includes(fragment),path);
+});

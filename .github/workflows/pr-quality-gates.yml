@@ -33,6 +33,8 @@ jobs:
           cache: npm
       - name: Clean install
         run: npm ci
+      - name: Audit all dependencies for high or critical advisories
+        run: npm audit --audit-level=high
       - name: Full automated regression suite
         run: npm test
       - name: Build frontend bundle

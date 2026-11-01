@@ -662,8 +662,8 @@ class AccountingViewImpl {
       const extraOptions=extras.map(p=>`<option value="${html(p.id)}">${html(p.name)}</option>`).join('');
       const existing=lines.map(l=>`<tr data-product="${html(l.productId)}">
         <td>${html(names[l.productId]||l.productId)}</td><td>${l.expectedUnits/1000}</td>
-        <td><input class="form-control ac-count" value="${l.countedUnits===null?'':l.countedUnits/1000}" ${take.status!=='draft'?'disabled':''}></td>
-        <td><input class="form-control ac-cost" placeholder="ریال" value="${l.unitCost??''}" ${take.status!=='draft'?'disabled':''}></td></tr>`).join('');
+        <td><input class="form-control ac-count" aria-label="${html('شمارش واقعی برای '+(names[l.productId]||l.productId))}" value="${l.countedUnits===null?'':l.countedUnits/1000}" ${take.status!=='draft'?'disabled':''}></td>
+        <td><input class="form-control ac-cost" aria-label="${html('بهای واحد مازاد برای '+(names[l.productId]||l.productId))}" placeholder="ریال" value="${l.unitCost??''}" ${take.status!=='draft'?'disabled':''}></td></tr>`).join('');
       Modal.open({title:'برگه انبارگردانی',size:'lg',closeOnBackdrop:false,
         body:`<input type="hidden" id="acStocktakeId" value="${html(id)}">
           <p style="margin-bottom:10px">مقدار شمارش واقعی و در صورت مازاد کالای بدون مانده، قیمت تمام‌شده واحد را وارد کنید.</p>
@@ -682,12 +682,14 @@ class AccountingViewImpl {
     if(!selector?.value)return;
     const id=selector.value;
     const label=selector.selectedOptions[0]?.textContent||id;
+    const countLabel=html('شمارش واقعی برای '+label);
+    const costLabel=html('بهای واحد مازاد برای '+label);
     const body=document.getElementById('acTakeRows');
     if(!body||body.querySelector('[data-product="'+id+'"]'))return;
     body.insertAdjacentHTML('beforeend',`<tr data-product="${html(id)}">
       <td>${html(label)}</td><td>۰</td>
-      <td><input class="form-control ac-count" value="0"></td>
-      <td><input class="form-control ac-cost" placeholder="ریال"></td></tr>`);
+      <td><input class="form-control ac-count" aria-label="${countLabel}" value="0"></td>
+      <td><input class="form-control ac-cost" aria-label="${costLabel}" placeholder="ریال"></td></tr>`);
     selector.selectedOptions[0]?.remove();
   }
   async persistStocktakeCounts(id) {

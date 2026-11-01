@@ -284,7 +284,7 @@ class ChequesViewImpl {
       branchName: document.getElementById('chqBranch').value,
       accountNumber: document.getElementById('chqAccount').value,
       holderName: document.getElementById('chqHolder').value,
-      amount: NumberInput.parse(document.getElementById('chqAmount').value),
+      amount: NumberInput.parseStrict(document.getElementById('chqAmount')),
       issueDate: document.getElementById('chqIssueDate').value,
       dueDate: document.getElementById('chqDueDate').value,
       description: document.getElementById('chqDescription').value

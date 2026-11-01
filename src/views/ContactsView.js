@@ -333,7 +333,7 @@ class ContactsViewImpl {
         <label class="form-label">برچسب‌ها</label>
         <div id="tagsContainer">${tagsChips || '<small style="color:var(--text-muted)">هنوز برچسبی تعریف نشده</small>'}</div>
         <div style="display:flex;gap:6px;margin-top:8px">
-          <input type="text" class="form-control" id="newTagInput" placeholder="برچسب جدید..." style="flex:1" />
+          <input type="text" class="form-control" id="newTagInput" aria-label="افزودن برچسب جدید" placeholder="برچسب جدید..." style="flex:1" />
           <button class="btn btn-secondary" onclick="window.ContactsView.addNewTag()">➕</button>
         </div>
       </div>

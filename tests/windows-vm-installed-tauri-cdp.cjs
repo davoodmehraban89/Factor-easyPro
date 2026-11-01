@@ -408,6 +408,14 @@ async function connect(url) {
       assert.ok(auditSource.includes('for(const group of deferredSafeActions)'),
         'native UI audit must execute queued filters after editor/confirmation probes');
       const audit = await cdp.evaluate(auditSource, 240000);
+      const fixtureCoverage = require('../scripts/q01-native-action-coverage.cjs').annotateAudit(audit, {
+        nativeFunctional: report.nativeFunctional,
+        encryptedCompanyBackup: report.encryptedCompanyBackup ===
+          'native-SettingsUI-AES-GCM-PBKDF2-wrong-password-and-audited-restore-passed',
+        modalKeyboard: audit.shellResults?.modalKeyboard,
+        routesVisited: audit.routesVisited
+      });
+      report.nativeControlCoverage = fixtureCoverage;
       assert.equal(audit.environment, 'installed-Windows-Tauri-WebView2-synthetic-VM');
       assert.equal(audit.routesVisited, 10);
       assert.equal(audit.shellResults.keyboardReachableSidebarLinks, 10);
@@ -426,6 +434,21 @@ async function connect(url) {
       assert.equal(audit.shellResults.modalKeyboard.visibleInputAutoFocused, true);
       assert.equal(audit.problems.filter(x=>x.kind==='modal-a11y-missing').length, 0,
         'An opened financial dialog failed to move keyboard focus inside itself');
+      const modalInteractionProblems=audit.problems.filter(x=>[
+        'nested-safe-action-did-not-open-dialog',
+        'nested-modal-a11y-missing',
+        'nested-modal-cancel-did-not-restore-parent',
+        'invoice-draft-add-row-failed',
+        'invoice-draft-remove-new-row-missing',
+        'invoice-draft-row-count-not-restored',
+        'invoice-last-row-removal-not-blocked',
+        'unsaved-contact-tag-not-added'
+      ].includes(x.kind) || (
+        x.kind==='no-visible-change' &&
+        /InvoiceFormView\\._addRow/.test(x.handler||'')
+      ));
+      assert.deepEqual(modalInteractionProblems, [],
+        'Native nested-modal, invoice-row or unsaved-contact-tag interaction regressed');
       assert.equal(audit.shellResults.modalKeyboard.enterOnFocusedCancelDoesNotSave, true);
       assert.equal(audit.shellResults.modalKeyboard.enterOnInputDoesNotSubmit, true);
       assert.equal(audit.shellResults.modalKeyboard.tabAndShiftTabStayInsideTopDialog, true);
@@ -448,7 +471,11 @@ async function connect(url) {
       assert.ok(audit.fieldsInspected >= 15, 'Visible form-field inventory unexpectedly small');
       assert.ok(Number.isInteger(audit.fieldsMissingProgrammaticLabel), 'No programmatic label coverage reported');
       assert.equal(audit.fieldsMissingProgrammaticLabel, 0,
-        'Every visible financial input must have a programmatic label');
+        'Every visible financial input must have a programmatic label: ' +
+        JSON.stringify((audit.fieldsWithoutLabels || []).map(field => ({
+          route: field.route, section: field.section,
+          id: field.id, tag: field.tag, type: field.type
+        }))));
       assert.ok(audit.safeClickCount >= 15, 'Safe interaction coverage unexpectedly low');
       assert.equal(audit.uniqueActionFailed, 0, 'A native UI action click failed');
       assert.equal(audit.brokenHandlerCount, 0, 'A visible control points to a missing handler');
@@ -473,6 +500,8 @@ async function connect(url) {
         uniqueActionCount: audit.uniqueActionCount,
         uniqueActionClicked: audit.uniqueActionClicked,
         uniqueActionUnverified: audit.uniqueActionUnverified,
+        uniqueActionCoveredByFixture: fixtureCoverage.fixtureCoveredNotClicked,
+        uniqueActionWithoutFixtureEvidence: fixtureCoverage.withoutFixtureEvidence,
         uniqueActionDisabled: audit.uniqueActionDisabled,
         uniqueActionFailed: audit.uniqueActionFailed,
         duplicateInstanceCount: audit.duplicateInstanceCount,
@@ -496,6 +525,11 @@ async function connect(url) {
       report.nativeControlAudit.gapReportFile='q01-native-unverified-controls.md';
       fs.writeFileSync(path.join(path.dirname(reportPath),
         report.nativeControlAudit.gapReportFile),gapReport,{flag:'wx'});
+      report.nativeControlAudit.fixtureCoverageFile='q01-native-fixture-coverage.md';
+      fs.writeFileSync(path.join(path.dirname(reportPath),
+        report.nativeControlAudit.fixtureCoverageFile),
+        require('../scripts/q01-native-action-coverage.cjs').buildCoverageReport(fixtureCoverage),
+        {flag:'wx'});
       const routeScreenshots = [];
       for (const route of audit.routeNames) {
         await cdp.evaluate('FINORA.Router.go(' + JSON.stringify(route) + ')', 20000);
@@ -577,7 +611,21 @@ async function connect(url) {
       assert.ok(measured.timingsMs.seedProducts >= 0 &&
         measured.timingsMs.seedInvoices >= 0 &&
         measured.timingsMs.companyInvoiceReadP95 >= 0 &&
-        measured.timingsMs.snapshotExport >= 0);
+        measured.timingsMs.snapshotExport >= 0 &&
+        measured.timingsMs.reportsReload >= 0 &&
+        measured.timingsMs.encryptedBackup >= 0);
+      for (const tab of ['pl','sales','products','customers']) {
+        assert.ok(measured.reportTabs?.[tab]?.htmlCharacters >= 200,
+          'A08 installed report tab was not rendered: ' + tab);
+      }
+      assert.equal(measured.encryptedBackup?.schemaVersion, 7);
+      assert.equal(measured.encryptedBackup?.products, 10000);
+      assert.equal(measured.encryptedBackup?.invoices, 50000);
+      assert.equal(measured.encryptedBackup?.filenameSuffix, '.fbackup');
+      assert.equal(measured.encryptedBackup?.companyScoped, true);
+      assert.equal(measured.encryptedBackup?.credentialsExcluded, true);
+      assert.ok(measured.encryptedBackup?.bytes > 100000,
+        'A08 large encrypted backup is suspiciously small');
       const validHeap = item =>
         Number.isSafeInteger(item?.usedSize) && item.usedSize >= 0 &&
         Number.isSafeInteger(item?.totalSize) && item.totalSize >= item.usedSize;

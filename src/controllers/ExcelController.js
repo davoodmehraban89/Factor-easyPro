@@ -632,10 +632,10 @@ class ExcelControllerImpl {
 
   async downloadContactsTemplate() {
     await loadSheetJS();
+    // A blank, privacy-safe template must never ship real customer identifiers.
+    // Users populate their own records; no real-looking phone/national-ID samples.
     const data = [
-      ['نام', 'نوع', 'نقش', 'موبایل', 'تلفن', 'کد ملی/شناسه', 'کد اقتصادی', 'شماره ثبت', 'کد پستی', 'نشانی'],
-      ['شرکت آرا بتن', 'حقوقی', 'مشتری', '09124376991', '', '14008507476', '14008507476', '544926', '1445956311', 'تهران'],
-      ['آقای احمدی', 'حقیقی', 'مشتری', '09121111111', '', '1234567890', '', '', '1234567890', 'اصفهان']
+      ['نام', 'نوع', 'نقش', 'موبایل', 'تلفن', 'کد ملی/شناسه', 'کد اقتصادی', 'شماره ثبت', 'کد پستی', 'نشانی']
     ];
     const ws = XLSX.utils.aoa_to_sheet(data);
     const wb = XLSX.utils.book_new();

@@ -2,6 +2,7 @@
 // SettingsView — صفحه‌ی تنظیمات، بکاپ، شرکت و Excel
 // ============================================================
 
+import appPackage from '../../package.json' with { type: 'json' };
 import { SettingsController } from '../controllers/SettingsController.js';
 import { StorageService } from '../core/StorageService.js';
 import { Theme } from '../core/Theme.js';
@@ -817,7 +818,7 @@ class SettingsViewImpl {
           <div class="settings-card-icon">ℹ️</div>
           <div>
             <h3 class="settings-card-title">درباره فینورا پرو</h3>
-            <p class="settings-card-desc">نسخه ۲.۰.۳</p>
+            <p class="settings-card-desc">نسخه ${appPackage.version}</p>
           </div>
         </div>
         <div style="font-size:13px;line-height:1.9;color:var(--text-muted)">

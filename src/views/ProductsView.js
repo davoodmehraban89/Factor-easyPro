@@ -444,16 +444,27 @@ class ProductsViewImpl {
   }
 
   async saveProduct(id) {
+    let buyPrice, sellPrice, minStock;
+    try {
+      buyPrice = NumberInput.parseStrict(document.getElementById('pBuyPrice'), { optional: true });
+      sellPrice = NumberInput.parseStrict(document.getElementById('pSellPrice'), { optional: true });
+      minStock = NumberInput.parseStrict(document.getElementById('pMinStock'), {
+        decimals: 3, optional: true
+      });
+    } catch (error) {
+      Toast.warning('قیمت یا نقطه سفارش نامعتبر است: ' + error.message);
+      return;
+    }
     const data = {
       code: document.getElementById('pCode').value,
       barcode: document.getElementById('pBarcode').value,
       name: document.getElementById('pName').value,
       unitId: document.getElementById('pUnit').value || null,
       categoryId: document.getElementById('pCategory').value || null,
-      buyPrice: NumberInput.parse(document.getElementById('pBuyPrice').value),
-      sellPrice: NumberInput.parse(document.getElementById('pSellPrice').value),
+      buyPrice,
+      sellPrice,
       trackInventory: document.getElementById('pTrackInventory').checked,
-      minStock: NumberInput.parse(document.getElementById('pMinStock')?.value || '0'),
+      minStock,
       description: document.getElementById('pDescription').value
     };
 
