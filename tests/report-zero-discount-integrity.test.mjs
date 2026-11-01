@@ -4,7 +4,6 @@ import 'fake-indexeddb/auto';
 import { StorageService } from '../src/core/StorageService.js';
 import { CompanyService } from '../src/core/CompanyService.js';
 import { Auth } from '../src/core/Auth.js';
-import { ReportController } from '../src/controllers/ReportController.js';
 import { reportLineRevenue } from '../src/core/ReportLineRevenue.mjs';
 
 const companyId='synthetic-zero-discount-report-company';
@@ -50,6 +49,8 @@ test('real indexedDB sales and profitability reports preserve discounted zero an
       {productId:'report-product',productName:'Synthetic product',qty:2,price:100}
     ]
   });
+  globalThis.window ??= globalThis;
+  const { ReportController } = await import('../src/controllers/ReportController.js');
   const analysis=await ReportController.getSalesAnalysis({preset:'all'});
   assert.equal(analysis.topProductsBySales[0].totalSales,260);
   assert.equal(analysis.topProductsBySales[0].qty,5);
