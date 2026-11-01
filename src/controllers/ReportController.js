@@ -6,20 +6,22 @@ import { StorageService } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
 import { DataScope } from '../core/DataScope.js';
 import { Jalali } from '../utils/Jalali.js';
+import { buildInvoiceCosting } from '../core/ReportCosting.mjs';
 
 class ReportControllerImpl {
   async _loadData() {
     const user = Auth.current();
     if (!user) throw new Error('کاربر یافت نشد');
-    const [invoices, products, expenses, contacts, cheques, treasury] = await Promise.all([
+    const [invoices, products, expenses, contacts, cheques, treasury, stock_movements] = await Promise.all([
       DataScope.list('invoices'),
       DataScope.list('products'),
       DataScope.list('expenses'),
       DataScope.list('contacts'),
       DataScope.list('cheques'),
-      DataScope.list('treasury')
+      DataScope.list('treasury'),
+      DataScope.list('stock_movements')
     ]);
-    return { invoices: invoices || [], products: products || [], expenses: expenses || [], contacts: contacts || [], cheques: cheques || [], treasury: treasury || [] };
+    return { invoices: invoices || [], products: products || [], expenses: expenses || [], contacts: contacts || [], cheques: cheques || [], treasury: treasury || [], stock_movements: stock_movements || [] };
   }
 
   _parseJalali(str) {
@@ -108,12 +110,12 @@ class ReportControllerImpl {
   // ۱. سود و زیان
   // ============================================================
   async getProfitLoss(filter = {}) {
-    const { invoices, products, expenses } = await this._loadData();
+    const { invoices, products, expenses, stock_movements } = await this._loadData();
     const { from, to } = this._getRange(filter);
 
     // فقط فاکتورهای فروش (بدون پیش‌فاکتور)
     const salesInRange = invoices.filter(i =>
-      i.kind === 'sale' &&
+      ['sale', 'non_formal'].includes(i.kind) &&
       !i.isPreInvoice &&
       this._inRange(i.date, from, to)
     );
@@ -128,34 +130,19 @@ class ReportControllerImpl {
     // فروش ناخالص = مجموع فروش بدون مالیات و تخفیف نهایی
     const grossSales = salesInRange.reduce((s, i) => s + (Number(i.subtotal) || 0), 0);
     const salesDiscounts = salesInRange.reduce((s, i) => s + (Number(i.totalDiscount) || 0), 0);
-    const returnsAmount = returnsInRange.reduce((s, i) => s + (Number(i.subtotal) || 0), 0);
+    const returnsAmount = returnsInRange.reduce((s, i) =>
+      s + (Number(i.subtotal) || 0) - (Number(i.totalDiscount) || 0), 0);
     const netSales = grossSales - salesDiscounts - returnsAmount;
 
-    // بهای تمام‌شده (COGS) — از قیمت خرید هر کالا
-    let cogs = 0;
-    const productMap = {};
-    products.forEach(p => productMap[p.id] = p);
-
-    salesInRange.forEach(inv => {
-      (inv.items || []).forEach(it => {
-        const p = productMap[it.productId];
-        const buyPrice = p ? (Number(p.buyPrice) || 0) : 0;
-        const qty = Number(it.qty) || 0;
-        cogs += buyPrice * qty;
-      });
-    });
-
-    // برگشت‌ها رو از COGS کم کن
-    returnsInRange.forEach(inv => {
-      (inv.items || []).forEach(it => {
-        const p = productMap[it.productId];
-        const buyPrice = p ? (Number(p.buyPrice) || 0) : 0;
-        const qty = Number(it.qty) || 0;
-        cogs -= buyPrice * qty;
-      });
-    });
-
-    cogs = Math.max(0, cogs);
+    // Finalized invoices use historical stock movements. Legacy sales are
+    // explicitly estimates, never misrepresented as immutable ledger costs.
+    const valuation = buildInvoiceCosting(
+      [...salesInRange, ...returnsInRange], products, stock_movements
+    );
+    const totalCost = rows => rows.reduce((sum, row) =>
+      sum + valuation.byInvoice.get(row.id).total, 0);
+    // A return-only period can legitimately have negative COGS.
+    const cogs = totalCost(salesInRange) - totalCost(returnsInRange);
     const grossProfit = netSales - cogs;
     const grossMargin = netSales > 0 ? (grossProfit / netSales) * 100 : 0;
 
@@ -173,6 +160,7 @@ class ReportControllerImpl {
       returnsAmount,
       netSales,
       cogs,
+      costBasis: valuation.summary,
       grossProfit,
       grossMargin,
       operatingExpenses,
@@ -190,22 +178,22 @@ class ReportControllerImpl {
   // ۲. تحلیل فروش (Top Products & Customers)
   // ============================================================
   async getSalesAnalysis(filter = {}) {
-    const { invoices, products, contacts } = await this._loadData();
+    const { invoices, products, contacts, stock_movements } = await this._loadData();
     const { from, to } = this._getRange(filter);
 
     const salesInRange = invoices.filter(i =>
-      i.kind === 'sale' &&
+      ['sale', 'non_formal'].includes(i.kind) &&
       !i.isPreInvoice &&
       this._inRange(i.date, from, to)
     );
 
     // محصولات
     const productStats = {};
-    const productMap = {};
-    products.forEach(p => productMap[p.id] = p);
+    const valuation = buildInvoiceCosting(salesInRange, products, stock_movements);
 
     salesInRange.forEach(inv => {
-      (inv.items || []).forEach(it => {
+      const costs = valuation.byInvoice.get(inv.id).lines;
+      (inv.items || []).forEach((it, index) => {
         const key = it.productId || 'unknown_' + (it.productName || '');
         if (!productStats[key]) {
           productStats[key] = {
@@ -219,11 +207,9 @@ class ReportControllerImpl {
         }
         const qty = Number(it.qty) || 0;
         const lineTotal = Number(it.lineTotal) || (qty * (Number(it.price) || 0));
-        const p = productMap[it.productId];
-        const buyPrice = p ? (Number(p.buyPrice) || 0) : 0;
         productStats[key].qty += qty;
         productStats[key].totalSales += lineTotal;
-        productStats[key].cogs += buyPrice * qty;
+        productStats[key].cogs += costs[index].cost;
         productStats[key].count += 1;
       });
     });
@@ -273,21 +259,21 @@ class ReportControllerImpl {
   // ۳. سودآوری کالا (همه کالاها)
   // ============================================================
   async getProductProfitability(filter = {}) {
-    const { invoices, products } = await this._loadData();
+    const { invoices, products, stock_movements } = await this._loadData();
     const { from, to } = this._getRange(filter);
 
     const salesInRange = invoices.filter(i =>
-      i.kind === 'sale' &&
+      ['sale', 'non_formal'].includes(i.kind) &&
       !i.isPreInvoice &&
       this._inRange(i.date, from, to)
     );
 
-    const productMap = {};
-    products.forEach(p => productMap[p.id] = p);
+    const valuation = buildInvoiceCosting(salesInRange, products, stock_movements);
 
     const stats = {};
     salesInRange.forEach(inv => {
-      (inv.items || []).forEach(it => {
+      const costs = valuation.byInvoice.get(inv.id).lines;
+      (inv.items || []).forEach((it, index) => {
         const key = it.productId || 'unknown_' + (it.productName || '');
         if (!stats[key]) {
           const p = productMap[it.productId];
@@ -304,11 +290,9 @@ class ReportControllerImpl {
         }
         const qty = Number(it.qty) || 0;
         const lineTotal = Number(it.lineTotal) || (qty * (Number(it.price) || 0));
-        const p = productMap[it.productId];
-        const buyPrice = p ? (Number(p.buyPrice) || 0) : 0;
         stats[key].qty += qty;
         stats[key].totalSales += lineTotal;
-        stats[key].cogs += buyPrice * qty;
+        stats[key].cogs += costs[index].cost;
       });
     });
 
