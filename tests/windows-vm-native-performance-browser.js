@@ -79,11 +79,45 @@
     const htmlLength = region?.innerHTML?.length || 0;
     if (rendered.length < 40 || htmlLength < 200)
       throw Error('Installed report tab rendered no usable result: ' + tab);
+    let paginationVerified = null;
+    if (tab === 'products') {
+      // A08: a 10k-product report must never create a 10k-row DOM table.
+      const currentRows = region.querySelectorAll('tbody tr');
+      if (currentRows.length !== 100)
+        throw Error('A08 product report did not limit its visible rows to 100');
+      const firstProduct = currentRows[0].querySelector('td:nth-child(2)')?.textContent;
+      const initialTotals = [...region.querySelectorAll('.grid-kpi .kpi-card')]
+        .map(card => card.textContent.trim()).join('|');
+      window.ReportsView._setReportPage('products', 1);
+      const secondRows = region.querySelectorAll('tbody tr');
+      const secondProduct = secondRows[0]?.querySelector('td:nth-child(2)')?.textContent;
+      if (secondRows.length !== 100 || secondProduct === firstProduct ||
+          !region.querySelector('nav[aria-label="صفحه‌بندی کالاها"]'))
+        throw Error('A08 next-page product selection is empty or repeats the previous page');
+      window.ReportsView._setReportPage('products', 999999);
+      const lastRows = region.querySelectorAll('tbody tr');
+      if (lastRows.length !== 100)
+        throw Error('A08 last product report page contains an unexpected row count');
+      window.ReportsView._setReportPage('products', 0);
+      const restoredRows = region.querySelectorAll('tbody tr');
+      const restoredTotals = [...region.querySelectorAll('.grid-kpi .kpi-card')]
+        .map(card => card.textContent.trim()).join('|');
+      if (restoredRows.length !== 100 ||
+          restoredRows[0].querySelector('td:nth-child(2)')?.textContent !== firstProduct ||
+          restoredTotals !== initialTotals)
+        throw Error('A08 paging changed financial totals or failed to restore first report page');
+      paginationVerified = {
+        displayedRows: 100, totalRows: productCount,
+        changedOnNextPage: true, lastPageBounded: true,
+        firstPageRestored: true, financialTotalsUnchanged: true
+      };
+    }
     reportTabs[tab] = {
       renderMs: Math.round((performance.now() - start) * 100) / 100,
       textCharacters: rendered.length,
       htmlCharacters: htmlLength,
-      tableRows: region.querySelectorAll('tbody tr').length
+      tableRows: region.querySelectorAll('tbody tr').length,
+      paginationVerified
     };
   }
   const exported = await duration(() => db.exportAll());
