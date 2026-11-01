@@ -372,7 +372,7 @@ class ReportControllerImpl {
   }
 
   async getSalesAnalysis(filter = {}, data = null) {
-    const { invoices, products, contacts, stockMovements = [] } = data || await this._loadData();
+    const { invoices, products, stockMovements = [] } = data || await this._loadData();
     const { from, to } = this._getRange(filter);
     const rows = invoices.filter(invoice =>
       ['sale', 'sale_return'].includes(invoice.kind) &&
@@ -387,34 +387,42 @@ class ReportControllerImpl {
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 10);
 
-    const salesInRange = rows.filter(invoice => invoice.kind === 'sale');
     const contactStats = {};
-    salesInRange.forEach(invoice => {
+    rows.forEach(invoice => {
       const key = invoice.contactId || 'unknown';
       if (!contactStats[key]) {
         contactStats[key] = {
           contactId: invoice.contactId,
           contactName: invoice.contactName || 'ناشناس',
           invoiceCount: 0,
+          returnCount: 0,
           totalSales: 0,
+          totalReturns: 0,
+          netSales: 0,
           totalPaid: 0,
           totalRemaining: 0
         };
       }
-      contactStats[key].invoiceCount += 1;
-      contactStats[key].totalSales += Number(invoice.grandTotal) || 0;
-      contactStats[key].totalPaid += Number(invoice.paidAmount) || 0;
-      contactStats[key].totalRemaining += Number(invoice.remaining) || 0;
+      if (invoice.kind === 'sale') {
+        contactStats[key].invoiceCount += 1;
+        contactStats[key].totalSales += Number(invoice.grandTotal) || 0;
+        contactStats[key].totalPaid += Number(invoice.paidAmount) || 0;
+        contactStats[key].totalRemaining += Number(invoice.remaining) || 0;
+      } else {
+        contactStats[key].returnCount += 1;
+        contactStats[key].totalReturns += Number(invoice.grandTotal) || 0;
+      }
     });
 
     const topCustomers = Object.values(contactStats)
-      .sort((a, b) => b.totalSales - a.totalSales)
+      .map(customer => ({ ...customer, netSales: customer.totalSales - customer.totalReturns }))
+      .sort((a, b) => b.netSales - a.netSales)
       .slice(0, 10);
     return {
       topProductsBySales,
       topProductsByQty,
       topCustomers,
-      invoiceCount: salesInRange.length
+      invoiceCount: rows.filter(invoice => invoice.kind === 'sale').length
     };
   }
 
@@ -433,45 +441,46 @@ class ReportControllerImpl {
   async getCustomerReport(filter = {}, data = null) {
     const { invoices, contacts } = data || await this._loadData();
     const { from, to } = this._getRange(filter);
-
     const contactMap = {};
-    contacts.forEach(c => contactMap[c.id] = c);
+    contacts.forEach(contact => { contactMap[contact.id] = contact; });
 
     const stats = {};
-    invoices.forEach(inv => {
-      if (inv.isPreInvoice) return;
-      if (!this._inRange(inv.date, from, to)) return;
-      const key = inv.contactId || 'unknown';
+    invoices.forEach(invoice => {
+      if (!['sale', 'sale_return'].includes(invoice.kind) || invoice.isPreInvoice) return;
+      if (!this._inRange(invoice.date, from, to)) return;
+      const key = invoice.contactId || 'unknown';
       if (!stats[key]) {
-        const c = contactMap[inv.contactId];
+        const contact = contactMap[invoice.contactId];
         stats[key] = {
-          contactId: inv.contactId,
-          contactName: inv.contactName || 'ناشناس',
-          entityType: c?.entityType || 'natural',
+          contactId: invoice.contactId,
+          contactName: invoice.contactName || contact?.name || 'ناشناس',
+          entityType: contact?.entityType || 'natural',
           totalInvoices: 0,
+          returnCount: 0,
           totalSales: 0,
           totalReturns: 0,
+          netSales: 0,
           totalPaid: 0,
           totalRemaining: 0,
           lastInvoiceDate: ''
         };
       }
-      const isSale = inv.kind === 'sale';
-      const isReturn = inv.kind === 'sale_return';
-      if (isSale) {
+      if (invoice.kind === 'sale') {
         stats[key].totalInvoices += 1;
-        stats[key].totalSales += Number(inv.grandTotal) || 0;
-        stats[key].totalPaid += Number(inv.paidAmount) || 0;
-        stats[key].totalRemaining += Number(inv.remaining) || 0;
-      } else if (isReturn) {
-        stats[key].totalReturns += Number(inv.grandTotal) || 0;
+        stats[key].totalSales += Number(invoice.grandTotal) || 0;
+        stats[key].totalPaid += Number(invoice.paidAmount) || 0;
+        stats[key].totalRemaining += Number(invoice.remaining) || 0;
+      } else {
+        stats[key].returnCount += 1;
+        stats[key].totalReturns += Number(invoice.grandTotal) || 0;
       }
-      if (inv.date > (stats[key].lastInvoiceDate || '')) {
-        stats[key].lastInvoiceDate = inv.date;
-      }
+      if (invoice.date > (stats[key].lastInvoiceDate || ''))
+        stats[key].lastInvoiceDate = invoice.date;
     });
 
-    return Object.values(stats).sort((a, b) => b.totalSales - a.totalSales);
+    return Object.values(stats)
+      .map(customer => ({ ...customer, netSales: customer.totalSales - customer.totalReturns }))
+      .sort((a, b) => b.netSales - a.netSales);
   }
 
   // Load one company-scoped snapshot and reuse it across all report calculations.

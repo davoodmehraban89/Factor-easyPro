@@ -55,6 +55,7 @@ test('report bundle reads one company-scoped snapshot and preserves all four rep
     assert.equal(bundle.sales.invoiceCount, 1);
     assert.equal(bundle.products.length, 1);
     assert.equal(bundle.customers[0].totalReturns, 10);
+    assert.equal(bundle.customers[0].netSales, 80);
     assert.equal(bundle.pl.costBasis, 'estimated');
     assert.equal(bundle.products[0].totalSales, 80);
     assert.equal(bundle.products[0].cogs, 20);
@@ -219,6 +220,52 @@ test('a missing historical and current product cost is explicitly classified as 
     assert.equal(result.cogs, 0);
     assert.equal(result.costBasis, 'incomplete');
     assert.equal(result.costBasisDetails.unknown, 1);
+  } finally {
+    ReportController._loadData = originalLoad;
+  }
+});
+
+
+test('customer reports subtract returns from net sales, include return-only customers and disclose gross invoice balances', async () => {
+  const originalLoad = ReportController._loadData;
+  const data = {
+    invoices: [
+      { id:'customer-sale', kind:'sale', isPreInvoice:false, date:'1405/01/02',
+        contactId:'customer-1', contactName:'Customer one', grandTotal:1000,
+        paidAmount:400, remaining:600 },
+      { id:'customer-return', kind:'sale_return', isPreInvoice:false, date:'1405/01/03',
+        contactId:'customer-1', contactName:'Customer one', grandTotal:250 },
+      { id:'return-only', kind:'sale_return', isPreInvoice:false, date:'1405/01/04',
+        contactId:'customer-2', contactName:'Customer two', grandTotal:50 },
+      { id:'supplier-purchase', kind:'purchase', isPreInvoice:false, date:'1405/01/05',
+        contactId:'supplier-1', contactName:'Supplier only', grandTotal:9999 }
+    ],
+    contacts: [
+      { id:'customer-1', name:'Customer one', entityType:'natural' },
+      { id:'customer-2', name:'Customer two', entityType:'legal' },
+      { id:'supplier-1', name:'Supplier only', entityType:'legal' }
+    ],
+    products: [], expenses: [], stockMovements: [], cheques: [], treasury: []
+  };
+  ReportController._loadData = async () => data;
+  try {
+    const customers = await ReportController.getCustomerReport(filter);
+    assert.equal(customers.length, 2, 'purchase-only suppliers must not appear in customer sales reports');
+    assert.deepEqual(
+      { gross: customers[0].totalSales, returns: customers[0].totalReturns,
+        net: customers[0].netSales, paid: customers[0].totalPaid,
+        invoiceBalanceBeforeReturns: customers[0].totalRemaining },
+      { gross: 1000, returns: 250, net: 750, paid: 400, invoiceBalanceBeforeReturns: 600 }
+    );
+    assert.deepEqual(
+      { name: customers[1].contactName, gross: customers[1].totalSales,
+        returns: customers[1].totalReturns, net: customers[1].netSales },
+      { name: 'Customer two', gross: 0, returns: 50, net: -50 }
+    );
+    const sales = await ReportController.getSalesAnalysis(filter);
+    assert.equal(sales.topCustomers[0].netSales, 750);
+    assert.equal(sales.topCustomers[0].totalReturns, 250);
+    assert.equal(sales.topCustomers[1].netSales, -50);
   } finally {
     ReportController._loadData = originalLoad;
   }

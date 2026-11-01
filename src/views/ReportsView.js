@@ -360,7 +360,7 @@ class ReportsViewImpl {
       </div>
 
       <div class="card">
-        <h3 style="font-size:15px;font-weight:700;margin-bottom:14px">👥 ۱۰ مشتری برتر (به ترتیب مبلغ خرید)</h3>
+        <h3 style="font-size:15px;font-weight:700;margin-bottom:14px">👥 ۱۰ مشتری برتر (به ترتیب خرید خالص پس از مرجوعی)</h3>
         <div class="table-wrap">
           <table>
             <thead>
@@ -368,18 +368,22 @@ class ReportsViewImpl {
                 <th style="width:30px">#</th>
                 <th>مشتری</th>
                 <th style="width:100px">تعداد فاکتور</th>
-                <th style="width:150px">مجموع خرید</th>
-                <th style="width:150px">مجموع پرداخت</th>
-                <th style="width:150px">مانده</th>
+                <th style="width:130px">فروش ناخالص</th>
+                <th style="width:120px">مرجوعی</th>
+                <th style="width:130px">فروش خالص</th>
+                <th style="width:130px">دریافت از فروش</th>
+                <th style="width:160px">مانده فاکتور فروش</th>
               </tr>
             </thead>
             <tbody>
-              ${topCustomers.length === 0 ? '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted)">داده‌ای نیست</td></tr>' : topCustomers.map((c, i) => `
+              ${topCustomers.length === 0 ? '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-muted)">داده‌ای نیست</td></tr>' : topCustomers.map((c, i) => `
                 <tr>
                   <td><strong>${Formatters.toPersianDigits(i + 1)}</strong></td>
                   <td>${this._esc(c.contactName)}</td>
                   <td>${Formatters.number(c.invoiceCount)}</td>
                   <td style="font-weight:600;color:var(--primary)">${Formatters.money(c.totalSales)}</td>
+                  <td style="color:var(--danger)">${Formatters.money(c.totalReturns)}</td>
+                  <td style="font-weight:700;color:${c.netSales < 0 ? 'var(--danger)' : 'var(--primary)'}">${Formatters.money(c.netSales)}</td>
                   <td style="color:var(--success)">${Formatters.money(c.totalPaid)}</td>
                   <td style="font-weight:600;color:${c.totalRemaining > 0 ? 'var(--danger)' : 'var(--success)'}">${Formatters.money(c.totalRemaining)}</td>
                 </tr>
@@ -387,6 +391,7 @@ class ReportsViewImpl {
             </tbody>
           </table>
         </div>
+        <p role="note" style="font-size:12px;line-height:1.8;color:var(--text-muted);margin:10px 0 0">فروش خالص، مرجوعی را از فروش ناخالص کم می‌کند. مانده فقط جمع مانده فاکتورهای فروش است و اعتبار مرجوعی یا بازپرداخت را از دفتر کل محاسبه نمی‌کند.</p>
       </div>
     `;
   }
@@ -497,36 +502,39 @@ class ReportsViewImpl {
   // ============================================================
   renderCustomersTab() {
     const list = cache.customers || [];
-    const totalSales = list.reduce((s, c) => s + c.totalSales, 0);
-    const totalRemaining = list.reduce((s, c) => s + c.totalRemaining, 0);
+    const totalNetSales = list.reduce((sum, customer) => sum + customer.netSales, 0);
+    const totalRemaining = list.reduce((sum, customer) => sum + customer.totalRemaining, 0);
 
     return `
       <div class="grid-kpi">
         <div class="card kpi-card" style="margin:0">
           <div class="kpi-card-icon" style="background:#eff6ff;color:var(--primary)">👥</div>
           <div style="flex:1">
-            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">تعداد مشتریان فعال</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">تعداد مشتریان دارای فروش یا مرجوعی</div>
             <div style="font-size:16px;font-weight:800;color:var(--primary)">${Formatters.number(list.length)}</div>
           </div>
         </div>
         <div class="card kpi-card" style="margin:0">
           <div class="kpi-card-icon" style="background:#ecfdf5;color:var(--success)">💰</div>
           <div style="flex:1">
-            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">مجموع فروش</div>
-            <div style="font-size:16px;font-weight:800;color:var(--success)">${Formatters.money(totalSales)}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">خرید خالص پس از مرجوعی</div>
+            <div style="font-size:16px;font-weight:800;color:var(--success)">${Formatters.money(totalNetSales)}</div>
           </div>
         </div>
         <div class="card kpi-card" style="margin:0">
           <div class="kpi-card-icon" style="background:#fef2f2;color:var(--danger)">⏳</div>
           <div style="flex:1">
-            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">مجموع مطالبات</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">مانده فاکتورهای فروش قبل از مرجوعی</div>
             <div style="font-size:16px;font-weight:800;color:var(--danger)">${Formatters.money(totalRemaining)}</div>
           </div>
         </div>
       </div>
 
       <div class="card">
-        <h3 style="font-size:15px;font-weight:700;margin-bottom:14px">👥 گزارش تفصیلی مشتریان</h3>
+        <h3 style="font-size:15px;font-weight:700;margin-bottom:8px">👥 گزارش تفصیلی مشتریان</h3>
+        <p role="note" style="font-size:12px;line-height:1.8;color:var(--text-muted);margin:0 0 12px">
+          فروش خالص، مرجوعی را از فروش ناخالص کم می‌کند. مانده این جدول فقط جمع مانده فاکتورهای فروش است و اعتبار مرجوعی یا بازپرداخت را از دفتر کل محاسبه نمی‌کند؛ برای مانده قطعی حساب، دفتر کل مبناست.
+        </p>
         <div class="table-wrap">
           <table>
             <thead>
@@ -534,24 +542,28 @@ class ReportsViewImpl {
                 <th style="width:30px">#</th>
                 <th>نام مشتری</th>
                 <th style="width:100px">نوع</th>
-                <th style="width:110px">تعداد فاکتور</th>
-                <th style="width:140px">مجموع خرید</th>
-                <th style="width:140px">پرداخت‌شده</th>
-                <th style="width:140px">مانده</th>
-                <th style="width:120px">آخرین فاکتور</th>
+                <th style="width:110px">تعداد فاکتور فروش</th>
+                <th style="width:130px">فروش ناخالص</th>
+                <th style="width:120px">مرجوعی</th>
+                <th style="width:130px">فروش خالص</th>
+                <th style="width:130px">دریافت از فروش</th>
+                <th style="width:160px">مانده فاکتور فروش</th>
+                <th style="width:120px">آخرین سند</th>
               </tr>
             </thead>
             <tbody>
-              ${list.length === 0 ? '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-muted)">داده‌ای نیست</td></tr>' : list.map((c, i) => `
+              ${list.length === 0 ? '<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text-muted)">داده‌ای نیست</td></tr>' : list.map((customer, i) => `
                 <tr>
                   <td><strong>${Formatters.toPersianDigits(i + 1)}</strong></td>
-                  <td>${this._esc(c.contactName)}</td>
-                  <td><span class="badge ${c.entityType === 'legal' ? 'badge-warning' : 'badge-success'}">${c.entityType === 'legal' ? 'حقوقی' : 'حقیقی'}</span></td>
-                  <td>${Formatters.number(c.totalInvoices)}</td>
-                  <td style="font-weight:600;color:var(--primary)">${Formatters.money(c.totalSales)}</td>
-                  <td style="color:var(--success)">${Formatters.money(c.totalPaid)}</td>
-                  <td style="font-weight:700;color:${c.totalRemaining > 0 ? 'var(--danger)' : 'var(--success)'}">${Formatters.money(c.totalRemaining)}</td>
-                  <td>${c.lastInvoiceDate ? Formatters.toPersianDigits(c.lastInvoiceDate) : '—'}</td>
+                  <td>${this._esc(customer.contactName)}</td>
+                  <td><span class="badge ${customer.entityType === 'legal' ? 'badge-warning' : 'badge-success'}">${customer.entityType === 'legal' ? 'حقوقی' : 'حقیقی'}</span></td>
+                  <td>${Formatters.number(customer.totalInvoices)}</td>
+                  <td style="font-weight:600;color:var(--primary)">${Formatters.money(customer.totalSales)}</td>
+                  <td style="color:var(--danger)">${Formatters.money(customer.totalReturns)}</td>
+                  <td style="font-weight:700;color:${customer.netSales < 0 ? 'var(--danger)' : 'var(--primary)'}">${Formatters.money(customer.netSales)}</td>
+                  <td style="color:var(--success)">${Formatters.money(customer.totalPaid)}</td>
+                  <td style="font-weight:700;color:${customer.totalRemaining > 0 ? 'var(--danger)' : 'var(--success)'}">${Formatters.money(customer.totalRemaining)}</td>
+                  <td>${customer.lastInvoiceDate ? Formatters.toPersianDigits(customer.lastInvoiceDate) : '—'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -661,18 +673,21 @@ class ReportsViewImpl {
     if (currentTab === 'customers') {
       const list = cache.customers || [];
       return `
-        <h2>گزارش مشتریان (${Formatters.number(list.length)} مشتری)</h2>
+        <h2>گزارش مشتریان پس از کسر مرجوعی</h2>
+        <p>مانده، جمع مانده فاکتورهای فروش قبل از تعدیل مرجوعی است؛ مانده قطعی حساب از دفتر کل خوانده شود.</p>
         <table>
-          <thead><tr><th>#</th><th>نام مشتری</th><th>تعداد فاکتور</th><th>مجموع خرید</th><th>پرداخت‌شده</th><th>مانده</th></tr></thead>
+          <thead><tr><th>#</th><th>نام مشتری</th><th>فاکتور فروش</th><th>فروش ناخالص</th><th>مرجوعی</th><th>فروش خالص</th><th>دریافت از فروش</th><th>مانده فاکتور فروش</th></tr></thead>
           <tbody>
-            ${list.map((c, i) => `
+            ${list.map((customer, i) => `
               <tr>
                 <td>${Formatters.toPersianDigits(i + 1)}</td>
-                <td>${this._esc(c.contactName)}</td>
-                <td>${Formatters.number(c.totalInvoices)}</td>
-                <td>${Formatters.money(c.totalSales)}</td>
-                <td>${Formatters.money(c.totalPaid)}</td>
-                <td>${Formatters.money(c.totalRemaining)}</td>
+                <td>${this._esc(customer.contactName)}</td>
+                <td>${Formatters.number(customer.totalInvoices)}</td>
+                <td>${Formatters.money(customer.totalSales)}</td>
+                <td>${Formatters.money(customer.totalReturns)}</td>
+                <td>${Formatters.money(customer.netSales)}</td>
+                <td>${Formatters.money(customer.totalPaid)}</td>
+                <td>${Formatters.money(customer.totalRemaining)}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -684,21 +699,22 @@ class ReportsViewImpl {
       const topP = cache.sales?.topProductsBySales || [];
       const topC = cache.sales?.topCustomers || [];
       return `
-        <h2>۱۰ کالای پرفروش</h2>
+        <h2>۱۰ کالای پرفروش (خالص از مرجوعی)</h2>
         <table>
-          <thead><tr><th>#</th><th>نام کالا</th><th>تعداد</th><th>مبلغ فروش</th></tr></thead>
+          <thead><tr><th>#</th><th>نام کالا</th><th>تعداد خالص</th><th>مبلغ خالص فروش</th></tr></thead>
           <tbody>
             ${topP.map((p, i) => `
               <tr><td>${Formatters.toPersianDigits(i + 1)}</td><td>${this._esc(p.productName)}</td><td>${Formatters.number(p.qty)}</td><td>${Formatters.money(p.totalSales)}</td></tr>
             `).join('')}
           </tbody>
         </table>
-        <h2>۱۰ مشتری برتر</h2>
+        <h2>۱۰ مشتری برتر (خرید خالص)</h2>
+        <p>مانده، جمع مانده فاکتورهای فروش قبل از تعدیل مرجوعی است.</p>
         <table>
-          <thead><tr><th>#</th><th>نام مشتری</th><th>تعداد فاکتور</th><th>مجموع خرید</th></tr></thead>
+          <thead><tr><th>#</th><th>نام مشتری</th><th>تعداد فاکتور</th><th>فروش ناخالص</th><th>مرجوعی</th><th>فروش خالص</th><th>دریافت از فروش</th><th>مانده فاکتور فروش</th></tr></thead>
           <tbody>
-            ${topC.map((c, i) => `
-              <tr><td>${Formatters.toPersianDigits(i + 1)}</td><td>${this._esc(c.contactName)}</td><td>${Formatters.number(c.invoiceCount)}</td><td>${Formatters.money(c.totalSales)}</td></tr>
+            ${topC.map((customer, i) => `
+              <tr><td>${Formatters.toPersianDigits(i + 1)}</td><td>${this._esc(customer.contactName)}</td><td>${Formatters.number(customer.invoiceCount)}</td><td>${Formatters.money(customer.totalSales)}</td><td>${Formatters.money(customer.totalReturns)}</td><td>${Formatters.money(customer.netSales)}</td><td>${Formatters.money(customer.totalPaid)}</td><td>${Formatters.money(customer.totalRemaining)}</td></tr>
             `).join('')}
           </tbody>
         </table>
