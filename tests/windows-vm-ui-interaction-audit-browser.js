@@ -777,7 +777,7 @@
               registerControl(control,route,ctx.section+'/nested-modal'));
             const childCancel=childControls.find(x=>
               /FINORA\.Modal\.close|Modal\.closeAll/.test(handler(x)) ||
-              /^(انصراف|بستن|بازگشت|✕|×)$/.test(name(x)));
+              /^(انصراف|بستن|بستن پنجره|بازگشت|✕|×)$/.test(name(x)));
             if(childCancel){
               registerControl(childCancel,route,ctx.section+'/nested-modal');
               await press(childCancel,route,ctx.section+'/nested-modal','open');
@@ -854,7 +854,7 @@
 
           // Exercise a real cancel/close button when present.
           const cancel=nested.find(x=>/FINORA\.Modal\.close|Modal\.closeAll/.test(handler(x)) ||
-            /^(انصراف|بستن|بازگشت|✕|×)$/.test(name(x)));
+            /^(انصراف|بستن|بستن پنجره|بازگشت|✕|×)$/.test(name(x)));
           if(cancel){
             cancel.click();await wait(70);
             clicks.push({route,section:ctx.section+'/modal',category:'cancel',

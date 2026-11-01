@@ -327,11 +327,79 @@ async function nativeProductCrudFormAndNestedClassifiers() {
   check(updated?.name === updatedName && updated.unitId === unitId &&
     updated.categoryId === categoryId && updated.sellPrice === 2400,
     'Product form update did not preserve selected classifiers and financial fields');
+
+  // Standalone unit/category forms (false flag) and destructive row actions are
+  // tested only against unused synthetic records in this disposable VM.
+  const standaloneUnitName = 'Q01-UNIT-STANDALONE';
+  view._switchTab('units');
+  view.openUnitModal(false);
+  document.getElementById('uName').value = standaloneUnitName;
+  document.getElementById('uSymbol').value = 'q1s';
+  const standaloneUnitSave = saveTopModal();
+  check(standaloneUnitSave, 'Standalone unit save button is missing');
+  standaloneUnitSave.click();
+  let standaloneUnit = null;
+  for (let i = 0; i < 60; i++) {
+    standaloneUnit = (await FINORA.Storage.getAll('units')).find(x => x.name === standaloneUnitName);
+    if (standaloneUnit && FINORA.Modal.stack.length === 0) break;
+    await wait(100);
+  }
+  check(standaloneUnit && FINORA.Modal.stack.length === 0,
+    'Standalone unit did not persist through the unit form');
+  view._switchTab('units');
+  const deleteUnitButton = [...document.querySelectorAll('#products-tab-content button[onclick*="deleteUnit"]')]
+    .find(button => button.getAttribute('onclick').includes(standaloneUnit.id));
+  check(deleteUnitButton, 'Standalone synthetic unit delete action is missing');
+  deleteUnitButton.click();
+  await wait(30);
+  const confirmUnitDelete = FINORA.Modal.stack.at(-1)?.card.querySelector('[data-action="confirm"]');
+  check(confirmUnitDelete, 'Standalone unit delete confirmation is missing');
+  confirmUnitDelete.click();
+  let unitDeleted = false;
+  for (let i = 0; i < 60; i++) {
+    unitDeleted = !(await FINORA.Storage.get('units', standaloneUnit.id));
+    if (unitDeleted && FINORA.Modal.stack.length === 0) break;
+    await wait(100);
+  }
+  check(unitDeleted, 'Standalone synthetic unit was not deleted through its row action');
+
+  const standaloneCategoryName = 'Q01-CATEGORY-STANDALONE';
+  view._switchTab('categories');
+  view.openCategoryModal(false);
+  document.getElementById('cName').value = standaloneCategoryName;
+  const standaloneCategorySave = saveTopModal();
+  check(standaloneCategorySave, 'Standalone category save button is missing');
+  standaloneCategorySave.click();
+  let standaloneCategory = null;
+  for (let i = 0; i < 60; i++) {
+    standaloneCategory = (await FINORA.Storage.getAll('categories')).find(x => x.name === standaloneCategoryName);
+    if (standaloneCategory && FINORA.Modal.stack.length === 0) break;
+    await wait(100);
+  }
+  check(standaloneCategory && FINORA.Modal.stack.length === 0,
+    'Standalone category did not persist through the category form');
+  view._switchTab('categories');
+  const deleteCategoryButton = [...document.querySelectorAll('#products-tab-content button[onclick*="deleteCategory"]')]
+    .find(button => button.getAttribute('onclick').includes(standaloneCategory.id));
+  check(deleteCategoryButton, 'Standalone synthetic category delete action is missing');
+  deleteCategoryButton.click();
+  await wait(30);
+  const confirmCategoryDelete = FINORA.Modal.stack.at(-1)?.card.querySelector('[data-action="confirm"]');
+  check(confirmCategoryDelete, 'Standalone category delete confirmation is missing');
+  confirmCategoryDelete.click();
+  let categoryDeleted = false;
+  for (let i = 0; i < 60; i++) {
+    categoryDeleted = !(await FINORA.Storage.get('categories', standaloneCategory.id));
+    if (categoryDeleted && FINORA.Modal.stack.length === 0) break;
+    await wait(100);
+  }
+  check(categoryDeleted, 'Standalone synthetic category was not deleted through its row action');
   check(!document.querySelector('.toast-error'),
     'Native product CRUD form displayed an unexpected error');
   return { createdThroughForm: true, nestedUnitSavedAndSelected: true,
     nestedCategorySavedAndSelected: true, fractionalReorderPointPreserved: true,
-    editedThroughForm: true, stableRecordId: true };
+    editedThroughForm: true, stableRecordId: true,
+    standaloneUnitCreatedAndDeleted: true, standaloneCategoryCreatedAndDeleted: true };
 }
 
 async function nativePositiveOpeningLedger() {
@@ -1608,8 +1676,55 @@ async function nativeExpenseFormAndCategory() {
   check((await db.getAll('journal_entries')).some(x=>
     x.companyId===company.id&&x.sourceId===expense.id&&x.status==='posted'),
     'Expense UI did not create its posted journal');
+
+  // A posted expense is immutable through the edit form. Attempt the real UI
+  // path and prove the record and posted journal remain unchanged.
+  const postedBeforeEdit = JSON.stringify(await db.get('expenses', expense.id));
+  await view.editExpense(expense.id);
+  await wait(60);
+  document.getElementById('expDesc').value = 'must not overwrite posted expense';
+  const postedEditSave = [...FINORA.Modal.stack.at(-1).card.querySelectorAll('.modal-footer button')]
+    .find(button => !button.disabled && /ذخیره/.test(button.textContent));
+  check(postedEditSave, 'Posted expense edit form save button is missing');
+  postedEditSave.click();
+  await wait(100);
+  check(JSON.stringify(await db.get('expenses', expense.id)) === postedBeforeEdit &&
+    FINORA.Modal.stack.length === 1 && !!document.querySelector('.toast-error'),
+    'Posted expense was changed by the direct edit UI path');
+  FINORA.Modal.close();
+  document.querySelectorAll('.toast .toast-close').forEach(button => button.click());
+
+  const draftId = 'exp_q01_synthetic_edit_draft';
+  const user = FINORA.Auth.current();
+  await db.put('expenses', {
+    id: draftId, companyId: company.id, ownerUserId: user.id,
+    kind: 'expense', category: 'Q01 draft-only edit', amount: 4321,
+    date: '1405/07/18', method: 'cash', description: 'before UI edit',
+    refNumber: 'Q01-EXPENSE-DRAFT-EDIT', financePosted: false
+  });
+  try {
+    await view.editExpense(draftId);
+    await wait(60);
+    check(document.getElementById('expDesc')?.value === 'before UI edit',
+      'Expense edit form did not load the draft fixture');
+    document.getElementById('expDesc').value = 'after UI edit';
+    const editSave = [...FINORA.Modal.stack.at(-1).card.querySelectorAll('.modal-footer button')]
+      .find(button => !button.disabled && /ذخیره/.test(button.textContent));
+    check(editSave, 'Expense edit save button is missing');
+    editSave.click();
+    let edited = null;
+    for (let i = 0; i < 60; i++) {
+      edited = await db.get('expenses', draftId);
+      if (edited?.description === 'after UI edit' && FINORA.Modal.stack.length === 0) break;
+      await wait(100);
+    }
+    check(edited?.description === 'after UI edit' && edited.financePosted === false,
+      'Draft expense did not persist through the edit form');
+  } finally {
+    if (await db.get('expenses', draftId)) await db.delete('expenses', draftId);
+  }
   return {expenseCreatedThroughForm:true,customCategorySelected:true,
-    expenseJournalPosted:true};
+    expenseJournalPosted:true,postedExpenseEditRejected:true,draftExpenseEditedThroughForm:true};
 }
 
 async function nativeAccountingJournalAndExports() {
@@ -1644,7 +1759,12 @@ async function nativeAccountingJournalAndExports() {
   view.addJournalRow();
   check(document.querySelectorAll('#acJournalLines .ac-journal-line').length===3,
     'Add journal row did not append a third line');
-  document.querySelectorAll('#acJournalLines .ac-journal-line')[2].remove();
+  const addedRow = document.querySelectorAll('#acJournalLines .ac-journal-line')[2];
+  const removeAddedRow = addedRow.querySelector('button[onclick*="closest"]');
+  check(removeAddedRow, 'Added journal row remove button is missing');
+  removeAddedRow.click();
+  check(document.querySelectorAll('#acJournalLines .ac-journal-line').length===2,
+    'Journal row remove button did not restore the original two-row draft');
   document.getElementById('acJournalPeriod').value=period.id;
   document.getElementById('acJournalDate').value=period.startDate;
   document.getElementById('acJournalDescription').value=description;
@@ -1667,6 +1787,14 @@ async function nativeAccountingJournalAndExports() {
     x.companyId===company.id&&x.description===postedDescription&&x.status==='posted');
   check(posted&&posted.debit===100&&posted.credit===100,
     'Balanced draft was not posted through the manual journal form');
+  await view.showJournal(posted.id);
+  const detailsDialog = FINORA.Modal.stack.at(-1)?.card;
+  check(detailsDialog?.textContent.includes(postedDescription),
+    'Posted journal details did not open from the UI');
+  const closeDetails = detailsDialog.querySelector('.modal-footer button');
+  check(closeDetails, 'Posted journal details close action is missing');
+  closeDetails.click();
+  check(FINORA.Modal.stack.length === 0, 'Posted journal details dialog did not close');
   view.openReversal(posted.id);
   check(document.getElementById('acReversalId'),'Manual journal reversal form did not open');
   document.getElementById('acReversalPeriod').value=period.id;
@@ -1705,8 +1833,9 @@ async function nativeAccountingJournalAndExports() {
     URL.createObjectURL=originalCreateObjectURL;
     HTMLAnchorElement.prototype.click=originalClick;
   }
-  return {chartAccountCreated:true,journalRowAdded:true,draftJournalSaved:true,
-    journalPosted:true,reversalPosted:true,ledgerCsvExported:true,
+  return {chartAccountCreated:true,journalRowAdded:true,journalRowRemoveButtonClicked:true,
+    draftJournalSaved:true,journalPosted:true,journalDetailsOpened:true,
+    reversalFormOpened:true,reversalPosted:true,ledgerCsvExported:true,
     reconciliationCsvExported:true};
 }
 

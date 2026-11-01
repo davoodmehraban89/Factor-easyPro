@@ -121,3 +121,38 @@ test('Q01 maps stock transfer and stocktake UI actions only to exact balance-pre
   'window.AccountingView.saveStocktake()','window.AccountingView.finishStocktake()'
  ]) assert.ok(coverageFor(handler,evidence),handler);
 });
+
+test('Q01 maps standalone unit/category create and delete only to explicit synthetic form evidence',()=>{
+ const evidence={nativeFunctional:{'products-crud-form-and-nested-classifiers':{
+  standaloneUnitCreatedAndDeleted:true,standaloneCategoryCreatedAndDeleted:true
+ }}};
+ for(const handler of [
+  'window.ProductsView.saveUnit(false)','window.ProductsView.saveCategory(false)',
+  'window.ProductsView.deleteUnit("unit_synthetic")','window.ProductsView.deleteCategory("cat_synthetic")'
+ ]) assert.ok(coverageFor(handler,evidence),handler);
+ evidence.nativeFunctional['products-crud-form-and-nested-classifiers'].standaloneCategoryCreatedAndDeleted=false;
+ assert.equal(coverageFor('window.ProductsView.deleteCategory("cat_synthetic")',evidence),null);
+});
+
+test('Q01 maps draft expense edit and accounting read/reversal controls to installed form evidence',()=>{
+ const evidence={nativeFunctional:{
+  'expense-form-category-and-posting':{expenseCreatedThroughForm:true,postedExpenseEditRejected:true,draftExpenseEditedThroughForm:true},
+  'manual-journal-reversal-and-exports':{
+   journalDetailsOpened:true,reversalFormOpened:true,reversalPosted:true,journalRowRemoveButtonClicked:true
+  }
+ }};
+ assert.equal(coverageFor('window.ExpensesView.editExpense("exp_synthetic")',evidence).kind,'native-ui-draft-edit');
+ assert.equal(coverageFor('window.AccountingView.showJournal("jn_synthetic")',evidence).kind,'native-ui-read-only-details');
+ assert.equal(coverageFor('window.AccountingView.openReversal("jn_synthetic")',evidence).kind,'native-ui-reversal-form');
+ assert.equal(coverageFor("this.closest('tr').remove()",evidence).kind,'native-ui-draft-row-remove');
+});
+
+test('Q01 accounting period and warehouse form coverage requires positive installed evidence',()=>{
+ const evidence={nativeFunctional:{'activate-accounting-and-inventory':{
+  periodCreated:true,chartAvailable:true,integrationEnabled:true,warehouseCreated:true
+ },'fiscal-close-atomic-guardrails':{periodClosed:true,closedPeriodBlocksPosting:true}}};
+ assert.equal(coverageFor('window.AccountingView.savePeriod()',evidence).kind,'native-ui-period-create');
+ assert.equal(coverageFor('window.AccountingView.saveWarehouse()',evidence).kind,'native-ui-warehouse-create');
+ evidence.nativeFunctional['activate-accounting-and-inventory'].warehouseCreated=false;
+ assert.equal(coverageFor('window.AccountingView.saveWarehouse()',evidence),null);
+});

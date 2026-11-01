@@ -46,3 +46,14 @@ test('Q01 Windows native matrix requires the additional invoice, print, expense,
  assert.match(matrix,/view\.saveTransfer\(\)/);
  assert.match(matrix,/view\.finishStocktake\(\)/);
 });
+
+test('A08 report rendering is bounded and all report tabs reuse one company snapshot',()=>{
+ const view=read('src/views/ReportsView.js');
+ const controller=read('src/controllers/ReportController.js');
+ assert.match(view,/const PRODUCTS_PAGE_SIZE = 100/);
+ assert.match(view,/pageRows = list\.slice\(startIndex, startIndex \+ PRODUCTS_PAGE_SIZE\)/);
+ assert.match(view,/data-report-pagination/);
+ assert.match(view,/ReportController\.getReportBundle\(currentFilter\)/);
+ assert.match(controller,/async getReportBundle\(filter = \{\}\)/);
+ assert.match(controller,/const data = await this\._loadData\(\)/);
+});

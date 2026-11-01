@@ -85,6 +85,36 @@
       htmlCharacters: htmlLength,
       tableRows: region.querySelectorAll('tbody tr').length
     };
+    if (tab === 'products') {
+      const pagination = region.querySelector('[data-report-pagination]');
+      const firstPageRows = region.querySelectorAll('tbody tr').length;
+      const firstPageHtml = region.innerHTML.length;
+      if (!pagination || firstPageRows !== 100 || firstPageHtml > 250000) {
+        throw Error('A08 product report must render a bounded 100-row page for 10k products');
+      }
+      const pageTwoStart = performance.now();
+      window.ReportsView._setProductsPage(2);
+      const pageTwo = document.getElementById('reports-content');
+      const pageTwoRows = pageTwo.querySelectorAll('tbody tr').length;
+      const pageTwoFirstIndex = pageTwo.querySelector('tbody tr td strong')?.textContent?.trim();
+      const pageTwoMs = Math.round((performance.now() - pageTwoStart) * 100) / 100;
+      if (pageTwoRows !== 100 || pageTwoFirstIndex !== '۱۰۱') {
+        throw Error('A08 product report pagination did not advance to rows 101-200');
+      }
+      window.ReportsView._setProductsPage(999999);
+      const lastPage = document.getElementById('reports-content');
+      const lastPageRows = lastPage.querySelectorAll('tbody tr').length;
+      const lastPageNumber = lastPage.querySelector('[aria-current="page"]')?.textContent || '';
+      if (lastPageRows !== 100 || !lastPageNumber.includes('۱۰۰')) {
+        throw Error('A08 product report pagination did not clamp to the final page');
+      }
+      window.ReportsView._setProductsPage(1);
+      reportTabs[tab].pagination = {
+        pageSize: 100, totalPages: 100, firstPageRows,
+        pageTwoRows, pageTwoFirstIndex, pageTwoRenderMs: pageTwoMs,
+        lastPageRows, lastPageNumber, boundedHtmlCharacters: firstPageHtml
+      };
+    }
   }
   const exported = await duration(() => db.exportAll());
   const snap = exported.value;

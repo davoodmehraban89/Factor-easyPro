@@ -9,6 +9,8 @@ import { Toast } from '../core/Toast.js';
 import { Chart } from '../utils/Chart.js';
 
 let currentTab = 'pl';  // pl | sales | products | customers
+let productsPage = 1;
+const PRODUCTS_PAGE_SIZE = 100;
 let currentFilter = {
   preset: '30days',
   from: '',
@@ -60,10 +62,12 @@ class ReportsViewImpl {
   }
 
   async reload() {
-    cache.pl = await ReportController.getProfitLoss(currentFilter);
-    cache.sales = await ReportController.getSalesAnalysis(currentFilter);
-    cache.products = await ReportController.getProductProfitability(currentFilter);
-    cache.customers = await ReportController.getCustomerReport(currentFilter);
+    const reports = await ReportController.getReportBundle(currentFilter);
+    cache.pl = reports.pl;
+    cache.sales = reports.sales;
+    cache.products = reports.products;
+    cache.customers = reports.customers;
+    productsPage = 1;
   }
 
   renderTabContent() {
@@ -82,6 +86,15 @@ class ReportsViewImpl {
       if (target) target.classList.add('active');
     }
     document.getElementById('reports-content').innerHTML = this.renderTabContent();
+  }
+
+  _setProductsPage(page) {
+    const totalPages = Math.max(1, Math.ceil((cache.products || []).length / PRODUCTS_PAGE_SIZE));
+    const requested = Number(page);
+    productsPage = Math.min(totalPages, Math.max(1,
+      Number.isFinite(requested) ? Math.trunc(requested) : 1));
+    const content = document.getElementById('reports-content');
+    if (content && currentTab === 'products') content.innerHTML = this.renderProductsTab();
   }
 
   // ============================================================
@@ -383,6 +396,10 @@ class ReportsViewImpl {
     const list = cache.products || [];
     const totalSales = list.reduce((s, p) => s + p.totalSales, 0);
     const totalProfit = list.reduce((s, p) => s + p.profit, 0);
+    const totalPages = Math.max(1, Math.ceil(list.length / PRODUCTS_PAGE_SIZE));
+    productsPage = Math.min(totalPages, Math.max(1, productsPage));
+    const startIndex = (productsPage - 1) * PRODUCTS_PAGE_SIZE;
+    const pageRows = list.slice(startIndex, startIndex + PRODUCTS_PAGE_SIZE);
 
     return `
       <div class="grid-kpi">
@@ -433,9 +450,9 @@ class ReportsViewImpl {
               </tr>
             </thead>
             <tbody>
-              ${list.length === 0 ? '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-muted)">هیچ کالایی در این بازه فروش نرفته</td></tr>' : list.map((p, i) => `
+              ${list.length === 0 ? '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-muted)">هیچ کالایی در این بازه فروش نرفته</td></tr>' : pageRows.map((p, i) => `
                 <tr>
-                  <td><strong>${Formatters.toPersianDigits(i + 1)}</strong></td>
+                  <td><strong>${Formatters.toPersianDigits(startIndex + i + 1)}</strong></td>
                   <td>${this._esc(p.productName)}</td>
                   <td>${this._esc(p.unit)}</td>
                   <td style="font-weight:700">${Formatters.number(p.qty)}</td>
@@ -451,6 +468,12 @@ class ReportsViewImpl {
               `).join('')}
             </tbody>
           </table>
+        </div>
+        <div data-report-pagination role="navigation" aria-label="صفحه‌بندی گزارش کالاها" style="display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:12px">
+          <span data-report-page-summary aria-live="polite" style="font-size:12px;color:var(--text-muted)">نمایش ${list.length ? startIndex + 1 : 0} تا ${Math.min(startIndex + pageRows.length, list.length)} از ${Formatters.number(list.length)} کالا</span>
+          <button class="btn btn-secondary btn-inline" type="button" aria-label="صفحه قبلی گزارش کالاها" onclick="window.ReportsView._setProductsPage(${productsPage - 1})" ${productsPage <= 1 ? 'disabled' : ''}>قبلی</button>
+          <span aria-current="page" style="font-size:12px">صفحه ${Formatters.toPersianDigits(productsPage)} از ${Formatters.toPersianDigits(totalPages)}</span>
+          <button class="btn btn-secondary btn-inline" type="button" aria-label="صفحه بعدی گزارش کالاها" onclick="window.ReportsView._setProductsPage(${productsPage + 1})" ${productsPage >= totalPages ? 'disabled' : ''}>بعدی</button>
         </div>
       </div>
     `;

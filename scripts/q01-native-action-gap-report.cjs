@@ -24,7 +24,8 @@ function buildReport(audit){
     throw Error('Q01_NATIVE_AUDIT_COUNT_MISMATCH');
   }
   const actions=audit.uniqueActions;
-  const pending=actions.filter(x=>x.status!=='clicked');
+  const pending=actions.filter(x=>x.status==='not-clicked');
+  const disabled=actions.filter(x=>x.status==='disabled');
   const errors=(audit.problems||[]).filter(x=>x);
   const fixtureCovered=pending.filter(x=>x.fixtureCoverage);
   const withoutFixture=pending.filter(x=>!x.fixtureCoverage);
@@ -38,7 +39,8 @@ function buildReport(audit){
     '| موارد نمایش کنترل (شامل تکرار در تب‌ها) | '+audit.inventoryCount+' |',
     '| امضاهای کنترلی متمایز | '+audit.uniqueActionCount+' |',
     '| امضاهای کلیک‌شده حداقل یک بار | '+audit.uniqueActionClicked+' |',
-    '| امضاهای کلیک‌نشده | '+audit.uniqueActionUnverified+' |',
+    '| امضاهای کلیک‌نشده | '+pending.length+' |',
+    '| امضاهای غیرفعال (خارج از شمارش کلیک‌نشده) | '+disabled.length+' |',
     '| کلیک‌نشده ولی دارای پوشش سناریوی مستقل | '+fixtureCovered.length+' |',
     '| کلیک‌نشده و فاقد شواهد سناریوی مستقل | '+withoutFixture.length+' |',
     '| امضاهای غیرفعال | '+audit.uniqueActionDisabled+' |',

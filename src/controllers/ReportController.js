@@ -107,8 +107,8 @@ class ReportControllerImpl {
   // ============================================================
   // ۱. سود و زیان
   // ============================================================
-  async getProfitLoss(filter = {}) {
-    const { invoices, products, expenses } = await this._loadData();
+  async getProfitLoss(filter = {}, data = null) {
+    const { invoices, products, expenses } = data || await this._loadData();
     const { from, to } = this._getRange(filter);
 
     // فقط فاکتورهای فروش (بدون پیش‌فاکتور)
@@ -189,8 +189,8 @@ class ReportControllerImpl {
   // ============================================================
   // ۲. تحلیل فروش (Top Products & Customers)
   // ============================================================
-  async getSalesAnalysis(filter = {}) {
-    const { invoices, products, contacts } = await this._loadData();
+  async getSalesAnalysis(filter = {}, data = null) {
+    const { invoices, products, contacts } = data || await this._loadData();
     const { from, to } = this._getRange(filter);
 
     const salesInRange = invoices.filter(i =>
@@ -272,8 +272,8 @@ class ReportControllerImpl {
   // ============================================================
   // ۳. سودآوری کالا (همه کالاها)
   // ============================================================
-  async getProductProfitability(filter = {}) {
-    const { invoices, products } = await this._loadData();
+  async getProductProfitability(filter = {}, data = null) {
+    const { invoices, products } = data || await this._loadData();
     const { from, to } = this._getRange(filter);
 
     const salesInRange = invoices.filter(i =>
@@ -324,8 +324,8 @@ class ReportControllerImpl {
   // ============================================================
   // ۴. گزارش مشتریان
   // ============================================================
-  async getCustomerReport(filter = {}) {
-    const { invoices, contacts } = await this._loadData();
+  async getCustomerReport(filter = {}, data = null) {
+    const { invoices, contacts } = data || await this._loadData();
     const { from, to } = this._getRange(filter);
 
     const contactMap = {};
@@ -366,6 +366,19 @@ class ReportControllerImpl {
     });
 
     return Object.values(stats).sort((a, b) => b.totalSales - a.totalSales);
+  }
+
+  // Load one company-scoped snapshot and reuse it across all report calculations.
+  // The standalone methods keep their existing behavior when no snapshot is passed.
+  async getReportBundle(filter = {}) {
+    const data = await this._loadData();
+    const [pl, sales, products, customers] = await Promise.all([
+      this.getProfitLoss(filter, data),
+      this.getSalesAnalysis(filter, data),
+      this.getProductProfitability(filter, data),
+      this.getCustomerReport(filter, data)
+    ]);
+    return { pl, sales, products, customers };
   }
 
   // ============================================================
