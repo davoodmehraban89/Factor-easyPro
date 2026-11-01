@@ -198,7 +198,7 @@ class InvoiceControllerImpl {
     const all = await DataScope.list('stock_movements');
 
     // حذف حرکات قبلی این فاکتور
-    for (const m of all.filter(x => x.refId === invoice.id)) {
+    for (const m of all.filter(x => x.refType === 'invoice' && x.refId === invoice.id)) {
       await StorageService.delete('stock_movements', m.id);
     }
 
@@ -267,7 +267,7 @@ class InvoiceControllerImpl {
     if (record.financePosted) throw new Error('فاکتور قطعی دارای سند مالی است و قابل حذف نیست؛ از سند مرجوعی استفاده کنید');
     const user = Auth.current();
     const movements = await DataScope.list('stock_movements');
-    for (const m of movements.filter(x => x.refId === id)) {
+    for (const m of movements.filter(x => x.refType === 'invoice' && x.refId === id)) {
       await StorageService.delete('stock_movements', m.id);
     }
     return await StorageService.delete('invoices', id);
@@ -297,18 +297,28 @@ class InvoiceControllerImpl {
   }
 
   // علامت‌گذاری به‌عنوان پرداخت‌شده
-  async markPaid(id, amount = null) {
-    const inv = await StorageService.get('invoices', id);
-    if (!inv || inv.companyId !== await DataScope.companyId()) throw new Error('فاکتور در این شرکت یافت نشد');
-    if (inv.financePosted) throw new Error('برای تسویه فاکتور دارای سند مالی، از بخش دریافت و پرداخت استفاده کنید');
-    const pay = amount === null ? inv.grandTotal : Number(amount);
-    inv.paidAmount = (Number(inv.paidAmount) || 0) + pay;
-    inv.paidAmount = Math.min(inv.paidAmount, inv.grandTotal);
-    inv.remaining = Math.max(0, inv.grandTotal - inv.paidAmount);
-    inv.status = inv.remaining === 0 ? 'paid' : (inv.paidAmount > 0 ? 'partial' : 'unpaid');
-    return await StorageService.put('invoices', await DataScope.stamp('invoices', inv));
+  async markPaid(id, payment = null) {
+    // The invoice read, validation and write must share one IndexedDB transaction.
+    // Concurrent payment attempts serialize on the invoices object store.
+    const companyId = await DataScope.companyId();
+    return StorageService.transaction(['invoices'], async tx => {
+      const inv = await tx.get('invoices', id);
+      if (!inv || inv.companyId !== companyId) throw new Error('فاکتور در شرکت جاری یافت نشد');
+      if (inv.financePosted) throw new Error('پرداخت فاکتور ثبت مالی‌شده از این مسیر مجاز نیست');
+      if (inv.isPreInvoice) throw new Error('ثبت پرداخت برای پیش‌فاکتور مجاز نیست');
+      const total = amount(inv.grandTotal, 'مبلغ فاکتور');
+      const alreadyPaid = amount(inv.paidAmount ?? 0, 'مبلغ پرداخت‌شده');
+      if (alreadyPaid > total) throw new Error('مبلغ پرداخت‌شده بیشتر از مبلغ فاکتور است');
+      const remaining = total - alreadyPaid;
+      const pay = payment === null ? remaining : amount(payment, 'مبلغ پرداخت');
+      if (pay <= 0 || pay > remaining) throw new Error('مبلغ پرداخت باید مثبت و حداکثر برابر مانده فاکتور باشد');
+      inv.paidAmount = alreadyPaid + pay;
+      inv.remaining = total - inv.paidAmount;
+      inv.status = inv.remaining === 0 ? 'paid' : 'partial';
+      inv.companyId = companyId;
+      return tx.put('invoices', inv);
+    });
   }
-
   // آمار برای داشبورد
   async getStats() {
     const all = await DataScope.list('invoices');
