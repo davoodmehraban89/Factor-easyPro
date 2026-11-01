@@ -276,7 +276,6 @@ class ReportControllerImpl {
       (inv.items || []).forEach((it, index) => {
         const key = it.productId || 'unknown_' + (it.productName || '');
         if (!stats[key]) {
-          const p = productMap[it.productId];
           stats[key] = {
             productId: it.productId,
             productName: it.productName || 'ناشناس',
