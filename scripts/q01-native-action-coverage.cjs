@@ -37,7 +37,7 @@ const RULES = [
       'inactive-treasury-cheque-settlement':['treasuryAccountCreatedThroughForm']
     }, kind:'native-ui-create',
     note:'ایجاد حساب خزانه ساختگی از فرم واقعی و اتصال آن به معین' },
-  { match:'window.TreasuryView.saveAccount(', checks:{
+  { match:'window.TreasuryView.saveAccount(', exclude:'window.TreasuryView.saveAccount(null)', checks:{
       'inactive-treasury-cheque-settlement':['treasuryAccountEditPersisted']
     }, kind:'native-ui-update',
     note:'ویرایش حساب خزانه از فرم واقعی در شرکت ساختگی' },
@@ -219,7 +219,8 @@ function hasEvidence(rule, evidence) {
 }
 function coverageFor(handler, evidence = {}) {
   if (!handler) return null;
-  const rule = RULES.find(item => handler.includes(item.match) && hasEvidence(item, evidence));
+  const rule = RULES.find(item => handler.includes(item.match) &&
+    (!item.exclude || !handler.includes(item.exclude)) && hasEvidence(item, evidence));
   return rule ? { kind: rule.kind, scenarios: rule.scenarios || Object.keys(rule.checks || {}),
     summary: rule.note } : null;
 }
