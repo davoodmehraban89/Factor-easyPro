@@ -6,6 +6,7 @@ import { StorageService } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
 import { DataScope } from '../core/DataScope.js';
 import { Jalali } from '../utils/Jalali.js';
+import { reportLineRevenue } from '../core/ReportLineRevenue.mjs';
 
 class ReportControllerImpl {
   async _loadData() {
@@ -218,7 +219,7 @@ class ReportControllerImpl {
           };
         }
         const qty = Number(it.qty) || 0;
-        const lineTotal = Number(it.lineTotal) || (qty * (Number(it.price) || 0));
+        const lineTotal = reportLineRevenue(it);
         const p = productMap[it.productId];
         const buyPrice = p ? (Number(p.buyPrice) || 0) : 0;
         productStats[key].qty += qty;
@@ -303,7 +304,7 @@ class ReportControllerImpl {
           };
         }
         const qty = Number(it.qty) || 0;
-        const lineTotal = Number(it.lineTotal) || (qty * (Number(it.price) || 0));
+        const lineTotal = reportLineRevenue(it);
         const p = productMap[it.productId];
         const buyPrice = p ? (Number(p.buyPrice) || 0) : 0;
         stats[key].qty += qty;
