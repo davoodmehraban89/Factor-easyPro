@@ -1,5 +1,7 @@
 import { StorageService } from './StorageService.js';
 import { DataScope } from './DataScope.js';
+import { Auth } from './Auth.js';
+import { auditStoredInvoiceProvenance } from './InvoiceMetadataProvenance.mjs';
 
 /**
  * Read-only, company-scoped financial consistency checks.
@@ -84,4 +86,53 @@ export async function inspectSettlementConsistency({ maxIssues = 100 } = {}) {
       issues
     });
   }, 'readonly');
+}
+
+
+/**
+ * A01: identify missing/inconsistent legacy VAT and discount *provenance*.
+ * A missing rate does NOT imply a zero tax rate, and this diagnostic must never
+ * normalize historical invoices or post compensating entries automatically.
+ * Reports codes + record IDs only, bounded and scoped to the active company.
+ */
+export async function inspectInvoiceMetadataProvenance({ maxIssues = 100 } = {}) {
+  if (!Number.isSafeInteger(maxIssues) || maxIssues < 1 || maxIssues > 1000)
+    throw new RangeError('حداکثر موارد بررسی باید بین ۱ تا ۱۰۰۰ باشد');
+  if (!Auth.isAdmin()) throw new Error('ممیزی منشأ ارقام فقط برای مدیر مجاز است');
+  const companyId = await DataScope.companyId();
+  return StorageService.transaction(['invoices'], async tx => {
+    const invoices = (await tx.getAll('invoices'))
+      .filter(row => row.companyId === companyId && row.isPreInvoice !== true);
+    const issues = [];
+    let issueCount = 0;
+    let unverifiedCount = 0;
+    let inconsistentCount = 0;
+    let affectedInvoices = 0;
+    let legacyDirectInvoices = 0;
+    for (const row of invoices) {
+      if (row.financePosted !== true) legacyDirectInvoices++;
+      const findings = auditStoredInvoiceProvenance(row);
+      if (findings.length) affectedInvoices++;
+      issueCount += findings.length;
+      unverifiedCount += findings.filter(issue => issue.classification === 'unverified').length;
+      inconsistentCount += findings.filter(issue => issue.classification === 'inconsistent').length;
+      for (const issue of findings) {
+        if (issues.length >= maxIssues) break;
+        // Never add source-supplied names, descriptions, phones, amounts or notes.
+        issues.push({ documentId: String(row.id ?? '').slice(0, 128), ...issue });
+      }
+    }
+    return Object.freeze({
+      companyId,
+      checkedInvoices: invoices.length,
+      legacyDirectInvoices,
+      affectedInvoices,
+      issueCount,
+      unverifiedCount,
+      inconsistentCount,
+      healthy: issueCount === 0,
+      truncated: issueCount > issues.length,
+      issues
+    });
+  });
 }
