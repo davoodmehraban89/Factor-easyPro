@@ -7,8 +7,10 @@ import { Formatters } from '../utils/Formatters.js';
 import { Jalali } from '../utils/Jalali.js';
 import { Toast } from '../core/Toast.js';
 import { Chart } from '../utils/Chart.js';
+import { paginateReportRows } from '../core/ReportPagination.mjs';
 
 let currentTab = 'pl';  // pl | sales | products | customers
+const reportPages = { products: 0, customers: 0 };
 let currentFilter = {
   preset: '30days',
   from: '',
@@ -60,6 +62,9 @@ class ReportsViewImpl {
   }
 
   async reload() {
+    // Changing a date range must never show stale page indices.
+    reportPages.products = 0;
+    reportPages.customers = 0;
     cache.pl = await ReportController.getProfitLoss(currentFilter);
     cache.sales = await ReportController.getSalesAnalysis(currentFilter);
     cache.products = await ReportController.getProductProfitability(currentFilter);
@@ -82,6 +87,41 @@ class ReportsViewImpl {
       if (target) target.classList.add('active');
     }
     document.getElementById('reports-content').innerHTML = this.renderTabContent();
+  }
+
+  _setReportPage(tab, requestedPage) {
+    if (!['products', 'customers'].includes(tab) || tab !== currentTab) return;
+    const source = tab === 'products' ? cache.products : cache.customers;
+    const next = paginateReportRows(source || [], requestedPage).page;
+    if (next === reportPages[tab]) return;
+    reportPages[tab] = next;
+    const container = document.getElementById('reports-content');
+    if (container) container.innerHTML = this.renderTabContent();
+  }
+
+  _renderPageNavigation(tab, pageInfo) {
+    if (pageInfo.pageCount <= 1) return '';
+    const inactivePrevious = pageInfo.hasPrevious ? '' : 'disabled';
+    const inactiveNext = pageInfo.hasNext ? '' : 'disabled';
+    const control = (label, target, inactive) =>
+      `<button type="button" class="btn btn-secondary btn-inline" style="min-height:34px" ${inactive}
+        aria-label="${label} ${tab === 'products' ? 'کالاها' : 'مشتریان'}"
+        onclick="window.ReportsView._setReportPage('${tab}',${target})">${label}</button>`;
+    return `
+      <nav aria-label="صفحه‌بندی ${tab === 'products' ? 'کالاها' : 'مشتریان'}"
+           style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:14px">
+        <span role="status" aria-live="polite" style="font-size:12px;color:var(--text-muted)">
+          نمایش ${Formatters.number(pageInfo.start + 1)} تا ${Formatters.number(pageInfo.end)}
+          از ${Formatters.number(pageInfo.total)} مورد
+          — صفحه ${Formatters.number(pageInfo.page + 1)} از ${Formatters.number(pageInfo.pageCount)}
+        </span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${control('اول', 0, inactivePrevious)}
+          ${control('قبلی', pageInfo.page - 1, inactivePrevious)}
+          ${control('بعدی', pageInfo.page + 1, inactiveNext)}
+          ${control('آخر', pageInfo.pageCount - 1, inactiveNext)}
+        </div>
+      </nav>`;
   }
 
   // ============================================================
@@ -381,6 +421,7 @@ class ReportsViewImpl {
   // ============================================================
   renderProductsTab() {
     const list = cache.products || [];
+    const productPage = paginateReportRows(list, reportPages.products);
     const totalSales = list.reduce((s, p) => s + p.totalSales, 0);
     const totalProfit = list.reduce((s, p) => s + p.profit, 0);
 
@@ -433,9 +474,9 @@ class ReportsViewImpl {
               </tr>
             </thead>
             <tbody>
-              ${list.length === 0 ? '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-muted)">هیچ کالایی در این بازه فروش نرفته</td></tr>' : list.map((p, i) => `
+              ${list.length === 0 ? '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-muted)">هیچ کالایی در این بازه فروش نرفته</td></tr>' : productPage.rows.map((p, i) => `
                 <tr>
-                  <td><strong>${Formatters.toPersianDigits(i + 1)}</strong></td>
+                  <td><strong>${Formatters.toPersianDigits(productPage.start + i + 1)}</strong></td>
                   <td>${this._esc(p.productName)}</td>
                   <td>${this._esc(p.unit)}</td>
                   <td style="font-weight:700">${Formatters.number(p.qty)}</td>
@@ -452,6 +493,7 @@ class ReportsViewImpl {
             </tbody>
           </table>
         </div>
+        ${this._renderPageNavigation('products', productPage)}
       </div>
     `;
   }
@@ -461,6 +503,7 @@ class ReportsViewImpl {
   // ============================================================
   renderCustomersTab() {
     const list = cache.customers || [];
+    const customerPage = paginateReportRows(list, reportPages.customers);
     const totalSales = list.reduce((s, c) => s + c.totalSales, 0);
     const totalRemaining = list.reduce((s, c) => s + c.totalRemaining, 0);
 
@@ -506,9 +549,9 @@ class ReportsViewImpl {
               </tr>
             </thead>
             <tbody>
-              ${list.length === 0 ? '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-muted)">داده‌ای نیست</td></tr>' : list.map((c, i) => `
+              ${list.length === 0 ? '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-muted)">داده‌ای نیست</td></tr>' : customerPage.rows.map((c, i) => `
                 <tr>
-                  <td><strong>${Formatters.toPersianDigits(i + 1)}</strong></td>
+                  <td><strong>${Formatters.toPersianDigits(customerPage.start + i + 1)}</strong></td>
                   <td>${this._esc(c.contactName)}</td>
                   <td><span class="badge ${c.entityType === 'legal' ? 'badge-warning' : 'badge-success'}">${c.entityType === 'legal' ? 'حقوقی' : 'حقیقی'}</span></td>
                   <td>${Formatters.number(c.totalInvoices)}</td>
@@ -521,6 +564,7 @@ class ReportsViewImpl {
             </tbody>
           </table>
         </div>
+        ${this._renderPageNavigation('customers', customerPage)}
       </div>
     `;
   }
