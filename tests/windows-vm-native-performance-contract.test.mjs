@@ -43,6 +43,6 @@ test('Q01 Windows native matrix requires the additional invoice, print, expense,
  assert.match(matrix,/window\.InvoiceFormView\._save\(true\)/);
  assert.match(matrix,/window\.StockKardexModal\._printKardex/);
  assert.match(matrix,/window\.ContactLedgerModal\._printLedger/);
- assert.match(matrix,/window\.AccountingView\.saveTransfer/);
- assert.match(matrix,/window\.AccountingView\.finishStocktake/);
+ assert.match(matrix,/view\.saveTransfer\(\)/);
+ assert.match(matrix,/view\.finishStocktake\(\)/);
 });

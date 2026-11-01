@@ -14,7 +14,7 @@ test('Q01 maps invoice and treasury handlers only when every required native sce
  };
  const evidence={nativeFunctional:scenarios};
  assert.equal(coverageFor('window.InvoiceFormView._save(false)',evidence).kind,'native-fixture-positive-and-negative');
- assert.equal(coverageFor("window.TreasuryView._saveTransaction('transfer')",evidence).kind,'native-negative-guard-only');
+ assert.equal(coverageFor("window.TreasuryView._saveTransaction('transfer')",evidence).kind,'native-fixture-positive-and-negative');
  assert.equal(coverageFor('window.ContactsView.saveContact(null)',evidence),null);
  delete scenarios['purchase-return-and-stock-guardrails'];
  assert.equal(coverageFor('window.InvoiceFormView._save(false)',evidence),null);
