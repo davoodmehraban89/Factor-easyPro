@@ -893,12 +893,20 @@ async function nativeInactiveBankSettlementGuard() {
   check([...selected.options].some(x=>x.value===secondary.id),
     'Actual secondary bank not selectable in clearing UI');
   selected.value=secondary.id; // bank other than the default
+  // The successful transfer above intentionally added a journal entry. Take
+  // a fresh baseline immediately before cheque approval, and scope the cash
+  // assertion to this cheque so unrelated valid postings cannot fail it.
+  const journalCountBeforeApproval=(await db.getAll('journal_entries')).length;
+  const chequeSettlementsBeforeApproval=(await db.getAll('treasury')).filter(t=>
+    t.refChequeId===cheque.id).length;
   await cv._applyStatusChange(cheque.id);
   const approve=document.querySelector('.modal-backdrop:last-of-type [data-action="confirm"]');
   check(approve&&approve.textContent.includes('تأیید و ثبت وصول'),
     'Actual bank clearance missing explicit secondary confirmation');
   check((await db.get('cheques',cheque.id)).status==='pending'&&
-    (await db.getAll('journal_entries')).length===journalCount,
+    (await db.getAll('journal_entries')).length===journalCountBeforeApproval&&
+    (await db.getAll('treasury')).filter(t=>t.refChequeId===cheque.id).length===
+      chequeSettlementsBeforeApproval,
     'Cheque cleared before approval');
   approve.click();
   let cleared;
