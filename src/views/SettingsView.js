@@ -11,7 +11,7 @@ import { Toast } from '../core/Toast.js';
 import { Formatters } from '../utils/Formatters.js';
 import { Auth } from '../core/Auth.js';
 import { ExcelController } from '../controllers/ExcelController.js';
-import { inspectSettlementConsistency } from '../core/FinancialDiagnosticsService.js';
+import { inspectSettlementConsistency, inspectInvoiceMetadataProvenance } from '../core/FinancialDiagnosticsService.js';
 import { AuditService } from '../core/AuditService.js';
 import { LicenseService } from '../core/LicenseService.js';
 import { probeHolooBackupZip } from '../core/HolooBackupProbe.mjs';
@@ -653,6 +653,9 @@ class SettingsViewImpl {
         <button class="btn btn-secondary" onclick="window.SettingsView.runFinancialDiagnostics()">
           بررسی مغایرت‌ها
         </button>
+        <button class="btn btn-secondary" style="margin-top:8px" onclick="window.SettingsView.runInvoiceMetadataDiagnostics()">
+          بررسی منشأ تخفیف و مالیات فاکتورهای قدیمی
+        </button>
         <small style="display:block;margin-top:8px;color:var(--text-muted)">بررسی فقط هنگام درخواست اجرا می‌شود و هیچ سندی را خودکار اصلاح نمی‌کند.</small>
       </div>
     `;
@@ -691,6 +694,59 @@ class SettingsViewImpl {
         footer: '<button class="btn" onclick="FINORA.Modal.close()">بستن</button>', size: 'lg' });
     } catch (err) {
       Toast.error('بررسی سلامت تسویه‌ها ناموفق بود: ' + err.message);
+    }
+  }
+
+  // A01: read-only legacy metadata evidence. Never infer missing rates.
+  async runInvoiceMetadataDiagnostics() {
+    if (!Auth.isAdmin()) { Toast.error('این بررسی فقط برای مدیر مجاز است'); return; }
+    try {
+      Toast.info('در حال بررسی منشأ مبالغ...');
+      const report = await inspectInvoiceMetadataProvenance({ maxIssues: 50 });
+      const names = {
+        VAT_AMOUNT_INVALID: 'مبلغ مالیات ذخیره‌شده نامعتبر است',
+        NON_FORMAL_VAT_CONFLICT: 'فاکتور غیررسمی دارای مبلغ مالیات است',
+        VAT_EXEMPT_CONFLICT: 'فاکتور معاف دارای مبلغ مالیات است',
+        VAT_TREATMENT_UNKNOWN: 'وضعیت مشمولیت مالیات مشخص نیست',
+        VAT_RATE_MISSING: 'نرخ مالیات اولیه ثبت نشده است',
+        VAT_BASE_UNVERIFIABLE: 'مبنای محاسبه مالیات قابل اثبات نیست',
+        VAT_RATE_INVALID: 'نرخ مالیات ذخیره‌شده نامعتبر است',
+        VAT_AMOUNT_MISMATCH: 'مبلغ مالیات با نرخ و مبنا تطبیق ندارد',
+        GLOBAL_DISCOUNT_AMOUNT_INVALID: 'مبلغ تخفیف کل نامعتبر است',
+        GLOBAL_DISCOUNT_TYPE_UNKNOWN: 'نوع تخفیف کل مشخص نیست',
+        GLOBAL_DISCOUNT_INPUT_MISSING: 'ورودی اصلی تخفیف کل ثبت نشده است',
+        GLOBAL_DISCOUNT_BASE_UNVERIFIABLE: 'مبنای محاسبه تخفیف کل قابل اثبات نیست',
+        GLOBAL_DISCOUNT_AMOUNT_MISMATCH: 'تخفیف کل با ورودی اولیه مغایرت دارد',
+        GLOBAL_DISCOUNT_INPUT_INVALID: 'ورودی تخفیف کل نامعتبر است',
+        LINE_METADATA_INVALID: 'اطلاعات ردیف فاکتور نامعتبر است',
+        LINE_DISCOUNT_AMOUNT_INVALID: 'مبلغ تخفیف ردیف نامعتبر است',
+        LINE_DISCOUNT_TYPE_UNKNOWN: 'نوع تخفیف ردیف مشخص نیست',
+        LINE_DISCOUNT_INPUT_MISSING: 'ورودی تخفیف ردیف ثبت نشده است',
+        LINE_DISCOUNT_AMOUNT_MISMATCH: 'تخفیف ردیف با ورودی اولیه مغایرت دارد',
+        LINE_DISCOUNT_INPUT_OR_BASIS_INVALID: 'مبنای محاسبه یا ورودی تخفیف ردیف نامعتبر است'
+      };
+      const rows = report.issues.map(issue =>
+        '<div style="padding:9px 0;border-bottom:1px solid var(--border)">' +
+          '<strong>' + this._esc(names[issue.code] || issue.code) + '</strong>' +
+          '<div style="font-size:12px;color:var(--text-muted)">شناسه فاکتور: ' +
+          this._esc(issue.documentId) +
+          (Number.isSafeInteger(issue.lineIndex) ? ' | ردیف: ' + (issue.lineIndex + 1) : '') +
+          '</div></div>'
+      ).join('');
+      const body =
+        '<p>فاکتورهای صادرشده بررسی‌شده: <strong>' + Formatters.number(report.checkedInvoices) + '</strong>' +
+        ' | فاقد نشان ثبت قطعی حسابداری: <strong>' + Formatters.number(report.legacyDirectInvoices) + '</strong>' +
+        ' | فاکتورهای نیازمند بررسی: <strong>' + Formatters.number(report.affectedInvoices) + '</strong>' +
+        ' | موارد ثبت‌شده: <strong>' + Formatters.number(report.issueCount) + '</strong></p>' +
+        '<p style="font-size:12px;color:var(--text-muted)">' +
+        'نبود نرخ یا ورودی اولیه به معنای صفر بودن مالیات یا تخفیف نیست. ' +
+        'گزارش فقط شواهد موجود را کنترل می‌کند؛ هیچ عدد تاریخی را حدس نمی‌زند یا تغییر نمی‌دهد.</p>' +
+        (rows || '<p>در کنترل منشأ ارقام، مورد مشکوکی با معیارهای فعلی دیده نشد؛ این نتیجه تأیید مالی مستقل نیست.</p>') +
+        (report.truncated ? '<p>فقط ۵۰ مورد نخست نمایش داده می‌شود.</p>' : '');
+      Modal.open({ title: 'ممیزی منشأ تخفیف و مالیات', body,
+        footer: '<button class="btn" onclick="FINORA.Modal.close()">بستن</button>', size: 'lg' });
+    } catch (err) {
+      Toast.error('ممیزی منشأ ارقام ناموفق بود: ' + err.message);
     }
   }
 
