@@ -22,6 +22,38 @@ import { ContactController } from './ContactController.js';
 import { ProductController } from './ProductController.js';
 import { Toast } from '../core/Toast.js';
 
+
+// Reusable preflight for monetary Excel cells. Reject malformed amounts rather
+// than silently turning a customer's financial value into zero.
+function excelRial(value, field) {
+  if (value === null || value === undefined || value === '') return 0;
+  const ascii = String(value)
+    .replace(/[۰-۹]/g, c => String(c.charCodeAt(0) - 1776))
+    .replace(/[٠-٩]/g, c => String(c.charCodeAt(0) - 1632))
+    .replace(/[,\s،٬]/g, '');
+  const amount = Number(ascii);
+  if (!/^\d+$/.test(ascii) || !Number.isSafeInteger(amount)) {
+    throw new Error('مقدار ریالی نامعتبر در ستون ' + field);
+  }
+  return amount;
+}
+
+// Stock reorder thresholds are quantities, not rial. Fractional stock
+// quantities (for example 2.5 kg) are valid and must survive Excel import.
+function excelQuantity(value) {
+  if (value === null || value === undefined || value === '') return 0;
+  const ascii = String(value)
+    .replace(/[۰-۹]/g, c => String(c.charCodeAt(0) - 1776))
+    .replace(/[٠-٩]/g, c => String(c.charCodeAt(0) - 1632))
+    .replace(/[,\s،٬]/g, '');
+  const amount = Number(ascii);
+  if (!/^\d+(?:\.\d+)?$/.test(ascii) || !Number.isFinite(amount) ||
+      amount < 0 || amount > Number.MAX_SAFE_INTEGER) {
+    throw new Error('نقطه سفارش کالا مقدار نامعتبر دارد');
+  }
+  return amount;
+}
+
 class ExcelControllerImpl {
   // ============================================================
   // ذخیره فایل + نمایش پیام + باز کردن خودکار (سازگار با Tauri)
@@ -456,117 +488,129 @@ class ExcelControllerImpl {
   async importProducts(rawData, options = {}) {
     const user = Auth.current();
     if (!user) throw new Error('کاربر یافت نشد');
-
+    const mode = options.mode || 'merge';
+    // Replacing referenced masters is prohibited without a verified migration.
+    if (mode !== 'merge') {
+      throw new Error('جایگزینی گروهی اطلاعات پشتیبانی نمی‌شود؛ اطلاعات موجود حفظ شدند. فقط حالت ادغام مجاز است.');
+    }
+    if (!rawData || typeof rawData !== 'object' || Array.isArray(rawData)) {
+      throw new Error('ساختار فایل کالاها نامعتبر است');
+    }
     const sheetName = Object.keys(rawData).find(n =>
       n.includes('کالا') || n.toLowerCase().includes('product')
     ) || Object.keys(rawData)[0];
+    const rows = rawData[sheetName];
+    if (!Array.isArray(rows) || !rows.length) throw new Error('شیت کالاها خالی یا نامعتبر است');
 
-    const rows = rawData[sheetName] || [];
-    if (rows.length === 0) throw new Error('شیت کالاها خالی است');
-
-    const mode = options.mode || 'merge';
-    const existing = await DataScope.list('products');
-
-    if (mode === 'replace') {
-      for (const p of existing) {
-        await StorageService.delete('products', p.id);
-      }
-    }
-
-    let added = 0, skipped = 0;
+    // Preflight ALL rows before a single database write, using one company ID.
+    const companyId = await DataScope.companyId();
+    const submitted = [];
+    let skipped = 0;
+    const now = new Date().toISOString();
     for (const row of rows) {
-      const name = row['نام'] || row['نام کالا'] || row['عنوان'];
-      if (!name) { skipped++; continue; }
-
-      const code = String(row['کد'] || row['کد کالا'] || '').trim();
-      if (mode === 'merge' && code && existing.some(p => p.code === code)) {
-        skipped++;
-        continue;
+      if (row == null) { skipped++; continue; }
+      if (typeof row !== 'object' || Array.isArray(row)) {
+        throw new Error('ردیف کالا ساختار نامعتبر دارد');
       }
-
-      const product = {
-        id: StorageService.uid('prod_'),
-        ownerUserId: user.id,
-        code,
-        name: String(name).trim(),
+      const name = String(row['نام'] || row['نام کالا'] || row['عنوان'] || '').trim();
+      if (!name) { skipped++; continue; }
+      const code = String(row['کد'] || row['کد کالا'] || '').trim();
+      submitted.push({
+        id: StorageService.uid('prod_'), ownerUserId: user.id, companyId,
+        code, name,
         spec: String(row['مشخصه'] || row['مشخصه و نوع'] || '').trim(),
         unit: String(row['واحد'] || 'عدد').trim(),
-        unitId: null,
-        categoryId: null,
-        buyPrice: Number(row['قیمت خرید'] || row['قیمت خرید (ریال)'] || 0) || 0,
-        sellPrice: Number(row['قیمت فروش'] || row['قیمت فروش (ریال)'] || 0) || 0,
-        minStock: Number(row['نقطه سفارش'] || 0) || 0,
-        trackInventory: (row['نوع'] || '').toString().includes('خدمت') ? false : true,
-        isActiveSell: true,
-        isActiveBuy: true,
-        description: ''
-      };
-      await StorageService.put('products', await DataScope.stamp('products', product));
-      added++;
+        unitId: null, categoryId: null,
+        buyPrice: excelRial(row['قیمت خرید'] ?? row['قیمت خرید (ریال)'], 'قیمت خرید'),
+        sellPrice: excelRial(row['قیمت فروش'] ?? row['قیمت فروش (ریال)'], 'قیمت فروش'),
+        minStock: excelQuantity(row['نقطه سفارش']),
+        trackInventory: !String(row['نوع'] || '').includes('خدمت'),
+        isActiveSell: true, isActiveBuy: true, description: '',
+        createdAt: now, updatedAt: now
+      });
     }
 
-    return { added, skipped, mode };
+    // Read, deduplicate and add inside the SAME IndexedDB transaction: another
+    // import cannot race the code check; any write failure rolls back all rows.
+    return StorageService.transaction('products', async tx => {
+      const current = await tx.getAll('products');
+      const codes = new Set(current
+        .filter(p => p.companyId === companyId && p.code)
+        .map(p => String(p.code).trim()));
+      let added = 0;
+      for (const product of submitted) {
+        if (product.code && codes.has(product.code)) { skipped++; continue; }
+        await tx.add('products', product);
+        if (product.code) codes.add(product.code);
+        added++;
+      }
+      return { added, skipped, mode };
+    });
   }
 
   /**
-   * ایمپورت اشخاص از Excel
+   * Merge imported contacts atomically without disturbing existing journal
+   * references, and avoid duplicates inside a single workbook.
    */
   async importContacts(rawData, options = {}) {
     const user = Auth.current();
     if (!user) throw new Error('کاربر یافت نشد');
-
+    const mode = options.mode || 'merge';
+    if (mode !== 'merge') {
+      throw new Error('جایگزینی گروهی اطلاعات پشتیبانی نمی‌شود؛ اطلاعات موجود حفظ شدند. فقط حالت ادغام مجاز است.');
+    }
+    if (!rawData || typeof rawData !== 'object' || Array.isArray(rawData)) {
+      throw new Error('ساختار فایل اشخاص نامعتبر است');
+    }
     const sheetName = Object.keys(rawData).find(n =>
       n.includes('اشخاص') || n.toLowerCase().includes('contact')
     ) || Object.keys(rawData)[0];
+    const rows = rawData[sheetName];
+    if (!Array.isArray(rows) || !rows.length) throw new Error('شیت اشخاص خالی یا نامعتبر است');
 
-    const rows = rawData[sheetName] || [];
-    if (rows.length === 0) throw new Error('شیت اشخاص خالی است');
-
-    const mode = options.mode || 'merge';
-    const existing = await DataScope.list('contacts');
-
-    if (mode === 'replace') {
-      for (const c of existing) {
-        await StorageService.delete('contacts', c.id);
-      }
-    }
-
-    let added = 0, skipped = 0;
+    const companyId = await DataScope.companyId();
+    const submitted = [];
+    let skipped = 0;
+    const now = new Date().toISOString();
     for (const row of rows) {
-      const name = row['نام'] || row['نام شخص یا شرکت'] || row['نام شخص'];
-      if (!name) { skipped++; continue; }
-
-      const mobile = String(row['موبایل'] || row['شماره همراه'] || '').trim();
-      if (mode === 'merge' && mobile && existing.some(c => c.mobile === mobile)) {
-        skipped++;
-        continue;
+      if (row == null) { skipped++; continue; }
+      if (typeof row !== 'object' || Array.isArray(row)) {
+        throw new Error('ردیف شخص ساختار نامعتبر دارد');
       }
-
-      const entityType = (row['نوع'] || row['نوع (حقیقی/حقوقی)'] || '').toString().includes('حقوقی') ? 'legal' : 'natural';
-
-      const contact = {
-        id: StorageService.uid('contact_'),
-        ownerUserId: user.id,
-        entityType,
-        role: (row['نقش'] || '').toString().includes('تامین') ? 'supplier' : 'customer',
-        prefix: '',
-        name: String(name).trim(),
-        mobile,
+      const name = String(row['نام'] || row['نام شخص یا شرکت'] || row['نام شخص'] || '').trim();
+      if (!name) { skipped++; continue; }
+      const mobile = String(row['موبایل'] || row['شماره همراه'] || '').trim();
+      const sourceRole = String(row['نقش'] || '').trim();
+      submitted.push({
+        id: StorageService.uid('contact_'), ownerUserId: user.id, companyId,
+        entityType: String(row['نوع'] || row['نوع (حقیقی/حقوقی)'] || '').includes('حقوقی') ? 'legal' : 'natural',
+        role: sourceRole.includes('هر دو') ? 'both'
+          : sourceRole.includes('تامین') ? 'supplier' : 'customer',
+        prefix: '', name, mobile,
         phone: String(row['تلفن'] || '').trim(),
         nationalId: String(row['کد ملی/شناسه'] || row['شناسه یا کد ملی'] || row['کد ملی'] || '').trim(),
         economicCode: String(row['کد اقتصادی'] || '').trim(),
         regNumber: String(row['شماره ثبت'] || '').trim(),
         postalCode: String(row['کد پستی'] || '').trim(),
         address: String(row['نشانی'] || '').trim(),
-        tags: [],
-        note: '',
-        isActive: true
-      };
-      await StorageService.put('contacts', await DataScope.stamp('contacts', contact));
-      added++;
+        tags: [], note: '', isActive: true, createdAt: now, updatedAt: now
+      });
     }
 
-    return { added, skipped, mode };
+    return StorageService.transaction('contacts', async tx => {
+      const current = await tx.getAll('contacts');
+      const mobiles = new Set(current
+        .filter(c => c.companyId === companyId && c.mobile)
+        .map(c => String(c.mobile).trim()));
+      let added = 0;
+      for (const contact of submitted) {
+        if (contact.mobile && mobiles.has(contact.mobile)) { skipped++; continue; }
+        await tx.add('contacts', contact);
+        if (contact.mobile) mobiles.add(contact.mobile);
+        added++;
+      }
+      return { added, skipped, mode };
+    });
   }
 
   // ============================================================
@@ -588,10 +632,10 @@ class ExcelControllerImpl {
 
   async downloadContactsTemplate() {
     await loadSheetJS();
+    // A blank, privacy-safe template must never ship real customer identifiers.
+    // Users populate their own records; no real-looking phone/national-ID samples.
     const data = [
-      ['نام', 'نوع', 'نقش', 'موبایل', 'تلفن', 'کد ملی/شناسه', 'کد اقتصادی', 'شماره ثبت', 'کد پستی', 'نشانی'],
-      ['شرکت آرا بتن', 'حقوقی', 'مشتری', '09124376991', '', '14008507476', '14008507476', '544926', '1445956311', 'تهران'],
-      ['آقای احمدی', 'حقیقی', 'مشتری', '09121111111', '', '1234567890', '', '', '1234567890', 'اصفهان']
+      ['نام', 'نوع', 'نقش', 'موبایل', 'تلفن', 'کد ملی/شناسه', 'کد اقتصادی', 'شماره ثبت', 'کد پستی', 'نشانی']
     ];
     const ws = XLSX.utils.aoa_to_sheet(data);
     const wb = XLSX.utils.book_new();

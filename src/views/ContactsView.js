@@ -55,20 +55,20 @@ class ContactsViewImpl {
       <div class="toolbar">
         <div class="search-input-wrap">
           <span class="icon">🔍</span>
-          <input type="text" class="form-control" id="contactSearch" placeholder="جستجو بر اساس نام، تلفن یا کد ملی..." value="${this._esc(currentSearch)}" oninput="window.ContactsView._onSearch(this.value)" />
+          <input type="text" class="form-control" id="contactSearch" aria-label="جستجوی اشخاص" placeholder="جستجو بر اساس نام، تلفن یا کد ملی..." value="${this._esc(currentSearch)}" oninput="window.ContactsView._onSearch(this.value)" />
         </div>
-        <select class="form-control" style="width:auto;min-width:130px" id="roleFilter" onchange="window.ContactsView._onFilterRole(this.value)">
+        <select class="form-control" style="width:auto;min-width:130px" id="roleFilter" aria-label="نقش شخص" onchange="window.ContactsView._onFilterRole(this.value)">
           <option value="all" ${currentRoleFilter === 'all' ? 'selected' : ''}>همه نقش‌ها</option>
           <option value="customer" ${currentRoleFilter === 'customer' ? 'selected' : ''}>مشتری</option>
           <option value="supplier" ${currentRoleFilter === 'supplier' ? 'selected' : ''}>تامین‌کننده</option>
           <option value="both" ${currentRoleFilter === 'both' ? 'selected' : ''}>هر دو</option>
         </select>
-        <select class="form-control" style="width:auto;min-width:120px" id="typeFilter" onchange="window.ContactsView._onFilterType(this.value)">
+        <select class="form-control" style="width:auto;min-width:120px" id="typeFilter" aria-label="نوع شخص" onchange="window.ContactsView._onFilterType(this.value)">
           <option value="all" ${currentTypeFilter === 'all' ? 'selected' : ''}>همه انواع</option>
           <option value="natural" ${currentTypeFilter === 'natural' ? 'selected' : ''}>حقیقی</option>
           <option value="legal" ${currentTypeFilter === 'legal' ? 'selected' : ''}>حقوقی</option>
         </select>
-        <select class="form-control" style="width:auto;min-width:140px" onchange="window.ContactsView._onFilterBalance(this.value)">
+        <select class="form-control" style="width:auto;min-width:140px" aria-label="فیلتر مانده اشخاص" onchange="window.ContactsView._onFilterBalance(this.value)">
           <option value="" ${currentBalanceFilter === '' ? 'selected' : ''}>همه مانده‌ها</option>
           <option value="debtor" ${currentBalanceFilter === 'debtor' ? 'selected' : ''}>فقط بدهکاران</option>
           <option value="creditor" ${currentBalanceFilter === 'creditor' ? 'selected' : ''}>فقط بستانکاران</option>
@@ -170,13 +170,13 @@ class ContactsViewImpl {
             ${c.phone ? `<small style="color:var(--text-muted)">${Formatters.phone(c.phone)}</small>` : ''}
             ${!c.mobile && !c.phone ? '—' : ''}
           </td>
-          <td>${c.nationalId ? Formatters.toPersianDigits(c.nationalId) : '—'}</td>
+          <td>${this._esc(c.nationalId ? Formatters.toPersianDigits(c.nationalId) : '—')}</td>
           <td style="font-weight:600;color:${balanceColor}">${balanceText}</td>
           <td>
             <div class="row-actions">
-              <button class="icon-btn-sm" title="کارت حساب" onclick="window.ContactsView.openLedger('${c.id}')">📒</button>
-              <button class="icon-btn-sm" title="ویرایش" onclick="window.ContactsView.editContact('${c.id}')">✏️</button>
-              <button class="icon-btn-sm danger" title="حذف" onclick="window.ContactsView.deleteContact('${c.id}')">🗑️</button>
+              <button class="icon-btn-sm" title="کارت حساب" onclick="window.ContactsView.openLedger(${this._esc(JSON.stringify(String(c.id ?? '')))})">📒</button>
+              <button class="icon-btn-sm" title="ویرایش" onclick="window.ContactsView.editContact(${this._esc(JSON.stringify(String(c.id ?? '')))})">✏️</button>
+              <button class="icon-btn-sm danger" title="حذف" onclick="window.ContactsView.deleteContact(${this._esc(JSON.stringify(String(c.id ?? '')))})">🗑️</button>
             </div>
           </td>
         </tr>
@@ -333,7 +333,7 @@ class ContactsViewImpl {
         <label class="form-label">برچسب‌ها</label>
         <div id="tagsContainer">${tagsChips || '<small style="color:var(--text-muted)">هنوز برچسبی تعریف نشده</small>'}</div>
         <div style="display:flex;gap:6px;margin-top:8px">
-          <input type="text" class="form-control" id="newTagInput" placeholder="برچسب جدید..." style="flex:1" />
+          <input type="text" class="form-control" id="newTagInput" aria-label="افزودن برچسب جدید" placeholder="برچسب جدید..." style="flex:1" />
           <button class="btn btn-secondary" onclick="window.ContactsView.addNewTag()">➕</button>
         </div>
       </div>
@@ -346,7 +346,7 @@ class ContactsViewImpl {
 
     const footer = `
       <button class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button>
-      <button class="btn" onclick="window.ContactsView.saveContact(${isEdit ? `'${contactId}'` : 'null'})">💾 ذخیره</button>
+      <button class="btn" onclick="window.ContactsView.saveContact(${isEdit ? this._esc(JSON.stringify(String(contactId ?? ''))) : 'null'})">💾 ذخیره</button>
     `;
 
     Modal.open({

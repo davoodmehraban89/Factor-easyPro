@@ -7,6 +7,7 @@ import { Auth } from '../core/Auth.js';
 import { DataScope } from '../core/DataScope.js';
 import { RetailPostingService } from '../core/RetailPostingService.js';
 import { Jalali } from '../utils/Jalali.js';
+import { positiveAmount } from '../core/RetailFinanceCore.mjs';
 
 const DEFAULT_EXPENSE_CATEGORIES = [
   'قبوض', 'اجاره', 'حقوق و دستمزد', 'ملزومات',
@@ -47,12 +48,15 @@ class ExpenseControllerImpl {
   async create(data) {
     const user = Auth.current();
     if (!user) throw new Error('کاربر یافت نشد');
+    if (data.kind !== undefined && !['expense','income'].includes(data.kind))
+      throw Error('نوع سند هزینه/درآمد نامعتبر است');
+    const expenseAmount = positiveAmount(data.amount, 'مبلغ هزینه/درآمد');
     const expense = {
       id: StorageService.uid('exp_'),
       ownerUserId: user.id,
       kind: data.kind === 'income' ? 'income' : 'expense',
       category: (data.category || '').trim(),
-      amount: Math.max(0, Number(data.amount) || 0),
+      amount: expenseAmount,
       date: data.date || Jalali.today(),
       method: data.method || 'cash',
       description: (data.description || '').trim(),
@@ -67,11 +71,14 @@ class ExpenseControllerImpl {
     const existing = await StorageService.get('expenses', id);
     if (!existing || existing.companyId !== await DataScope.companyId()) throw new Error('سند در شرکت فعال یافت نشد');
     if (existing.financePosted) throw new Error('سند قطعی مالی قابل ویرایش مستقیم نیست');
+    if (data.kind !== undefined && !['expense','income'].includes(data.kind))
+      throw Error('نوع سند هزینه/درآمد نامعتبر است');
+    const expenseAmount = positiveAmount(data.amount, 'مبلغ هزینه/درآمد');
     const updated = {
       ...existing,
       kind: data.kind === 'income' ? 'income' : 'expense',
       category: (data.category || '').trim(),
-      amount: Math.max(0, Number(data.amount) || 0),
+      amount: expenseAmount,
       date: data.date || existing.date,
       method: data.method || existing.method,
       description: (data.description || '').trim(),
