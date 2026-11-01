@@ -128,6 +128,7 @@ async function activateAccounting() {
   check(view && document.getElementById('pageContent')?.textContent.includes('حسابداری دوبل'),
     'actual accounting route missing');
   await view.switchTab('periods');
+  let periodCreatedByForm = false;
   if (!view.periods.length) {
     view.openPeriodModal();
     check(document.getElementById('acPeriodName'), 'fiscal period form absent');
@@ -135,6 +136,7 @@ async function activateAccounting() {
     document.getElementById('acPeriodStart').value = '1405/01/01';
     document.getElementById('acPeriodEnd').value = '1405/12/29';
     await view.savePeriod();
+    periodCreatedByForm = true;
   }
   check(view.periods.length > 0, 'period did not persist');
   await view.switchTab('accounts');
@@ -162,8 +164,9 @@ async function activateAccounting() {
   await view.saveWarehouse();
   check((await FINORA.Storage.getAll('warehouses')).some(w => w.name === 'انبار ماشین مجازی'),
     'warehouse did not persist');
-  return { fiscalPeriods: view.periods.length, accountCount: view.accounts.length,
-    integration: 'enabled', warehouse: 'created' };
+  return { fiscalPeriods: view.periods.length, periodCreatedByForm,
+    accountCount: view.accounts.length, chartAvailable: view.accounts.some(a => a.code === '402'),
+    integration: 'enabled', integrationEnabled: true, warehouse: 'created', warehouseCreatedByForm: true };
 }
 
 async function nativeContactCrudFormAndTags() {
@@ -997,8 +1000,8 @@ async function nativeInactiveBankSettlementGuard() {
   check(!document.querySelector('.toast-error')&&!document.querySelector('.modal-backdrop'),
     'A05 native treasury scenario left error toast/modal');
   return { inactiveTransferRejected:true, invalidTransferRolledBack:true,
-    validTransferPosted:true,treasuryAccountEditPersisted:true,
-    disabledChequeClearingRejected:true, validChequeClearedExactlyOnce:true,
+    validTransferPosted:true,treasuryAccountCreatedThroughForm:true,treasuryAccountEditPersisted:true,
+    chequeCreatedThroughForm:true,disabledChequeClearingRejected:true, validChequeClearedExactlyOnce:true,
     chequeEventDateDifferentFromDueDate:true,
     explicitNondefaultClearingAccount:true,confirmationRequiredBeforeCash:true };
 }

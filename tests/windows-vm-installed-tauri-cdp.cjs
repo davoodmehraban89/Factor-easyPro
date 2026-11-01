@@ -411,7 +411,9 @@ async function connect(url) {
       const fixtureCoverage = require('../scripts/q01-native-action-coverage.cjs').annotateAudit(audit, {
         nativeFunctional: report.nativeFunctional,
         encryptedCompanyBackup: report.encryptedCompanyBackup ===
-          'native-SettingsUI-AES-GCM-PBKDF2-wrong-password-and-audited-restore-passed'
+          'native-SettingsUI-AES-GCM-PBKDF2-wrong-password-and-audited-restore-passed',
+        modalKeyboard: audit.shellResults?.modalKeyboard,
+        routesVisited: audit.routesVisited
       });
       report.nativeControlCoverage = fixtureCoverage;
       assert.equal(audit.environment, 'installed-Windows-Tauri-WebView2-synthetic-VM');

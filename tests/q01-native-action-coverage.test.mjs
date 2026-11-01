@@ -7,10 +7,10 @@ const { annotateAudit, coverageFor } = coverage;
 test('Q01 maps invoice and treasury handlers only when every required native scenario passed',()=>{
  const scenarios={
   'purchase-and-post-ledger':{purchasePosted:true},'partial-sale-and-inventory':{salePosted:true},
-  'sale-return-immutable-stock-and-ledger':{separatePostedReturn:true},
-  'purchase-return-and-stock-guardrails':{postedSupplierReturn:true},
+  'sale-return-immutable-stock-and-ledger':{separatePostedReturn:true,balancedLedgerAndReturnedStock:true,postedOriginalImmutable:true},
+  'purchase-return-and-stock-guardrails':{postedSupplierReturn:true,balancedLedger:true,stockIssued:true,originalPurchaseImmutable:true},
   'return-cash-settlement-net-credit':{netReceiptAccepted:true},
-  'inactive-treasury-cheque-settlement':{validChequeClearedExactlyOnce:true}
+  'inactive-treasury-cheque-settlement':{inactiveTransferRejected:true,invalidTransferRolledBack:true,validTransferPosted:true}
  };
  const evidence={nativeFunctional:scenarios};
  assert.equal(coverageFor('window.InvoiceFormView._save(false)',evidence).kind,'native-fixture-positive-and-negative');
@@ -23,7 +23,7 @@ test('Q01 maps invoice and treasury handlers only when every required native sce
 test('Q01 maps contact, product, unit and category UI writes only to installed form scenarios',()=>{
  const evidence={nativeFunctional:{
   'contacts-crud-form-and-tags':{createdThroughForm:true,tagPersisted:true,editedThroughForm:true},
-  'products-crud-form-and-nested-classifiers':{createdThroughForm:true,nestedUnitSavedAndSelected:true,nestedCategorySavedAndSelected:true,editedThroughForm:true}
+  'products-crud-form-and-nested-classifiers':{createdThroughForm:true,nestedUnitSavedAndSelected:true,nestedCategorySavedAndSelected:true,editedThroughForm:true,fractionalReorderPointPreserved:true}
  }};
  assert.equal(coverageFor('window.ContactsView.saveContact(null)',evidence).kind,'native-ui-create-and-update');
  assert.equal(coverageFor('window.ProductsView.saveProduct(null)',evidence).kind,'native-ui-create-and-update');
@@ -36,7 +36,7 @@ test('Q01 maps contact, product, unit and category UI writes only to installed f
 
 test('Q01 maps legacy stock adjustment and integrated-mode guard only to both native scenarios',()=>{
  const evidence={nativeFunctional:{
-  'legacy-stock-adjustment-form-and-validation':{validAdjustmentPosted:true,overPrecisionRejectedWithoutWrites:true},
+  'legacy-stock-adjustment-form-and-validation':{validAdjustmentPosted:true,overPrecisionRejectedWithoutWrites:true,negativeRejectedWithoutWrites:true,fractionalQuantityPreserved:true},
   'integrated-stock-adjustment-guard':{manualAdjustmentHidden:true,directOpenBlocked:true,directSaveBlocked:true}
  }};
  assert.equal(coverageFor("window.StockKardexModal.openAdjustModal('prod_1')",evidence).kind,'native-ui-guarded-action');
@@ -57,8 +57,8 @@ test('Q01 coverage never converts an unclicked control into a clicked control',(
  ],controls:[]};
  const evidence={nativeFunctional:{
   'purchase-and-post-ledger':{purchasePosted:true},'partial-sale-and-inventory':{salePosted:true},
-  'sale-return-immutable-stock-and-ledger':{separatePostedReturn:true},
-  'purchase-return-and-stock-guardrails':{postedSupplierReturn:true},
+  'sale-return-immutable-stock-and-ledger':{separatePostedReturn:true,balancedLedgerAndReturnedStock:true,postedOriginalImmutable:true},
+  'purchase-return-and-stock-guardrails':{postedSupplierReturn:true,balancedLedger:true,stockIssued:true,originalPurchaseImmutable:true},
   'return-cash-settlement-net-credit':{netReceiptAccepted:true}
  }};
  const summary=annotateAudit(audit,evidence);
@@ -105,8 +105,11 @@ test('Q01 transfer coverage requires both rejected inactive and successful activ
  }}};
  assert.equal(coverageFor("window.TreasuryView._saveTransaction('transfer')",evidence).kind,
   'native-fixture-positive-and-negative');
+ assert.equal(coverageFor('window.TreasuryView.saveAccount(null)',evidence),null);
+ evidence.nativeFunctional['inactive-treasury-cheque-settlement'].treasuryAccountCreatedThroughForm=true;
+ assert.equal(coverageFor('window.TreasuryView.saveAccount(null)',evidence).kind,'native-ui-create');
  assert.equal(coverageFor('window.TreasuryView.saveAccount("acc_1")',evidence).kind,
-  'native-ui-create-and-update');
+  'native-ui-update');
  evidence.nativeFunctional['inactive-treasury-cheque-settlement'].validTransferPosted=false;
  assert.equal(coverageFor("window.TreasuryView._saveTransaction('transfer')",evidence),null);
 });
@@ -149,10 +152,51 @@ test('Q01 maps draft expense edit and accounting read/reversal controls to insta
 
 test('Q01 accounting period and warehouse form coverage requires positive installed evidence',()=>{
  const evidence={nativeFunctional:{'activate-accounting-and-inventory':{
-  periodCreated:true,chartAvailable:true,integrationEnabled:true,warehouseCreated:true
- },'fiscal-close-atomic-guardrails':{periodClosed:true,closedPeriodBlocksPosting:true}}};
+  periodCreatedByForm:true,warehouseCreatedByForm:true
+ },'fiscal-close-atomic-guardrails':{successfulCloseCommitted:true,duplicateCloseRejected:true}}};
  assert.equal(coverageFor('window.AccountingView.savePeriod()',evidence).kind,'native-ui-period-create');
  assert.equal(coverageFor('window.AccountingView.saveWarehouse()',evidence).kind,'native-ui-warehouse-create');
  evidence.nativeFunctional['activate-accounting-and-inventory'].warehouseCreated=false;
  assert.equal(coverageFor('window.AccountingView.saveWarehouse()',evidence),null);
+});
+
+
+test('Q01 maps shared modal-close and invoice-route actions only to exact shell probes',()=>{
+ const evidence={
+  routesVisited:10,
+  modalKeyboard:{
+   escapeClosesWithoutConfirm:true,focusReturnsToTrigger:true,
+   cancelDoesNotConfirmAndRestoresFocus:true,nestedDialogIsolation:true
+  }
+ };
+ assert.equal(coverageFor('FINORA.Modal.close()',evidence).kind,'native-shared-modal-close-contract');
+ assert.equal(coverageFor("FINORA.Router.go('invoices')",evidence).kind,'native-route-navigation');
+ evidence.modalKeyboard.focusReturnsToTrigger=false;
+ assert.equal(coverageFor('FINORA.Modal.close()',evidence),null);
+ evidence.modalKeyboard.focusReturnsToTrigger=true;
+ evidence.routesVisited=9;
+ assert.equal(coverageFor("FINORA.Router.go('invoices')",evidence),null);
+});
+
+test('Q01 period and warehouse form mappings require the actual form-save result, not service setup',()=>{
+ const evidence={nativeFunctional:{
+  'activate-accounting-and-inventory':{fiscalPeriods:1,accountCount:20,integration:'enabled',warehouse:'created'},
+  'fiscal-close-atomic-guardrails':{successfulCloseCommitted:true,duplicateCloseRejected:true}
+ }};
+ assert.equal(coverageFor('window.AccountingView.savePeriod()',evidence),null);
+ assert.equal(coverageFor('window.AccountingView.saveWarehouse()',evidence),null);
+ evidence.nativeFunctional['activate-accounting-and-inventory'].periodCreatedByForm=true;
+ evidence.nativeFunctional['activate-accounting-and-inventory'].warehouseCreatedByForm=true;
+ assert.equal(coverageFor('window.AccountingView.savePeriod()',evidence).kind,'native-ui-period-create');
+ assert.equal(coverageFor('window.AccountingView.saveWarehouse()',evidence).kind,'native-ui-warehouse-create');
+});
+
+
+test('Q01 cheque create mapping requires the installed cheque form, not just cheque accounting',()=>{
+ const evidence={nativeFunctional:{'inactive-treasury-cheque-settlement':{
+  disabledChequeClearingRejected:true,validChequeClearedExactlyOnce:true
+ }}};
+ assert.equal(coverageFor('window.ChequesView.saveCheque(null)',evidence),null);
+ evidence.nativeFunctional['inactive-treasury-cheque-settlement'].chequeCreatedThroughForm=true;
+ assert.equal(coverageFor('window.ChequesView.saveCheque(null)',evidence).kind,'native-ui-cheque-create');
 });
