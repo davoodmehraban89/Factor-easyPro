@@ -155,84 +155,119 @@ class InvoiceControllerImpl {
       return issued;
     }
 
+    // Prepare the legacy invoice before opening IndexedDB transaction.
+    // License counters and settings are secondary metadata and cannot be
+    // atomically committed with IndexedDB; they are updated only after commit.
     let saved;
+    let settings = null;
+    let issuedNow = false;
+    let nextNumber = null;
     if (id) {
       const existing = await StorageService.get('invoices', id);
-      if (!existing) throw new Error('فاکتور یافت نشد');
-      const becomesIssued = !!existing.isPreInvoice && !baseData.isPreInvoice;
-      if (becomesIssued) LicenseService.assertWritable();
+      if (!existing || existing.companyId !== baseData.companyId) throw new Error('Invoice not found in active company');
+      issuedNow = !!existing.isPreInvoice && !baseData.isPreInvoice;
+      if (issuedNow) LicenseService.assertWritable();
       saved = { ...existing, ...baseData };
-      await StorageService.put('invoices', await DataScope.stamp('invoices', saved));
-      if (becomesIssued) await LicenseService.recordIssuedInvoice();
     } else {
       if (!baseData.isPreInvoice) LicenseService.assertWritable();
-      const settings = await SettingsController.getInvoiceSettings();
+      settings = await SettingsController.getInvoiceSettings();
       const minimum = await this.getNextNumber(baseData.kind);
       const rawNumber = String(data.number ?? '').trim().replace(/[۰-۹]/g, ch => String(ch.charCodeAt(0) - 1776)).replace(/[٠-٩]/g, ch => String(ch.charCodeAt(0) - 1632));
       const number = settings.numberingMode === 'manual' ? (rawNumber || String(minimum)) : String(minimum);
       if (!/^\d+$/.test(number) || !Number.isSafeInteger(Number(number)) || Number(number) < minimum) {
-        throw new Error(`شماره فاکتور باید عددی و حداقل ${minimum} باشد؛ شماره‌های قبلی مجاز نیستند`);
+        throw new Error(`Invoice number must be at least ${minimum}`);
       }
-      await this._assertUniqueNumber(number);
       saved = {
         id: StorageService.uid('inv_'),
         clientUuid: this._uuid(),
         number,
         ...baseData
       };
-      await StorageService.put('invoices', await DataScope.stamp('invoices', saved));
-      if (!baseData.isPreInvoice) await LicenseService.recordIssuedInvoice();
-      if (!baseData.isPreInvoice) {
-        await SettingsController.saveInvoiceSettings({ ...settings, nextNumber: Math.max(Number(settings.nextNumber), Number(number) + 1) });
-      }
+      issuedNow = !baseData.isPreInvoice;
+      if (issuedNow) nextNumber = Math.max(Number(settings.nextNumber) || 1, Number(number) + 1);
     }
 
-    // بازنویسی حرکات انبار
-    await this._rebuildStockMovements(saved);
+    await this._commitLegacyInvoiceWithStock(saved, { requireExisting: Boolean(id), requirePreInvoice: false });
+    if (issuedNow) await LicenseService.recordIssuedInvoice();
+    if (nextNumber !== null) {
+      await SettingsController.saveInvoiceSettings({ ...settings, nextNumber });
+    }
     return saved;
   }
 
-  // ثبت حرکات انبار بر اساس نوع سند
-  async _rebuildStockMovements(invoice) {
+  // All legacy invoice and inventory mutations share one transaction. Both
+  // active-company checks and concurrent update checks run inside the lock.
+  async _commitLegacyInvoiceWithStock(invoice, { requireExisting = false, requirePreInvoice = false } = {}) {
     const companyId = await DataScope.companyId();
-    if (!invoice || invoice.companyId !== companyId) {
-      throw new Error('Invoice stock rebuild is restricted to the active company');
-    }
+    if (!invoice || invoice.companyId !== companyId) throw new Error('Invoice outside active company');
     const user = Auth.current();
-    const inKinds = ['purchase', 'sale_return'];
-    const direction = inKinds.includes(invoice.kind) ? 'in' : 'out';
+    const direction = ['purchase', 'sale_return'].includes(invoice.kind) ? 'in' : 'out';
+    return StorageService.transaction(['invoices', 'stock_movements', 'products'], async tx => {
+      const existing = await tx.get('invoices', invoice.id);
+      if (requireExisting && (!existing || existing.companyId !== companyId)) throw new Error('Invoice not found in active company');
+      if (!requireExisting && existing) throw new Error('Duplicate invoice id');
+      if (existing?.financePosted) throw new Error('Posted invoice is immutable');
+      if (requirePreInvoice && !existing?.isPreInvoice) throw new Error('Preinvoice required');
+      if (existing && !requirePreInvoice && existing.isPreInvoice !== invoice.isPreInvoice && !existing.isPreInvoice) {
+        throw new Error('Issued invoice cannot be reverted to preinvoice');
+      }
+      const allInvoices = await tx.getAll('invoices');
+      if (!invoice.isPreInvoice && allInvoices.some(row =>
+        row.id !== invoice.id && row.companyId === companyId && !row.isPreInvoice &&
+        String(row.number) === String(invoice.number))) {
+        throw new Error('Duplicate issued invoice number');
+      }
+      const movements = await tx.getAll('stock_movements');
+      for (const movement of movements.filter(row => row.companyId === companyId && row.refType === 'invoice' && row.refId === invoice.id)) {
+        await tx.delete('stock_movements', movement.id);
+      }
+      if (!invoice.isPreInvoice) {
+        for (const item of invoice.items || []) {
+          if (!item.productId) continue;
+          const product = await tx.get('products', item.productId);
+          if (!product || product.companyId !== companyId) throw new Error('Invoice item references a product outside the active company');
+          if (product.trackInventory === false) continue;
+          await tx.put('stock_movements', {
+            id: StorageService.uid('mv_'), ownerUserId: user.id, companyId,
+            productId: item.productId, type: direction, qty: Number(item.qty) || 0,
+            refType: 'invoice', refId: invoice.id,
+            note: `Invoice #${invoice.number}`, date: new Date().toISOString()
+          });
+        }
+      }
+      await tx.put('invoices', invoice);
+      return invoice;
+    });
+  }
 
-    // Delete and recreate legacy movements in one IndexedDB transaction.
-    // If a referenced product is invalid, nothing is deleted or inserted.
+  async _rebuildStockMovements(invoice) {
+    // Retained for older callers. InvoiceController.save and convertPreInvoice
+    // use the full invoice+stock transaction instead.
+    const companyId = await DataScope.companyId();
+    if (!invoice || invoice.companyId !== companyId) throw new Error('Invoice stock rebuild is restricted to the active company');
+    const user = Auth.current();
+    const direction = ['purchase', 'sale_return'].includes(invoice.kind) ? 'in' : 'out';
     return StorageService.transaction(['stock_movements', 'products'], async tx => {
       const movements = await tx.getAll('stock_movements');
-      for (const movement of movements.filter(m =>
-        m.companyId === companyId && m.refType === 'invoice' && m.refId === invoice.id)) {
+      for (const movement of movements.filter(m => m.companyId === companyId && m.refType === 'invoice' && m.refId === invoice.id)) {
         await tx.delete('stock_movements', movement.id);
       }
       if (invoice.isPreInvoice) return;
       for (const item of invoice.items || []) {
         if (!item.productId) continue;
         const product = await tx.get('products', item.productId);
-        if (!product || product.companyId !== companyId) {
-          throw new Error('Invoice item references a product outside the active company');
-        }
+        if (!product || product.companyId !== companyId) throw new Error('Invoice item references a product outside the active company');
         if (product.trackInventory === false) continue;
         await tx.put('stock_movements', {
-          id: StorageService.uid('mv_'),
-          ownerUserId: user.id,
-          companyId,
-          productId: item.productId,
-          type: direction,
-          qty: Number(item.qty) || 0,
-          refType: 'invoice',
-          refId: invoice.id,
-          note: `Invoice #${invoice.number}`,
-          date: new Date().toISOString()
+          id: StorageService.uid('mv_'), ownerUserId: user.id, companyId,
+          productId: item.productId, type: direction, qty: Number(item.qty) || 0,
+          refType: 'invoice', refId: invoice.id,
+          note: `Invoice #${invoice.number}`, date: new Date().toISOString()
         });
       }
     });
   }
+
   async getAll(filter = {}) {
     const user = Auth.current();
     let list = await DataScope.list('invoices');
@@ -282,26 +317,25 @@ class InvoiceControllerImpl {
   async convertPreInvoice(id) {
     LicenseService.assertWritable();
     const inv = await StorageService.get('invoices', id);
-    if (!inv || inv.companyId !== await DataScope.companyId() || !inv.isPreInvoice) throw new Error('پیش‌فاکتور در این شرکت یافت نشد');
+    if (!inv || inv.companyId !== await DataScope.companyId() || !inv.isPreInvoice)
+      throw new Error('Preinvoice not found in active company');
     if (await RetailPostingService.isEnabled()) {
       const number = await this.getNextNumber(inv.kind);
       const issued = await RetailPostingService.issueInvoice({ ...inv, isPreInvoice: false, number });
       await LicenseService.recordIssuedInvoice();
       const settings = await SettingsController.getInvoiceSettings();
-      await SettingsController.saveInvoiceSettings({ ...settings, nextNumber: Math.max(Number(settings.nextNumber)||1, Number(number)+1) });
+      await SettingsController.saveInvoiceSettings({ ...settings, nextNumber: Math.max(Number(settings.nextNumber) || 1, Number(number) + 1) });
       return issued;
     }
     const number = await this.getNextNumber(inv.kind);
     await this._assertUniqueNumber(number, inv.id);
-    inv.isPreInvoice = false;
-    inv.number = number;
-    await StorageService.put('invoices', await DataScope.stamp('invoices', inv));
-    await this._rebuildStockMovements(inv);
+    const issued = { ...inv, isPreInvoice: false, number };
+    await this._commitLegacyInvoiceWithStock(issued, { requireExisting: true, requirePreInvoice: true });
     await LicenseService.recordIssuedInvoice();
-    return inv;
+    return issued;
   }
 
-  // علامت‌گذاری به‌عنوان پرداخت‌شده
+  // Payments serialize with invoice mutations.
   async markPaid(id, payment = null) {
     // The invoice read, validation and write must share one IndexedDB transaction.
     // Concurrent payment attempts serialize on the invoices object store.
