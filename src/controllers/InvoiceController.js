@@ -194,43 +194,45 @@ class InvoiceControllerImpl {
 
   // ثبت حرکات انبار بر اساس نوع سند
   async _rebuildStockMovements(invoice) {
+    const companyId = await DataScope.companyId();
+    if (!invoice || invoice.companyId !== companyId) {
+      throw new Error('Invoice stock rebuild is restricted to the active company');
+    }
     const user = Auth.current();
-    const all = await DataScope.list('stock_movements');
+    const inKinds = ['purchase', 'sale_return'];
+    const direction = inKinds.includes(invoice.kind) ? 'in' : 'out';
 
-    // حذف حرکات قبلی این فاکتور
-    for (const m of all.filter(x => x.companyId === invoice.companyId && x.refType === 'invoice' && x.refId === invoice.id)) {
-      await StorageService.delete('stock_movements', m.id);
-    }
-
-    // تعیین جهت
-    const inKinds = ['purchase', 'sale_return'];   // ورود به انبار
-    const outKinds = ['sale', 'purchase_return'];  // خروج از انبار
-    const direction = inKinds.includes(invoice.kind) ? 'in' :
-                      outKinds.includes(invoice.kind) ? 'out' : 'out';
-
-    // اگه پیش‌فاکتوره، حرکات ثبت نمی‌شه
-    if (invoice.isPreInvoice) return;
-
-    for (const item of invoice.items) {
-      if (!item.productId) continue;
-      const product = await StorageService.get('products', item.productId);
-      if (!product || product.trackInventory === false) continue;
-
-      const mv = {
-        id: StorageService.uid('mv_'),
-        ownerUserId: user.id,
-        productId: item.productId,
-        type: direction,
-        qty: Number(item.qty) || 0,
-        refType: 'invoice',
-        refId: invoice.id,
-        note: `فاکتور #${invoice.number}`,
-        date: new Date().toISOString()
-      };
-      await StorageService.put('stock_movements', await DataScope.stamp('stock_movements', mv));
-    }
+    // Delete and recreate legacy movements in one IndexedDB transaction.
+    // If a referenced product is invalid, nothing is deleted or inserted.
+    return StorageService.transaction(['stock_movements', 'products'], async tx => {
+      const movements = await tx.getAll('stock_movements');
+      for (const movement of movements.filter(m =>
+        m.companyId === companyId && m.refType === 'invoice' && m.refId === invoice.id)) {
+        await tx.delete('stock_movements', movement.id);
+      }
+      if (invoice.isPreInvoice) return;
+      for (const item of invoice.items || []) {
+        if (!item.productId) continue;
+        const product = await tx.get('products', item.productId);
+        if (!product || product.companyId !== companyId) {
+          throw new Error('Invoice item references a product outside the active company');
+        }
+        if (product.trackInventory === false) continue;
+        await tx.put('stock_movements', {
+          id: StorageService.uid('mv_'),
+          ownerUserId: user.id,
+          companyId,
+          productId: item.productId,
+          type: direction,
+          qty: Number(item.qty) || 0,
+          refType: 'invoice',
+          refId: invoice.id,
+          note: `Invoice #${invoice.number}`,
+          date: new Date().toISOString()
+        });
+      }
+    });
   }
-
   async getAll(filter = {}) {
     const user = Auth.current();
     let list = await DataScope.list('invoices');
