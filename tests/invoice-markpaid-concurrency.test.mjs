@@ -68,3 +68,27 @@ test('invoice deletion preserves unrelated stock movements with matching refId',
   assert.equal(await StorageService.get('stock_movements', 'invoice-movement'), undefined);
   assert.equal((await StorageService.get('stock_movements', 'other-movement')).qty, 2);
 });
+test('invoice deletion preserves cross-company stock movements even with matching reference', async () => {
+  await seed();
+  await StorageService.put('stock_movements', { id: 'other-company-movement', companyId: 'other-company', refId: 'markpaid-invoice', refType: 'invoice', qty: 4 });
+  await StorageService.put('stock_movements', { id: 'own-invoice-movement', companyId: 'markpaid-company', refId: 'markpaid-invoice', refType: 'invoice', qty: 2 });
+  await InvoiceController.delete('markpaid-invoice');
+  assert.equal(await StorageService.get('stock_movements', 'own-invoice-movement'), undefined);
+  assert.equal((await StorageService.get('stock_movements', 'other-company-movement')).qty, 4);
+});
+
+test('posted invoice deletion fails without changing stock or invoice', async () => {
+  await seed({ financePosted: true });
+  await StorageService.put('stock_movements', { id: 'posted-movement', companyId: 'markpaid-company', refId: 'markpaid-invoice', refType: 'invoice', qty: 1 });
+  await assert.rejects(InvoiceController.delete('markpaid-invoice'));
+  assert.ok(await StorageService.get('invoices', 'markpaid-invoice'));
+  assert.ok(await StorageService.get('stock_movements', 'posted-movement'));
+});
+
+test('delete serializes against payment and leaves no orphan stock records', async () => {
+  await seed();
+  await StorageService.put('stock_movements', { id: 'movement', companyId: 'markpaid-company', refId: 'markpaid-invoice', refType: 'invoice', qty: 1 });
+  await Promise.allSettled([InvoiceController.delete('markpaid-invoice'), InvoiceController.markPaid('markpaid-invoice', 100)]);
+  assert.equal(await StorageService.get('invoices', 'markpaid-invoice'), undefined);
+  assert.equal(await StorageService.get('stock_movements', 'movement'), undefined);
+});

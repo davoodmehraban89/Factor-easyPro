@@ -262,17 +262,20 @@ class InvoiceControllerImpl {
   }
 
   async delete(id) {
-    const record = await this.get(id);
-    if (!record || record.companyId !== await DataScope.companyId()) throw new Error('فاکتور در شرکت فعال یافت نشد');
-    if (record.financePosted) throw new Error('فاکتور قطعی دارای سند مالی است و قابل حذف نیست؛ از سند مرجوعی استفاده کنید');
-    const user = Auth.current();
-    const movements = await DataScope.list('stock_movements');
-    for (const m of movements.filter(x => x.refType === 'invoice' && x.refId === id)) {
-      await StorageService.delete('stock_movements', m.id);
-    }
-    return await StorageService.delete('invoices', id);
+    const companyId = await DataScope.companyId();
+    // Invoice and its stock movements must disappear together or not at all.
+    // This also serializes deletion against other invoice-store transactions.
+    return StorageService.transaction(['invoices', 'stock_movements'], async tx => {
+      const record = await tx.get('invoices', id);
+      if (!record || record.companyId !== companyId) throw new Error('فاکتور در شرکت جاری یافت نشد');
+      if (record.financePosted) throw new Error('حذف فاکتور ثبت مالی‌شده مجاز نیست');
+      const movements = await tx.getAll('stock_movements');
+      for (const m of movements.filter(x => x.companyId === companyId && x.refType === 'invoice' && x.refId === id)) {
+        await tx.delete('stock_movements', m.id);
+      }
+      await tx.delete('invoices', id);
+    });
   }
-
   // تبدیل پیش‌فاکتور به فاکتور
   async convertPreInvoice(id) {
     LicenseService.assertWritable();
