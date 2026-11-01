@@ -181,6 +181,7 @@ class ReportsViewImpl {
   // ============================================================
   renderPLTab() {
     const pl = cache.pl || {};
+    const costNotice = this._costBasisNotice(pl.costBasis, pl.costBasisDetails, pl.discountAllocationIncomplete);
 
     const rows = [
       { label: 'فروش ناخالص', value: pl.grossSales, color: 'var(--text)', bold: false, sign: '+' },
@@ -212,6 +213,7 @@ class ReportsViewImpl {
     const marginLabel = pl.netProfit >= 0 ? 'حاشیه سود خالص' : 'حاشیه زیان خالص';
 
     return `
+      ${costNotice}
       <div class="grid-kpi">
         <div class="card kpi-card" style="margin:0;border-top:3px solid var(--primary)">
           <div class="kpi-card-icon" style="background:#eff6ff;color:var(--primary)">📊</div>
@@ -396,12 +398,23 @@ class ReportsViewImpl {
     const list = cache.products || [];
     const totalSales = list.reduce((s, p) => s + p.totalSales, 0);
     const totalProfit = list.reduce((s, p) => s + p.profit, 0);
+    const costCounts = list.reduce((counts, product) => {
+      for (const key of ['historical', 'estimated', 'unknown'])
+        counts[key] += product.costBasisDetails?.[key] || 0;
+      return counts;
+    }, { historical: 0, estimated: 0, unknown: 0 });
+    const costBasis = costCounts.unknown ? 'incomplete' :
+      (costCounts.historical && costCounts.estimated) ? 'mixed' :
+      costCounts.estimated ? 'estimated' : costCounts.historical ? 'historical' : 'not-applicable';
+    const discountAllocationIncomplete = list.some(product => product.discountAllocationIncomplete);
+    const costNotice = this._costBasisNotice(costBasis, costCounts, discountAllocationIncomplete);
     const totalPages = Math.max(1, Math.ceil(list.length / PRODUCTS_PAGE_SIZE));
     productsPage = Math.min(totalPages, Math.max(1, productsPage));
     const startIndex = (productsPage - 1) * PRODUCTS_PAGE_SIZE;
     const pageRows = list.slice(startIndex, startIndex + PRODUCTS_PAGE_SIZE);
 
     return `
+      ${costNotice}
       <div class="grid-kpi">
         <div class="card kpi-card" style="margin:0">
           <div class="kpi-card-icon" style="background:#eff6ff;color:var(--primary)">📦</div>
@@ -698,6 +711,23 @@ class ReportsViewImpl {
   _truncate(str, len) {
     if (!str) return '';
     return str.length > len ? str.slice(0, len) + '…' : str;
+  }
+
+  _costBasisNotice(basis, details = {}, discountAllocationIncomplete = false) {
+    const messages = [];
+    const estimated = details.estimated || 0;
+    const unknown = details.unknown || 0;
+    if (estimated) messages.push(
+      Formatters.number(estimated) + ' گروه کالا با قیمت خرید فعلی برآورد شده‌اند؛ سود تاریخی آن‌ها قطعی نیست.'
+    );
+    if (unknown) messages.push(
+      Formatters.number(unknown) + ' گروه کالا بهای تمام‌شده قابل بازیابی ندارند؛ سود نمایش‌داده‌شده ناقص است.'
+    );
+    if (discountAllocationIncomplete) messages.push(
+      'توزیع تخفیف کل فاکتور روی ردیف کالاها برای بخشی از سوابق قابل بازسازی نیست.'
+    );
+    if (!messages.length) return '';
+    return '<div class="card" role="note" style="border-right:4px solid var(--warning);font-size:12px;line-height:1.9;color:var(--text-muted)"><strong>محدودیت دقت گزارش:</strong> ' + messages.join(' ') + '</div>';
   }
 
   _esc(s) {
