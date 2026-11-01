@@ -198,7 +198,7 @@ class InvoiceControllerImpl {
     const all = await DataScope.list('stock_movements');
 
     // حذف حرکات قبلی این فاکتور
-    for (const m of all.filter(x => x.refType === 'invoice' && x.refId === invoice.id)) {
+    for (const m of all.filter(x => x.companyId === invoice.companyId && x.refType === 'invoice' && x.refId === invoice.id)) {
       await StorageService.delete('stock_movements', m.id);
     }
 

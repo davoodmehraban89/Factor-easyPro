@@ -92,3 +92,11 @@ test('delete serializes against payment and leaves no orphan stock records', asy
   assert.equal(await StorageService.get('invoices', 'markpaid-invoice'), undefined);
   assert.equal(await StorageService.get('stock_movements', 'movement'), undefined);
 });
+test('legacy stock rebuild never deletes another company movement with same invoice id', async () => {
+  await seed();
+  await StorageService.put('stock_movements', { id: 'foreign-rebuild-movement', companyId: 'other-company', refId: 'markpaid-invoice', refType: 'invoice', qty: 9 });
+  await StorageService.put('stock_movements', { id: 'local-rebuild-movement', companyId: 'markpaid-company', refId: 'markpaid-invoice', refType: 'invoice', qty: 3 });
+  await InvoiceController._rebuildStockMovements({ id: 'markpaid-invoice', companyId: 'markpaid-company', kind: 'sale', number: '10', isPreInvoice: true, items: [] });
+  assert.equal(await StorageService.get('stock_movements', 'local-rebuild-movement'), undefined);
+  assert.equal((await StorageService.get('stock_movements', 'foreign-rebuild-movement')).qty, 9);
+});
