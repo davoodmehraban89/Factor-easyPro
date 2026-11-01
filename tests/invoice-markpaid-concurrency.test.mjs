@@ -100,3 +100,18 @@ test('legacy stock rebuild never deletes another company movement with same invo
   assert.equal(await StorageService.get('stock_movements', 'local-rebuild-movement'), undefined);
   assert.equal((await StorageService.get('stock_movements', 'foreign-rebuild-movement')).qty, 9);
 });
+test('legacy rebuild rolls back deletions when product belongs to another company', async () => {
+  await seed();
+  await StorageService.put('stock_movements', { id: 'rollback-existing', companyId: 'markpaid-company', refId: 'markpaid-invoice', refType: 'invoice', qty: 7 });
+  await StorageService.put('products', { id: 'foreign-product', companyId: 'other-company', trackInventory: true });
+  await assert.rejects(InvoiceController._rebuildStockMovements({ id: 'markpaid-invoice', companyId: 'markpaid-company', kind: 'sale', number: '10', items: [{ productId: 'foreign-product', qty: 1 }] }), /outside the active company/);
+  assert.equal((await StorageService.get('stock_movements', 'rollback-existing')).qty, 7);
+  assert.equal((await StorageService.getAll('stock_movements')).length, 1);
+});
+
+test('legacy rebuild rejects cross-company invoice without touching stock', async () => {
+  await seed();
+  await StorageService.put('stock_movements', { id: 'protected-movement', companyId: 'other-company', refId: 'markpaid-invoice', refType: 'invoice', qty: 5 });
+  await assert.rejects(InvoiceController._rebuildStockMovements({ id: 'markpaid-invoice', companyId: 'other-company', isPreInvoice: true, items: [] }), /restricted to the active company/);
+  assert.equal((await StorageService.get('stock_movements', 'protected-movement')).qty, 5);
+});
