@@ -107,3 +107,18 @@ test('malformed VAT, global discount or payment inputs are rejected before invoi
     assert.deepEqual(await StorageService.getByCompany('invoices','discount-test-company'),[]);
   }
 });
+
+test('global fixed discount above subtotal is rejected without a preinvoice write', async () => {
+  await setup();
+  const payload = { ...base(10), discountType: 'fixed', discountInput: 2701 };
+  await assert.rejects(InvoiceController.save(payload), /تخفیف کل/);
+  assert.deepEqual(await StorageService.getByCompany('invoices', 'discount-test-company'), []);
+});
+
+test('global fixed discount equal to subtotal is valid and produces zero total', async () => {
+  await setup();
+  const invoice = await InvoiceController.save({ ...base(10), discountInput: 2700 });
+  assert.equal(invoice.totalDiscount, 2700);
+  assert.equal(invoice.grandTotal, 0);
+  assert.equal(invoice.remaining, 0);
+});

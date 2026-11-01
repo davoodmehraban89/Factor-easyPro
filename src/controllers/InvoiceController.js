@@ -88,7 +88,8 @@ class InvoiceControllerImpl {
     } else {
       totalDiscount = amount(discInput,'تخفیف ثابت کل');
     }
-    totalDiscount = Math.max(0, Math.min(totalDiscount, subtotal));
+    if (totalDiscount > subtotal)
+      throw Error('تخفیف کل نمی‌تواند بیشتر از مبلغ فاکتور باشد');
 
     const afterDiscount = Math.max(0, subtotal - totalDiscount);
 
