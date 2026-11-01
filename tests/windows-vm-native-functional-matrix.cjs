@@ -1669,19 +1669,24 @@ async function nativeAccountingJournalAndExports() {
     x.companyId===company.id&&x.reversalOfId===posted.id&&x.status==='posted');
   check(originalAfter?.reversedById===reversal?.id&&reversal?.debit===100&&reversal?.credit===100,
     'Manual journal reversal did not preserve the original and post a balanced reversal');
-  const downloads=[],originalClick=HTMLAnchorElement.prototype.click;
+  const downloads=[],originalClick=HTMLAnchorElement.prototype.click,
+    originalCreateObjectURL=URL.createObjectURL;
   try {
+    URL.createObjectURL=function(blob){
+      const url=originalCreateObjectURL.call(URL,blob);
+      downloads.push({blob,url,filename:''});
+      return url;
+    };
     HTMLAnchorElement.prototype.click=function(){
-      downloads.push({filename:this.download,url:this.href});
+      const item=downloads.find(x=>x.url===this.href);
+      if(item)item.filename=this.download;
     };
     await view.exportReports();
     await view.exportReconciliation();
     check(downloads.length===2,'Accounting report and reconciliation exports did not both download');
-    const content=await Promise.all(downloads.map(async item=>{
-      const response=await fetch(item.url);
-      if(!response.ok)throw Error('CSV blob URL could not be read');
-      return {filename:item.filename,text:await response.text()};
-    }));
+    const content=await Promise.all(downloads.map(async item=>({
+      filename:item.filename,text:await item.blob.text()
+    })));
     check(content.some(x=>x.filename==='factor-easypro-ledger.csv'&&
       x.text.includes('account_code')&&x.text.includes(postedDescription)),
       'Ledger CSV export omitted the posted synthetic journal');
@@ -1689,6 +1694,7 @@ async function nativeAccountingJournalAndExports() {
       x.text.includes('code')&&x.text.includes('reference')),
       'Reconciliation CSV export omitted its expected schema');
   } finally {
+    URL.createObjectURL=originalCreateObjectURL;
     HTMLAnchorElement.prototype.click=originalClick;
   }
   return {chartAccountCreated:true,journalRowAdded:true,draftJournalSaved:true,
