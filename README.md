@@ -1,6 +1,7 @@
 # Factor-easyPro
 
-> **نقطه شروع همیشگی پروژه:** [PROJECT_STATUS.md](PROJECT_STATUS.md) — نسخه منتشرشده، فاز فعال، کارهای انجام‌شده و اقدام بعدی.
+> **کتابچه مرجع اجباری همه توسعه‌دهندگان:** [FINORA_MASTER_EXECUTION_PLAYBOOK_FA.md](docs/FINORA_MASTER_EXECUTION_PLAYBOOK_FA.md) — مأموریت کامل، ۱۰ فاز، اولویت‌ها، گیت‌های پذیرش و قواعد اجرا.  
+> **وضعیت زنده و تاریخچه کار:** [PROJECT_STATUS.md](PROJECT_STATUS.md) — نسخه جاری، کارهای انجام‌شده با شواهد، فاز فعال، blockerها و اقدام بعدی. پیش از هر توسعه، هر دو فایل را بخوانید.
 >
 > **نقشه راه رقابت گسترده‌تر با هلو:** [docs/ROADMAP_HOLOO_COMPETITOR_FA.md](docs/ROADMAP_HOLOO_COMPETITOR_FA.md).
 >
