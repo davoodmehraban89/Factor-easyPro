@@ -366,3 +366,10 @@
 - [PR #110](https://github.com/davoodmehraban89/Factor-easyPro/pull/110) پس از [Quality CI #39171146683](https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39171146683) با نتیجه success در `main` ادغام شد (`76f0a9d4121b158fe1e768e4de370e17be55e5f2`). head آزموده‌شده `2e86a5252c720345df70b51e3a805da48c97e8db`.
 - کنترل انتشار اکنون شناسه‌های دقیق ده گیت و URL کامل شواهد را بررسی می‌کند؛ آزمون‌های منفی برای گیت اضافه، گیت مفقود و لینک دارای suffix یا query نامعتبر اضافه شد.
 - این اصلاح صرفاً حفاظت گیت انتشار است، نه تکمیل A01/A03/A04/A05/A06/A07/A08 یا تأیید مستقل. تمامی `accepted`ها همچنان `false`؛ انتشار جدید ممنوع است. بازگشت: revert PR #110.
+
+
+## شواهد جدید مرجع هلو — 2026-11-11
+
+- [گزارش ممیزی Runtime و Schema هلو](docs/audits/HOLOO_RUNTIME_SCHEMA_AUDIT_20261111_FA.md): نسخه اجرایی، SQL instance، داده‌نامه 25 جدول منتخب، کلیدها، dependency inventory، checkpointهای DBTools و اثرانگشت فایل‌ها.
+- [ماتریس قابلیت‌های هلو](docs/HOLOO_PARITY_FEATURE_MATRIX_FA.md) و [ADR-003 معماری backend رابطه‌ای چندکاربره](docs/adr/ADR-003-relational-multiuser-backend-fa.md).
+- وضعیت این شواهد: فقط‌خواندنی و مستند؛ هیچ parity اجرایی، migration یا مجوز توزیع Runtime با این ممیزی تأیید نشده است.
