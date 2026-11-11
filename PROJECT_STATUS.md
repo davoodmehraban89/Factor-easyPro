@@ -374,6 +374,7 @@
 **زیرمرحله اجرایی اولویت‌دار ۱** ذیل فاز ۰ کتابچه ده‌فازی آغاز شد. این عنوان با «فاز ۱ رسمی: هسته معماری، داده و شرکت‌ها» اشتباه نشود.
 
 - گزارش تفصیلی: [تثبیت آزمایشگاه هلو — زیرمرحله ۱](docs/audits/HOLOO_LAB_STABILIZATION_SUBPHASE_01_20261111_FA.md).
+- ثبت این زیرمرحله در [PR #198](https://github.com/davoodmehraban89/Factor-easyPro/pull/198) انجام شده است؛ PR باز و Merge نشده و CI روی آخرین Commit در حال اجراست.
 - گزارش ممیزی Runtime/Schema در [PR #197](https://github.com/davoodmehraban89/Factor-easyPro/pull/197) قرار دارد؛ PR هنوز Open و Merge نشده است. CI آن شامل Tests/Frontend Build و Windows Native Build موفق بوده؛ این PR فقط مستندات است و کد اجرایی محصول را تغییر نمی‌دهد.
 - [PR #196](https://github.com/davoodmehraban89/Factor-easyPro/pull/196) نیز مستند Backup بومی هلو است و هنوز Open است؛ Restore در آن PR انجام نشده و A02 پذیرفته نیست.
 - Clone هم‌ساختار Holoo1 با نام Holoo1_FACTORLAB_20261110 در Instance مرجع فقط پس از Backup معتبر و کنترل صفر بودن نشست‌ها به READ_ONLY تغییر کرد. Holoo1 و Holoo6 عملیاتی تغییر نکردند.
