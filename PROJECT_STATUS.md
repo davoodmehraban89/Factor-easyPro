@@ -377,3 +377,21 @@
 - **مسیر بعدی (P0):** روی SQL Server ایزوله و سازگار، ابتدا `RESTORE HEADERONLY` و `RESTORE FILELISTONLY` و `RESTORE VERIFYONLY`؛ سپس restore فقط در دیتابیس آزمایشی جداگانه با `MOVE` و بدون `REPLACE` روی دیتابیس اصلی؛ استخراج صرفاً schema، کلیدها، روابط، فهرست procedureها و آمار تجمعی غیرشخصی؛ طراحی آداپتور نسخه‌دار و reconciliation مالی؛ آزمون rollback و حفظ صفر تغییر روی هلو اصلی.
 - **محدودیت امنیتی:** فراداده دسترسی Drive نشان داد فایل برای دارنده لینک قابل خواندن است؛ مالک باید sharing را به restricted تغییر دهد. هیچ credential، dump، نام مشتری یا رکورد مالی به مخزن/CI عمومی وارد نشود.
 - **پذیرش:** `A02.accepted=false` و `FINORA Phase 0 discovery=In Progress`. سالم‌بودن ZIP و شناسایی امضای SQL به‌معنی restore موفق یا مهاجرت تأییدشده نیست.
+
+
+### نتایج بازیابی آزمایشگاهی A02 — تکمیل بررسی اولیه در 2026-11-11
+
+- کپی ZIP روی رایانه آزمایشگاهی منتقل شد؛ SHA-256 کپی منتقل‌شده: `D8F275A93970C161F6747F7A44A8B49D0975329407E25261B35D099FF6E8A52E`. (هش فقط برای تشخیص یکسانی artifact است.)
+- موتور مقصد: SQL Server 2008 R2 SP2، نسخه `10.50.4000.0`، Express Edition with Advanced Services، 64-bit؛ نسخه منبع در هدر بکاپ نیز 10.50.4000 است. DatabaseVersion=661 و CompatibilityLevel=80.
+- `RESTORE HEADERONLY` و `RESTORE FILELISTONLY` موفق؛ یک backup set از نوع Database، دیتابیس منبع `Holoo1`، زمان backup: 2026-10-30 16:05:20 تا 16:05:27، Recovery Model=Simple، Collation=`Arabic_CI_AS`. هیچ encryption flag در هدر مشاهده نشد؛ نیازی به رمز در این restore نبود.
+- `RESTORE VERIFYONLY` گزارش کرد: `The backup set on file 1 is valid.` همچنین مسیرهای MDF/LDF ثبت‌شده در بکاپ روی میزبان مقصد وجود نداشتند؛ این مشکل با MOVE به مسیر آزمایشگاه رفع شد. هشدار اولیه فضای ذخیره‌سازی نیز بررسی شد؛ حدود 9GB فضای آزاد در C: موجود بود.
+- Restore کامل و موفق فقط به دیتابیس جدید `FINORA_HOLOO_LAB_20261111` انجام شد؛ `WITH MOVE` و **بدون REPLACE**؛ وضعیت ONLINE/MULTI_USER. هیچ دیتابیس اصلی یا دیتابیس هلو overwrite نشده است.
+- `DBCC CHECKDB` روی دیتابیس آزمایشگاهی بدون پیام خطا یا خرابی خاتمه یافت.
+- شمارش ساختار: 334 جدول، 25 View، 179 Stored Procedure، 33 Function؛ 253 Primary Key، 2 Unique Constraint، **صفر Foreign Key و صفر Check Constraint**. این فقدان FK/Check یک ریسک مهم برای صحت referential integrity است و باید در آداپتور مهاجرت با کنترل‌های صریح پوشش داده شود.
+- شمارش‌های غیرشخصی: CompName=1 ردیف؛ USERDB=2؛ USERDBAcces=0؛ SARFASL=3,688؛ SANAD=26,747؛ SND_LIST=68,636؛ SND_INDX=16,367؛ FACTURE=15,898؛ FACTART=26,901؛ CUSTOMER=3,578؛ ARTICLE=2,491؛ Check=252؛ Cash=4؛ Process=35,542.
+- بازه FACTURE: 2023-07-28 تا 2026-10-30؛ بازه SANAD: 2023-07-27 تا 2026-10-30.
+- جمع Bed و Bes در SND_LIST هر دو برابر 7,241,067,685,030 و اختلاف جمعی صفر است. این یک کنترل جمعی اولیه است، نه اثبات توازن هر سند یا صحت مانده‌ها.
+- کنترل‌های ارتباطی اولیه: SND_LIST بدون SANAD=0؛ FACTURE با CUSTOMER ناشناخته=0؛ کلید تکراری SANAD=0؛ کلید تکراری سرآیند FACTURE=0؛ **یک ردیف FACTART بدون سرآیند FACTURE** یافت شد و باید در مرحله mapping بررسی شود، نه اینکه خودکار حذف شود.
+- SQL Server instance جداگانه `.\TNC` فهرست 10 دیتابیس شامل system databases را نشان داد (6 user databases)؛ اما بکاپ فعلی فقط یک دیتابیس `Holoo1` را شامل می‌شود و CompName آن یک ردیف دارد. این فایل به‌تنهایی اثبات‌کننده بکاپ هر ده شرکت نیست.
+- دیتابیس آزمایشگاهی روی رایانه آرام در `C:\FINORA-SQL-Lab` نگهداری می‌شود؛ فایل خام و داده‌های رکوردی در GitHub یا CI منتشر نشده‌اند. هیچ داده‌ای در این مرحله تغییر نکرده است.
+- **نتیجه پذیرش:** A02 از «قالب ناشناخته» به «restore آزمایشگاهی موفق و ساختار قابل شمارش» ارتقا یافت؛ اما مهاجرت داده، تطبیق سندبه‌سند، تعیین تکلیف یک orphan در FACTART، شناسایی تمام دیتابیس‌های شرکت و طراحی mapping هنوز باز است. وضعیت: `Implemented — Not Verified for migration`.
