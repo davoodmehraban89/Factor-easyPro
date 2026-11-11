@@ -378,6 +378,7 @@
 - گزارش ممیزی Runtime/Schema در [PR #197](https://github.com/davoodmehraban89/Factor-easyPro/pull/197) قرار دارد؛ PR هنوز Open و Merge نشده است. CI آن شامل Tests/Frontend Build و Windows Native Build موفق بوده؛ این PR فقط مستندات است و کد اجرایی محصول را تغییر نمی‌دهد.
 - [PR #196](https://github.com/davoodmehraban89/Factor-easyPro/pull/196) نیز مستند Backup بومی هلو است و هنوز Open است؛ Restore در آن PR انجام نشده و A02 پذیرفته نیست.
 - Clone هم‌ساختار Holoo1 با نام Holoo1_FACTORLAB_20261110 در Instance مرجع فقط پس از Backup معتبر و کنترل صفر بودن نشست‌ها به READ_ONLY تغییر کرد. Holoo1 و Holoo6 عملیاتی تغییر نکردند.
+- اختلاف ظاهری شمارش ایندکس حل شد: 440 ردیف PR #197 شامل 2 ردیف system-shipped است؛ شمارش فقط جدول‌های کاربری 438 و شمارش با system-shipped برابر 440 است. هر دو دامنه در Holoo1 و FACTORLAB برابرند.
 - Backup طلایی محلی با SHA-256 برابر B4029F76B53B607FE075416E1949A0EF55FDD0237E7280EF66C63B1C0F93C50B در مسیر خصوصی C:\FINORA-SQL-Lab\backups نگهداری می‌شود. فایل Backup یا داده عملیاتی وارد مخزن نشده است.
 - FINORA_HOLOO_LAB_20261111 از Backup مورخ 2026-10-30 ساخته شده و با Schema فعلی 16 اختلاف ستون، 2 اختلاف ماژول و 4 اختلاف Constraint دارد؛ برای parity نسخه فعلی استفاده نشود. DBCC آن موفق است، اما سلامت فیزیکی، قدیمی‌بودن Schema را جبران نمی‌کند.
 - HolooTemplate و HolooUpgrade هر کدام 106 جدول و 155 ردیف دارند و READ_ONLY هستند؛ Template یک ردیف CUSTOMER و یک ردیف FACTART دارد. هنوز Seed مصنوعی و قابل‌قبول بودن آن تأیید نشده است.
