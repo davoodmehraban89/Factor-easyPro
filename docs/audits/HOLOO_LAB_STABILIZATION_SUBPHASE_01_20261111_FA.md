@@ -131,6 +131,13 @@ Backup موجود Clone هم‌ساختار از مسیر محلی منبع به
 - طبق [Microsoft Lifecycle](https://learn.microsoft.com/en-us/lifecycle/products/microsoft-sql-server-2008-r2)، پشتیبانی Extended این محصول در 2019-07-10 پایان یافته است.
 - Instance جدید نصب نشد و فایل دانلودی نیز دریافت/اعتبارسنجی نشد. اجرای موتور EOL روی Windows 11 بدون VM/ایزولاسیون و رضایت صریح مالک توصیه نمی‌شود. طبق ADR-003، نصب به Media رسمی امضاشده، بررسی Hash/ناشر، نمایش EULA و رضایت صریح نیاز دارد.
 
+### 5.3. آمادگی مجازی‌سازی
+
+- CPU قابلیت VM Monitor Mode Extensions و Second Level Address Translation را گزارش کرد.
+- گزینه Virtualization Enabled In Firmware برابر No است؛ بنابراین اجرای Hyper-V/VM در وضعیت فعلی ممکن نیست.
+- هیچ تغییر BIOS/UEFI، فعال‌سازی Virtualization یا Restart انجام نشد.
+- مسیر امن پیشنهادی: فعال‌سازی VT-x/AMD-V در Firmware توسط مالک دستگاه، سپس ساخت VM آفلاین اختصاصی و نصب نسخه سازگار SQL در همان VM. تا آن زمان، نصب SQL Server 2008 R2 روی Host اصلی انجام نمی‌شود.
+
 ## 6. چرا هنوز Trace را شروع نمی‌کنیم؟
 
 سه نامزد موجود، هیچ‌کدام به‌تنهایی Working Lab تأییدشده نیستند:
