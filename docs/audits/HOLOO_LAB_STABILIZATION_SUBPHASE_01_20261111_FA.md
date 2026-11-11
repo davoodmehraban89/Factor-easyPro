@@ -127,7 +127,9 @@ Backup موجود Clone هم‌ساختار از مسیر محلی منبع به
 - فایل Bootstrap موجود SQL Server 2008 R2 نسخه 10.50.4000.0 دارد؛ امضای Authenticode آن معتبر گزارش شد و SHA-256 برابر 041B2E423A8FE5B67C3F09C8C9E9E58C1958C6E44912A385A65F78FA1E7D714C است.
 - اندازه خود Bootstrap فقط 171,976 بایت و مجموع پوشه Setup Bootstrap حدود 26,969,675 بایت است.
 - در مسیرهای محلی بررسی‌شده، رسانه کامل نصب SQLEXPR یا SQL Server 2008 R2 پیدا نشد؛ Bootstrap به‌تنهایی اثبات‌کننده وجود Media کامل نیست.
-- Instance جدید نصب نشد. طبق ADR-003، نصب SQL Express به Media رسمی امضاشده، بررسی Hash/ناشر، نمایش EULA و رضایت صریح نیاز دارد. از Setup ناقص یا رسانه نامعتبر استفاده نمی‌شود.
+- [Microsoft Download Center](https://www.microsoft.com/en-ie/download/details.aspx?id=30438) هنوز SQL Server 2008 R2 SP2 Express نسخه 10.50.4000.0 را فهرست می‌کند؛ اما سیستم‌عامل‌های فهرست‌شده شامل Windows 11 نیستند.
+- طبق [Microsoft Lifecycle](https://learn.microsoft.com/en-us/lifecycle/products/microsoft-sql-server-2008-r2)، پشتیبانی Extended این محصول در 2019-07-10 پایان یافته است.
+- Instance جدید نصب نشد و فایل دانلودی نیز دریافت/اعتبارسنجی نشد. اجرای موتور EOL روی Windows 11 بدون VM/ایزولاسیون و رضایت صریح مالک توصیه نمی‌شود. طبق ADR-003، نصب به Media رسمی امضاشده، بررسی Hash/ناشر، نمایش EULA و رضایت صریح نیاز دارد.
 
 ## 6. چرا هنوز Trace را شروع نمی‌کنیم؟
 
