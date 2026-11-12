@@ -163,6 +163,27 @@ async function purchaseInvoice() {
   const chosen = document.querySelector('.product-option[data-id="' + p.id + '"]');
   check(chosen, 'product autocomplete selection failed');
   chosen.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  // Actual installed WebView2 input event, not merely a pure formatting unit test:
+  // a quantity of 2.5 must not be converted to 25, and grouping must keep dot.
+  const quantityField = document.querySelector('.row-qty');
+  check(quantityField?.dataset.decimals === '3',
+    'Native invoice quantity field lacks the three-decimal precision contract');
+  quantityField.value = '1234.5';
+  quantityField.dispatchEvent(new Event('input', { bubbles: true }));
+  check(quantityField.value === '1,234.5',
+    'Native formatter removed fractional dot or failed live grouping');
+  quantityField.value = '2.5';
+  quantityField.dispatchEvent(new Event('input', { bubbles: true }));
+  check(quantityField.value === '2.5',
+    'Native input silently changed 2.5 to an incorrect financial quantity');
+  // Malformed paste must never silently become a new financial quantity.
+  quantityField.value = '2x5';
+  quantityField.dispatchEvent(new Event('input', { bubbles: true }));
+  check(quantityField.value === '2x5', 'Native formatter silently rewrote an invalid invoice amount');
+  await window.InvoiceFormView._save(false);
+  check(!(await FINORA.Storage.getAll('invoices')).some(x => x.contactId === c.id && x.kind === 'purchase'),
+    'Malformed native invoice quantity committed financial data');
+  // Restore the original synthetic invoice fixture before financial posting.
   document.querySelector('.row-qty').value = '10';
   window.InvoiceFormView._onFieldChange(0, 'qty', '10');
   document.querySelector('.row-price').value = '100';

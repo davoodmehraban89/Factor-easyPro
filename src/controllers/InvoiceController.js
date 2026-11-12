@@ -9,6 +9,7 @@ import { SettingsController } from './SettingsController.js';
 import { LicenseService } from '../core/LicenseService.js';
 import { DataScope } from '../core/DataScope.js';
 import { RetailPostingService } from '../core/RetailPostingService.js';
+import { amount, lineGrossRials, percentOfRials } from '../core/RetailFinanceCore.mjs';
 
 class InvoiceControllerImpl {
   // شماره‌ی بعدی سریال (بر اساس نوع سند)
@@ -38,15 +39,23 @@ class InvoiceControllerImpl {
     }
     const user = Auth.current();
     const items = (data.items || []).map(it => {
-      const qty = Number(it.qty) || 0;
-      const price = Number(it.price) || 0;
-      const lineSubtotal = qty * price;
+      const qty = Number(it.qty);
+      const price = amount(it.price ?? 0, 'قیمت');
+      // Both UI and persisted invoice use the exact same whole-rial rule.
+      // Reject quantities with >3 decimals and monetary overflow before writes.
+      const lineSubtotal = lineGrossRials(qty, price);
       let lineDiscount = 0;
-      const discInput = Number(it.discount) || 0;
+      // The form stores the USER'S percentage in discountInput and the
+      // resulting rial discount in discount. Reusing discount as a percent
+      // would apply the reduction twice when saving a line.
+      const discInput = Number(it.discountInput ?? it.discount ?? 0);
+      if (!Number.isFinite(discInput) || discInput < 0 ||
+          !['fixed','percent'].includes(it.discountType || 'fixed'))
+        throw Error('تخفیف ردیف فاکتور نامعتبر است');
       if (it.discountType === 'percent') {
-        lineDiscount = Math.round(lineSubtotal * discInput / 100);
+        lineDiscount = percentOfRials(lineSubtotal,it.discountInput ?? it.discount ?? 0,'درصد تخفیف ردیف');
       } else {
-        lineDiscount = discInput;
+        lineDiscount = amount(it.discountInput ?? it.discount ?? 0,'تخفیف ثابت ردیف');
       }
       lineDiscount = Math.max(0, Math.min(lineDiscount, lineSubtotal));
       const lineTotal = lineSubtotal - lineDiscount;
@@ -64,30 +73,35 @@ class InvoiceControllerImpl {
       };
     });
 
-    const subtotal = items.reduce((s, it) => s + it.lineTotal, 0);
+    // Every intermediate must fit a safe integer, including pre-invoices
+    // that bypass the finalized double-entry posting boundary.
+    const subtotal = items.reduce((sum, it) => amount(sum + it.lineTotal, 'جمع فاکتور'), 0);
 
     // تخفیف کلی
     let totalDiscount = 0;
-    const discInput = Number(data.discountInput) || 0;
+    const discInput = data.discountInput ?? 0;
+    if (!['fixed','percent'].includes(data.discountType || 'fixed'))
+      throw Error('نوع تخفیف کل فاکتور نامعتبر است');
     if (data.discountType === 'percent') {
-      totalDiscount = Math.round(subtotal * discInput / 100);
+      totalDiscount = percentOfRials(subtotal,discInput,'درصد تخفیف کل');
     } else {
-      totalDiscount = discInput;
+      totalDiscount = amount(discInput,'تخفیف ثابت کل');
     }
     totalDiscount = Math.max(0, Math.min(totalDiscount, subtotal));
 
     const afterDiscount = Math.max(0, subtotal - totalDiscount);
 
     // مالیات
+    // Validate supplied VAT rate even for tax-exempt invoices.
+    const vatRate = data.vatRate ?? 0;
+    percentOfRials(0,vatRate,'درصد مالیات');
     let vatAmount = 0;
-    if (data.vatEnabled && data.kind !== 'non_formal') {
-      const rate = Number(data.vatRate) || 0;
-      vatAmount = Math.round(afterDiscount * rate / 100);
-    }
-    const grandTotal = afterDiscount + vatAmount;
+    if (data.vatEnabled && data.kind !== 'non_formal')
+      vatAmount = percentOfRials(afterDiscount,vatRate,'درصد مالیات');
+    const grandTotal = amount(afterDiscount + vatAmount, 'جمع کل فاکتور');
 
     // پرداخت
-    const paidAmount = Math.max(0, Math.min(Number(data.paidAmount) || 0, grandTotal));
+    const paidAmount = Math.min(amount(data.paidAmount ?? 0,'مبلغ پرداخت'), grandTotal);
     const remaining = Math.max(0, grandTotal - paidAmount);
 
     const baseData = {
@@ -102,9 +116,9 @@ class InvoiceControllerImpl {
       subtotal,
       totalDiscount,
       discountType: data.discountType || 'fixed',
-      discountInput: discInput,
+      discountInput: Number(discInput),
       vatEnabled: !!data.vatEnabled,
-      vatRate: Number(data.vatRate) || 0,
+      vatRate: Number(vatRate),
       vatAmount,
       grandTotal,
       paymentMethod: data.paymentMethod || 'cash',
