@@ -14,6 +14,8 @@ import { ACCOUNT_LEVELS, ACCOUNT_TYPES } from '../core/AccountingCore.mjs';
 const levelNames = { group: 'گروه', general: 'کل', subsidiary: 'معین', detail: 'تفصیلی' };
 const typeNames = { asset: 'دارایی', liability: 'بدهی', equity: 'حقوق مالکانه', revenue: 'درآمد', expense: 'هزینه' };
 const html = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Encode both JavaScript argument quotes and the enclosing HTML attribute.
+const actionArg = value => html(JSON.stringify(String(value ?? '')));
 const digits = input => String(input ?? '').replace(/[۰-۹]/g, c => String(c.charCodeAt(0) - 1776)).replace(/[٠-٩]/g, c => String(c.charCodeAt(0) - 1632));
 const rial = input => {
   const raw = digits(input).replace(/[,_،\s]/g, '');
@@ -203,7 +205,7 @@ class AccountingViewImpl {
       <td><strong>${html(p.name)}</strong></td>
       <td>${html(p.startDate)}</td><td>${html(p.endDate)}</td>
       <td><span class="badge ${p.closed ? 'badge-muted' : 'badge-success'}">${p.closed ? 'بسته' : 'باز'}</span></td>
-      <td>${p.closed ? '—' : `<button class="btn btn-secondary" onclick="window.AccountingView.closePeriod('${html(p.id)}')">بستن دوره</button>`}</td></tr>`).join('');
+      <td>${p.closed ? '—' : `<button class="btn btn-secondary" onclick="window.AccountingView.closePeriod(${actionArg(p.id)})">بستن دوره</button>`}</td></tr>`).join('');
     return `<div class="card">
       <div class="toolbar"><strong>دوره‌های مالی</strong>
       <button class="btn" onclick="window.AccountingView.openPeriodModal()">افزودن دوره مالی</button></div>
@@ -230,12 +232,12 @@ class AccountingViewImpl {
       <td>${Formatters.number(j.debit || 0)}</td><td>${Formatters.number(j.credit || 0)}</td>
       <td><span class="badge ${j.status === 'posted' ? 'badge-success' : 'badge-warning'}">${j.status === 'posted' ? 'قطعی' : 'پیش‌نویس'}</span>${j.reversedById ? ' / برگشت‌خورده' : ''}</td>
       <td style="white-space:nowrap">
-        <button class="btn btn-secondary" onclick="window.AccountingView.showJournal('${html(j.id)}')">مشاهده</button>
-        ${j.status === 'draft' ? `<button class="btn btn-secondary" onclick="window.AccountingView.openJournalModal('${html(j.id)}')">ویرایش</button>
-        <button class="btn" onclick="window.AccountingView.postDraft('${html(j.id)}')">قطعی</button>
-        <button class="btn btn-secondary" onclick="window.AccountingView.deleteDraft('${html(j.id)}')">حذف پیش‌نویس</button>` : ''}
+        <button class="btn btn-secondary" onclick="window.AccountingView.showJournal(${actionArg(j.id)})">مشاهده</button>
+        ${j.status === 'draft' ? `<button class="btn btn-secondary" onclick="window.AccountingView.openJournalModal(${actionArg(j.id)})">ویرایش</button>
+        <button class="btn" onclick="window.AccountingView.postDraft(${actionArg(j.id)})">قطعی</button>
+        <button class="btn btn-secondary" onclick="window.AccountingView.deleteDraft(${actionArg(j.id)})">حذف پیش‌نویس</button>` : ''}
         ${j.status === 'posted' && !j.reversedById && !j.reversalOfId
-          ? `<button class="btn btn-secondary" onclick="window.AccountingView.openReversal('${html(j.id)}')">برگشت</button>` : ''}
+          ? `<button class="btn btn-secondary" onclick="window.AccountingView.openReversal(${actionArg(j.id)})">برگشت</button>` : ''}
       </td></tr>`).join('');
     return `<div class="card">
       <div class="toolbar"><strong>اسناد حسابداری مستقل</strong>
@@ -255,7 +257,7 @@ class AccountingViewImpl {
     const rows = result.rows.map(r => `<tr><td>${html(r.code)}</td><td>${html(r.name)}</td>
       <td>${Formatters.number(r.debit)}</td><td>${Formatters.number(r.credit)}</td><td>${Formatters.number(r.balance)}</td></tr>`).join('');
     return `<div class="card"><div class="toolbar"><strong>تراز آزمایشی اسناد قطعی</strong>
-      <select class="form-control" style="max-width:210px" onchange="window.AccountingView.setTrialPeriod(this.value)">${opts}</select></div>
+      <select class="form-control" style="max-width:210px" aria-label="دوره تراز آزمایشی" onchange="window.AccountingView.setTrialPeriod(this.value)">${opts}</select></div>
       <div class="table-wrap"><table><thead><tr><th>کد</th><th>حساب</th><th>گردش بدهکار</th><th>گردش بستانکار</th><th>مانده بدهکار - بستانکار</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="5">گردشی وجود ندارد.</td></tr>'}</tbody>
       <tfoot><tr><th colspan="2">جمع</th><th>${Formatters.number(result.totals.debit)}</th><th>${Formatters.number(result.totals.credit)}</th><th>۰</th></tr></tfoot>
@@ -440,10 +442,10 @@ class AccountingViewImpl {
   }
   journalRow(line = {}) {
     return `<tr class="ac-journal-line">
-      <td><select class="form-control ac-line-account">${this.accountOptions(line.accountId)}</select></td>
-      <td><input class="form-control ac-line-debit" inputmode="text" placeholder="۰" value="${html(line.debit ?? '0')}"></td>
-      <td><input class="form-control ac-line-credit" inputmode="text" placeholder="۰" value="${html(line.credit ?? '0')}"></td>
-      <td><input class="form-control ac-line-note" value="${html(line.description || '')}"></td>
+      <td><select class="form-control ac-line-account" aria-label="حساب ردیف سند">${this.accountOptions(line.accountId)}</select></td>
+      <td><input class="form-control ac-line-debit" aria-label="مبلغ بدهکار ردیف" inputmode="text" placeholder="۰" value="${html(line.debit ?? '0')}"></td>
+      <td><input class="form-control ac-line-credit" aria-label="مبلغ بستانکار ردیف" inputmode="text" placeholder="۰" value="${html(line.credit ?? '0')}"></td>
+      <td><input class="form-control ac-line-note" aria-label="شرح ردیف سند" value="${html(line.description || '')}"></td>
       <td><button class="btn btn-secondary" onclick="this.closest('tr').remove()">حذف</button></td>
     </tr>`;
   }
@@ -572,7 +574,7 @@ class AccountingViewImpl {
       <td>${Formatters.number(b.quantityUnits/1000)}</td><td>${Formatters.number(b.value)} ریال</td></tr>`).join('');
     const takeRows=stocktakes.map(s=>`<tr><td>${html(warehouseNames[s.warehouseId]||s.warehouseId)}</td>
       <td>${html(s.date)}</td><td>${s.status==='draft'?'در انتظار شمارش':'قطعی'}</td>
-      <td><button class="btn btn-secondary" onclick="window.AccountingView.openStocktake('${html(s.id)}')">مشاهده و شمارش</button></td></tr>`).join('');
+      <td><button class="btn btn-secondary" onclick="window.AccountingView.openStocktake(${actionArg(s.id)})">مشاهده و شمارش</button></td></tr>`).join('');
     return `<div class="card"><div class="toolbar"><strong>حسابداری یکپارچه فعال است</strong>
       <button class="btn" onclick="window.AccountingView.openWarehouse()">انبار جدید</button>
       <button class="btn btn-secondary" onclick="window.AccountingView.openTransfer()">انتقال کالا</button>
@@ -594,7 +596,7 @@ class AccountingViewImpl {
   }
   openWarehouse() {
     Modal.open({title:'ایجاد انبار',size:'sm',closeOnBackdrop:false,
-      body:'<label class="form-label">نام انبار</label><input id="acWhName" class="form-control">',
+      body:'<label class="form-label" for="acWhName">نام انبار</label><input id="acWhName" class="form-control">',
       footer:'<button class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button><button class="btn" onclick="window.AccountingView.saveWarehouse()">ثبت انبار</button>'});
   }
   async saveWarehouse() {
@@ -636,8 +638,8 @@ class AccountingViewImpl {
       const warehouses=await Retail.warehouses();
       const options=warehouses.map(w=>`<option value="${html(w.id)}">${html(w.name)}</option>`).join('');
       Modal.open({title:'شروع شمارش انبار',size:'sm',closeOnBackdrop:false,
-        body:`<label class="form-label">انبار</label><select class="form-control" id="acStWarehouse">${options}</select>
-          <label class="form-label">تاریخ شمسی</label><input class="form-control" id="acStDate" value="${safeDate()}">
+        body:`<label class="form-label" for="acStWarehouse">انبار</label><select class="form-control" id="acStWarehouse">${options}</select>
+          <label class="form-label" for="acStDate">تاریخ شمسی</label><input class="form-control" id="acStDate" value="${safeDate()}">
           <p style="margin-top:12px">موجودی مبنا ثابت ثبت می‌شود؛ برای تأیید، شمارش همه اقلام ضروری است.</p>`,
         footer:'<button class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button><button class="btn" onclick="window.AccountingView.createStocktake()">ایجاد جلسه</button>'});
     }catch(e){Toast.error(e.message)}

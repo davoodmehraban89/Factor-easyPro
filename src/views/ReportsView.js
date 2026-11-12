@@ -105,9 +105,9 @@ class ReportsViewImpl {
     const customInputs = currentFilter.preset === 'custom' ? `
       <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
         <span style="font-size:12.5px;color:var(--text-muted)">از تاریخ:</span>
-        <input type="text" class="form-control" style="width:130px" placeholder="1405/01/01" value="${this._esc(currentFilter.from)}" onchange="window.ReportsView._setCustomDate('from', this.value)" />
+        <input type="text" class="form-control" style="width:130px" placeholder="1405/01/01" aria-label="از تاریخ گزارش" value="${this._esc(currentFilter.from)}" onchange="window.ReportsView._setCustomDate('from', this.value)" />
         <span style="font-size:12.5px;color:var(--text-muted)">تا تاریخ:</span>
-        <input type="text" class="form-control" style="width:130px" placeholder="1405/06/27" value="${this._esc(currentFilter.to)}" onchange="window.ReportsView._setCustomDate('to', this.value)" />
+        <input type="text" class="form-control" style="width:130px" placeholder="1405/06/27" aria-label="تا تاریخ گزارش" value="${this._esc(currentFilter.to)}" onchange="window.ReportsView._setCustomDate('to', this.value)" />
         <button class="btn btn-secondary btn-inline" style="font-size:12px;min-height:34px" onclick="window.ReportsView._applyCustom()">اعمال</button>
       </div>
     ` : '';
