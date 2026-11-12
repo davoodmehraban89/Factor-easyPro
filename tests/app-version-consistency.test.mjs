@@ -15,3 +15,9 @@ test('A07: desktop and application version use a single package manifest', () =>
   assert.match(html, /id="appVersionLabel"/);
   assert.match(entry, /visibleVersion\.textContent\s*=\s*'نسخه '\s*\+\s*FINORA\.version/);
 });
+
+test('A07: settings About card uses manifest version', () => {
+  const settings = read('src/views/SettingsView.js');
+  assert.match(settings, /import appPackage from/);
+  assert.ok(settings.includes('نسخه '+ '$' + '{appPackage.version}'));
+});

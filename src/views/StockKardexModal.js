@@ -3,6 +3,7 @@
 // ============================================================
 
 import { ProductController } from '../controllers/ProductController.js';
+import { RetailPostingService } from '../core/RetailPostingService.js';
 import { Modal } from '../core/Modal.js';
 import { Toast } from '../core/Toast.js';
 import { Formatters } from '../utils/Formatters.js';
@@ -19,22 +20,29 @@ class StockKardexModalImpl {
 
     const kardex = await ProductController.getKardex(productId);
 
-    const body = this._buildBody(product, kardex);
+    const retailEnabled = await RetailPostingService.isEnabled();
+    const body = this._buildBody(product, kardex, retailEnabled);
     const footer = this._buildFooter(product);
 
-    Modal.open({
+    const modal = Modal.open({
       title: `📊 کاردکس کالا: ${product.name}`,
       body,
       footer,
       size: 'lg'
     });
+    modal.card.dataset.stockKardexProductId = String(productId);
 
     window.__kardexProductId = productId;
   }
 
-  _buildBody(product, kardex) {
+  _buildBody(product, kardex, retailEnabled = false) {
     const isService = product.trackInventory === false;
     const minStock = Number(product.minStock) || 0;
+    const manualAdjustmentControl = isService
+      ? '<small style="color:var(--text-muted)">این مورد خدمت است و موجودی انبار برای آن پیگیری نمی‌شود.</small>'
+      : retailEnabled
+        ? '<small style="color:var(--text-muted)">در شرکت یکپارچه، اصلاح موجودی فقط از طریق عملیات انبارگردانی انجام می‌شود.</small>'
+        : `<button class="btn btn-secondary btn-inline" style="font-size:12px;min-height:34px;padding:4px 12px" onclick="window.StockKardexModal.openAdjustModal('${product.id}')">⚙️ اصلاح دستی موجودی</button>`;
     const currentStock = kardex.finalBalance;
     const isLow = !isService && currentStock <= minStock && currentStock > 0;
     const isOut = !isService && currentStock <= 0;
@@ -120,9 +128,7 @@ class StockKardexModalImpl {
         <div style="font-size:12.5px;color:var(--text-muted)">
           ریز حرکات انبار (${Formatters.toPersianDigits(kardex.rows.length)} مورد)
         </div>
-        <button class="btn btn-secondary btn-inline" style="font-size:12px;min-height:34px;padding:4px 12px" onclick="window.StockKardexModal.openAdjustModal('${product.id}')">
-          ⚙️ اصلاح دستی موجودی
-        </button>
+        ${manualAdjustmentControl}
       </div>
 
       <div class="table-wrap" style="max-height:400px;overflow-y:auto">
@@ -157,6 +163,14 @@ class StockKardexModalImpl {
   async openAdjustModal(productId) {
     const product = await ProductController.getProduct(productId);
     if (!product) return;
+    if (product.trackInventory === false) {
+      Toast.warning('برای خدمت امکان اصلاح موجودی وجود ندارد');
+      return;
+    }
+    if (await RetailPostingService.isEnabled()) {
+      Toast.warning('در شرکت یکپارچه، اصلاح موجودی از طریق انبارگردانی انجام می‌شود');
+      return;
+    }
     const currentStock = await ProductController.getStock(productId);
 
     const body = `
@@ -168,7 +182,7 @@ class StockKardexModalImpl {
 
       <div class="form-group">
         <label class="form-label">موجودی واقعی جدید <span class="req">*</span></label>
-        <input type="text" inputmode="numeric" class="form-control" id="adjQty" value="${NumberInput.format(currentStock)}" />
+        <input type="text" inputmode="numeric" class="form-control" id="adjQty" data-decimals="3" value="${NumberInput.format(currentStock, 3)}" />
         <small style="color:var(--text-muted);font-size:11.5px;display:block;margin-top:4px">
           عددی که اینجا وارد می‌کنی، به‌عنوان موجودی نهایی تنظیم می‌شه.
         </small>
@@ -189,7 +203,22 @@ class StockKardexModalImpl {
   }
 
   async saveAdjust(productId) {
-    const newQty = NumberInput.parse(document.getElementById('adjQty').value);
+    const product = await ProductController.getProduct(productId);
+    if (!product || product.trackInventory === false) {
+      Toast.warning('کالای انبارگردانی‌شونده معتبر نیست');
+      return;
+    }
+    if (await RetailPostingService.isEnabled()) {
+      Toast.warning('در شرکت یکپارچه، اصلاح موجودی از طریق انبارگردانی انجام می‌شود');
+      return;
+    }
+    let newQty;
+    try {
+      newQty = NumberInput.parseStrict(document.getElementById('adjQty'), { decimals: 3 });
+    } catch (error) {
+      Toast.warning('موجودی معتبر نیست: ' + error.message);
+      return;
+    }
     const note = (document.getElementById('adjNote').value || '').trim();
 
     if (isNaN(newQty) || newQty < 0) {
@@ -209,9 +238,10 @@ class StockKardexModalImpl {
 
       Toast.success('موجودی اصلاح شد');
 
-      // بستن و باز کردن مجدد کاردکس
+      // Close only the adjustment child and refresh its existing Kardex parent.
+      // Reopening a second Kardex dialog would leave a stale parent underneath.
       Modal.close();
-      setTimeout(() => this.open(productId), 300);
+      await this._refreshOpenKardex(productId);
 
       // رفرش جدول کالاها اگه بازه
       if (window.ProductsView && window.ProductsView.reload) {
@@ -226,6 +256,24 @@ class StockKardexModalImpl {
       console.error(err);
       Toast.error('خطا: ' + err.message);
     }
+  }
+
+  async _refreshOpenKardex(productId) {
+    const modal = Modal.stack.at(-1);
+    const product = await ProductController.getProduct(productId);
+    if (!product) return;
+    const kardex = await ProductController.getKardex(productId);
+    if (modal?.card?.isConnected &&
+        modal.card.dataset.stockKardexProductId === String(productId)) {
+      const retailEnabled = await RetailPostingService.isEnabled();
+      const body = modal.card.querySelector('.modal-body');
+      const title = modal.card.querySelector('.modal-title');
+      if (body) body.innerHTML = this._buildBody(product, kardex, retailEnabled);
+      if (title) title.textContent = `📊 کاردکس کالا: ${product.name}`;
+      modal.card.focus({ preventScroll: true });
+      return;
+    }
+    await this.open(productId);
   }
 
   // ============================================================

@@ -1,0 +1,129 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import 'fake-indexeddb/auto';
+import { StorageService } from '../src/core/StorageService.js';
+import { Auth } from '../src/core/Auth.js';
+import { CompanyService } from '../src/core/CompanyService.js';
+
+globalThis.window ??= globalThis;
+const { InvoiceController } = await import('../src/controllers/InvoiceController.js');
+
+async function setup() {
+  await StorageService.clearAll();
+  Auth.currentUser = { id: 'fractional-discount-admin', username: 'admin', role: 'admin' };
+  await StorageService.put('companies', { id: 'discount-test-company', name: 'Synthetic only' });
+  CompanyService.activeCompanyId = 'discount-test-company';
+}
+
+const base = discountInput => ({
+  kind: 'sale', isPreInvoice: true, date: '1405/07/18',
+  contactId: 'synthetic-contact', contactName: 'Synthetic',
+  items: [{productId: 'synthetic-product', productName: 'Synthetic',
+    qty: 2.5, price: 1200, discountType: 'percent',
+    discountInput, discount: 300}],
+  discountType: 'fixed', discountInput: 0,
+  vatEnabled: false, vatRate: 0, paidAmount: 0,
+  paymentMethod: 'credit'
+});
+
+test('fractional invoice with 10% row discount saves 10%, not computed 300% or 100%', async () => {
+  await setup();
+  const invoice = await InvoiceController.save(base(10));
+  assert.equal(invoice.items[0].lineSubtotal, 3000);
+  assert.equal(invoice.items[0].discountInput, 10);
+  assert.equal(invoice.items[0].discount, 300);
+  assert.equal(invoice.items[0].lineTotal, 2700);
+  assert.equal(invoice.subtotal, 2700);
+  assert.equal(invoice.grandTotal, 2700);
+  assert.equal((await StorageService.get('invoices', invoice.id)).grandTotal, 2700);
+});
+
+test('legacy line percent discount uses raw discount when discountInput is absent', async () => {
+  await setup();
+  const payload = base(10);
+  delete payload.items[0].discountInput;
+  payload.items[0].discount = 10;
+  const invoice = await InvoiceController.save(payload);
+  assert.equal(invoice.items[0].discount, 300);
+  assert.equal(invoice.items[0].lineTotal, 2700);
+});
+
+test('invalid row discount must fail before creating a financial invoice or preinvoice', async () => {
+  await setup();
+  for (const invalid of [101, -1, Infinity, 'invalid']) {
+    await assert.rejects(InvoiceController.save(base(invalid)), /تخفیف ردیف فاکتور نامعتبر|درصد تخفیف ردیف/);
+    assert.deepEqual(await StorageService.getByCompany('invoices', 'discount-test-company'), []);
+  }
+});
+
+test('preinvoice rejects fixed row discount above gross before writing', async () => {
+  await setup();
+  const payload = base(0);
+  payload.items[0].discountType = 'fixed';
+  payload.items[0].discountInput = 3001;
+  payload.items[0].discount = 3001;
+  await assert.rejects(InvoiceController.save(payload), /تخفیف ردیف بیش از مبلغ ناخالص است/);
+  assert.deepEqual(await StorageService.getByCompany('invoices', 'discount-test-company'), []);
+});
+
+test('overpayment above invoice total is rejected before writing a preinvoice', async () => {
+  await setup();
+  await assert.rejects(InvoiceController.save({ ...base(10), paidAmount: 2701 }), /مبلغ پرداخت بیش از مبلغ فاکتور است/);
+  assert.deepEqual(await StorageService.getByCompany('invoices', 'discount-test-company'), []);
+});
+
+test('partial payment form rejects amounts above the invoice total before save', () => {
+  const view = readFileSync(new URL('../src/views/InvoiceFormView.js', import.meta.url), 'utf8');
+  assert.match(view, /partialPaidAmount !== undefined && partialPaidAmount > ctx\.totals\.grandTotal/);
+});
+
+test('UI updates discountInput, not already-calculated rial discount, when typing', () => {
+  const view = readFileSync(new URL('../src/views/InvoiceFormView.js', import.meta.url), 'utf8');
+  assert.match(view, /if \(field === 'discount'\) \{[\s\S]*?ctx\.data\.items\[idx\]\.discountInput = NumberInput\.parseStrict\(value/);
+});
+
+
+test('preinvoice rejects safe-integer overflow across individually valid items before writing', async () => {
+  await setup();
+  const payload = base(10);
+  payload.items = [
+    { productId: 'synthetic-product-1', qty: 1, price: Number.MAX_SAFE_INTEGER, discountType: 'fixed', discountInput: 0 },
+    { productId: 'synthetic-product-2', qty: 1, price: 2, discountType: 'fixed', discountInput: 0 }
+  ];
+  await assert.rejects(InvoiceController.save(payload), /جمع فاکتور نامعتبر/);
+  assert.deepEqual(await StorageService.getByCompany('invoices', 'discount-test-company'), []);
+});
+
+test('malformed VAT, global discount or payment inputs are rejected before invoice save', async () => {
+  await setup();
+  for(const patch of [
+    { vatEnabled: true, vatRate: -0.01 }, { vatEnabled: true, vatRate: 'bad' },
+    { discountType: 'percent', discountInput: 100.001 },
+    { discountType: 'fixed', discountInput: -1 },
+    { paidAmount: Infinity }, { paidAmount: -1 }
+  ]) {
+    await assert.rejects(InvoiceController.save({ ...base(10), ...patch }), /درصد|نامعتبر|صحیح/);
+    assert.deepEqual(await StorageService.getByCompany('invoices','discount-test-company'),[]);
+  }
+});
+
+test('global fixed discount above subtotal is rejected without a preinvoice write', async () => {
+  await setup();
+  const payload = { ...base(10), discountType: 'fixed', discountInput: 2701 };
+  await assert.rejects(InvoiceController.save(payload), /تخفیف کل/);
+  assert.deepEqual(await StorageService.getByCompany('invoices', 'discount-test-company'), []);
+});
+
+test('global fixed discount equal to subtotal is valid and produces zero total', async () => {
+  await setup();
+  const invoice = await InvoiceController.save({ ...base(10), discountInput: 2700 });
+  assert.equal(invoice.totalDiscount, 2700);
+  assert.equal(invoice.grandTotal, 0);
+  assert.equal(invoice.remaining, 0);
+});
+test('invoice form rejects excessive global fixed discount before invoking persistence', () => {
+  const view = readFileSync(new URL('../src/views/InvoiceFormView.js', import.meta.url), 'utf8');
+  assert.match(view, /discountInput > ctx\.totals\.subtotal/);
+  assert.match(view, /تخفیف کل نمی‌تواند بیشتر از مبلغ فاکتور باشد/);
+});
