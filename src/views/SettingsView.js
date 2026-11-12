@@ -14,8 +14,12 @@ import { ExcelController } from '../controllers/ExcelController.js';
 import { inspectSettlementConsistency } from '../core/FinancialDiagnosticsService.js';
 import { AuditService } from '../core/AuditService.js';
 import { LicenseService } from '../core/LicenseService.js';
+import { probeHolooBackupZip } from '../core/HolooBackupProbe.mjs';
 
 let cache = { company: {}, stats: {}, invoiceSettings: { numberingMode: 'auto', nextNumber: 1 } };
+// Excel workbooks can contain private customer data. Never retain previews on window.
+let pendingExcelImport = null;
+let excelImportBusy = false;
 
 class SettingsViewImpl {
   async render() {
@@ -32,6 +36,7 @@ class SettingsViewImpl {
         ${this._renderExcelCard()}
         ${this._renderShortcutsCard()}
         ${this._renderBackupCard()}
+        ${Auth.isAdmin() ? this._renderHolooBackupCard() : ''}
         ${Auth.isAdmin() ? this._renderLicenseCard() : ''}
         ${this._renderStatsCard()}
         ${Auth.isAdmin() ? this._renderHealthCard() : ''}
@@ -128,14 +133,14 @@ class SettingsViewImpl {
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">نحوه شماره‌گذاری</label>
+          <label class="form-label" for="invoiceNumberingMode">نحوه شماره‌گذاری</label>
           <select class="form-control" id="invoiceNumberingMode">
             <option value="auto" ${s.numberingMode === 'auto' ? 'selected' : ''}>خودکار</option>
             <option value="manual" ${s.numberingMode === 'manual' ? 'selected' : ''}>دستی</option>
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">شماره بعدی فاکتور</label>
+          <label class="form-label" for="invoiceNextNumber">شماره بعدی فاکتور</label>
           <input class="form-control" id="invoiceNextNumber" type="number" min="1" value="${Number(s.nextNumber) || 1}" />
         </div>
         <button class="btn" onclick="window.SettingsView.saveInvoiceSettings()">💾 ذخیره تنظیمات فاکتور</button>
@@ -314,34 +319,50 @@ class SettingsViewImpl {
           <label class="form-label">حالت ورود</label>
           <select class="form-control" id="importMode">
             <option value="merge">🔀 ادغام (Merge) — فقط موارد جدید اضافه می‌شن</option>
-            <option value="replace">🔄 جایگزینی (Replace) — همه‌ی ${kindLabel} فعلی پاک و از فایل جایگزین می‌شن</option>
+
           </select>
+          <p style="font-size:12px;color:var(--text-muted);margin-top:8px">حذف و جایگزینی گروهی برای محافظت از سوابق مالی غیرفعال است؛ فقط موارد جدید ادغام می‌شوند.</p>
         </div>
       `;
       const footer = `
-        <button class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button>
-        <button class="btn btn-success" onclick="window.SettingsView._confirmImport(${JSON.stringify(kind).replace(/"/g, "'")}, '${this._esc(file.name)}')">✅ شروع ایمپورت</button>
+        <button type="button" class="btn btn-secondary" onclick="FINORA.Modal.close()">انصراف</button>
+        <button type="button" class="btn btn-success" data-excel-import-submit>✅ شروع ایمپورت</button>
       `;
-      Modal.open({ title: `📤 ورود ${kindLabel} از Excel`, body, footer, size: 'md' });
-
-      // ذخیره‌ی موقت داده
-      window.__importRawData = preview.raw;
-      window.__importKind = kind;
+      const pending = { kind, rawData: preview.raw, card: null };
+      pendingExcelImport = pending;
+      const modal = Modal.open({
+        title: `📤 ورود ${kindLabel} از Excel`, body, footer, size: 'md',
+        onClose: () => {
+          // Cancel/close releases the private workbook immediately.
+          if (pendingExcelImport === pending) pendingExcelImport = null;
+        }
+      });
+      pending.card = modal.card;
+      modal.card.querySelector('[data-excel-import-submit]').addEventListener('click', () => this._confirmImport(kind));
     } catch (err) {
       console.error(err);
       Toast.error('خطا: ' + err.message);
     }
   }
 
-  async _confirmImport(kind, fileName) {
-    const mode = document.getElementById('importMode').value;
-    const rawData = window.__importRawData;
+  async _confirmImport(kind) {
+    const mode = document.getElementById('importMode')?.value;
+    const pending = pendingExcelImport;
+    if (excelImportBusy) return;
+    if (mode !== 'merge' || !['products', 'contacts'].includes(kind) || pending?.kind !== kind) {
+      Toast.error('حالت ورود نامعتبر است؛ هیچ اطلاعاتی تغییر نکرد.');
+      return;
+    }
+    const rawData = pending?.rawData;
 
     if (!rawData) {
       Toast.error('داده‌ای برای ایمپورت نیست');
       return;
     }
 
+    excelImportBusy = true;
+    const submitButton = pending.card?.querySelector('[data-excel-import-submit]');
+    if (submitButton) submitButton.disabled = true;
     try {
       Toast.info('در حال ایمپورت...');
       let result;
@@ -351,7 +372,7 @@ class SettingsViewImpl {
         result = await ExcelController.importContacts(rawData, { mode });
       }
 
-      Modal.close();
+      if (Modal.stack[Modal.stack.length - 1]?.card === pending.card) Modal.close();
       Toast.success(`ایمپورت انجام شد: ${Formatters.number(result.added)} اضافه، ${Formatters.number(result.skipped)} رد شده`);
 
       // رفرش KPI ها
@@ -362,8 +383,8 @@ class SettingsViewImpl {
       console.error(err);
       Toast.error('خطا در ایمپورت: ' + err.message);
     } finally {
-      window.__importRawData = null;
-      window.__importKind = null;
+      excelImportBusy = false;
+      if (pendingExcelImport === pending) pendingExcelImport = null;
     }
   }
 
@@ -418,11 +439,11 @@ class SettingsViewImpl {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)">
           <div class="form-group" style="margin-bottom:0">
             <label class="form-label">تعداد صفرهای کلید +</label>
-            <input type="text" inputmode="numeric" class="form-control" id="scPlusZeros" value="${Formatters.toPersianDigits(s.plusZeros)}" />
+            <input type="text" inputmode="numeric" class="form-control" id="scPlusZeros" aria-label="تعداد صفرهای میانبر مثبت" value="${Formatters.toPersianDigits(s.plusZeros)}" />
           </div>
           <div class="form-group" style="margin-bottom:0">
             <label class="form-label">تعداد صفرهای کلید −</label>
-            <input type="text" inputmode="numeric" class="form-control" id="scMinusZeros" value="${Formatters.toPersianDigits(s.minusZeros)}" />
+            <input type="text" inputmode="numeric" class="form-control" id="scMinusZeros" aria-label="تعداد صفرهای میانبر منفی" value="${Formatters.toPersianDigits(s.minusZeros)}" />
           </div>
         </div>
 
@@ -468,6 +489,115 @@ class SettingsViewImpl {
         if (grid) grid.innerHTML = this._renderAllCards();
       }
     });
+  }
+
+
+  // A02: local ZIP metadata intake only; it cannot restore SQL Server databases.
+  _renderHolooBackupCard() {
+    return [
+      '<div class="card settings-card">',
+      '  <div class="settings-card-header">',
+      '    <div class="settings-card-icon">📦</div>',
+      '    <div>',
+      '      <h3 class="settings-card-title">آماده‌سازی انتقال از هلو (آزمایشی)</h3>',
+      '      <p class="settings-card-desc">تشخیص اولیه فایل ZIP، بدون ارسال یا ثبت داده</p>',
+      '    </div>',
+      '  </div>',
+      '  <p style="font-size:12px;line-height:1.9;color:var(--text-muted)">این مرحله فقط ساختار بسته ZIP را شناسایی می‌کند. بازیابی SQL Server، انتقال اطلاعات و تأیید صحت حسابداری هنوز پیاده‌سازی نشده‌اند.</p>',
+      '  <button class="btn btn-secondary" onclick="window.SettingsView.openHolooBackupProbe()">انتخاب بکاپ هلو و بررسی اولیه</button>',
+      '  <button class="btn btn-secondary" style="margin-top:8px" onclick="window.SettingsView.checkHolooMigrationReadiness()">بررسی پیش‌نیازهای رایانه برای انتقال از هلو</button>',
+      '</div>'
+    ].join('');
+  }
+
+  // Native read-only system diagnostics; never installs or configures SQL Server.
+  async checkHolooMigrationReadiness() {
+    if (!Auth.isAdmin()) {
+      Toast.error('فقط مدیر می‌تواند پیش‌نیازهای مهاجرت را بررسی کند');
+      return;
+    }
+    const invoke = globalThis.__TAURI_INTERNALS__?.invoke;
+    if (typeof invoke !== 'function') {
+      Toast.warning('بررسی پیش‌نیازها فقط در نسخه نصب‌شده ویندوز امکان‌پذیر است');
+      return;
+    }
+    try {
+      const report = await invoke('migration_system_readiness');
+      const fmtCount = value => Number.isInteger(value) && value >= 0
+        ? (value === 0 ? 'یافت نشد' : Formatters.number(value) + ' مورد شناسایی شد')
+        : 'امکان تشخیص وجود ندارد';
+      const body = [
+        '<p>این بررسی فقط وضعیت رایانه را می‌خواند؛ چیزی نصب یا تغییر داده نمی‌شود.</p>',
+        '<div style="font-size:12.5px;line-height:2.2">',
+        '<div>ویندوز ۶۴ بیتی: <strong>' + (report.windowsX64 ? 'شناسایی شد' : 'شناسایی نشد') + '</strong></div>',
+        '<div>نمونه‌های SQL Server: <strong>' + fmtCount(report.sqlInstanceCount) + '</strong></div>',
+        '<div>نسخه‌های LocalDB: <strong>' + fmtCount(report.localdbVersionCount) + '</strong></div>',
+        '<div>فضای آزاد درایو داده کاربر: <strong>' +
+          (Number.isSafeInteger(report.freeGibAtUserAppData)
+            ? Formatters.number(report.freeGibAtUserAppData) + ' گیگابایت'
+            : 'قابل تشخیص نیست') + '</strong></div>',
+        '</div>',
+        '<div class="backup-warning" style="margin-top:12px">',
+        '⚠️ شناسایی SQL به معنی سازگاری آن با بکاپ هلو نیست. ',
+        'هنوز SQL Server نصب نشده، فایل هلو بازیابی نشده و ورود اطلاعات مالی فعال نیست.',
+        '</div>'
+      ].join('');
+      Modal.open({
+        title: 'وضعیت پیش‌نیازهای مهاجرت هلو — فقط خواندنی',
+        body,
+        footer: '<button class="btn" onclick="FINORA.Modal.close()">بستن</button>',
+        size: 'md'
+      });
+    } catch {
+      // Avoid exposing native exception text or local configuration details.
+      Toast.error('بررسی پیش‌نیازها انجام نشد؛ هیچ تغییری در سیستم ایجاد نشد');
+    }
+  }
+
+  openHolooBackupProbe() {
+    if (!Auth.isAdmin()) {
+      Toast.error('فقط مدیر می‌تواند بررسی بکاپ هلو را آغاز کند');
+      return;
+    }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.zip';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const report = await probeHolooBackupZip(file);
+        Modal.open({
+          title: 'پیش‌بررسی بکاپ هلو — فقط خواندنی',
+          body: [
+            '<p>ساختار اولیه یک فایل ZIP تک‌ورودی شناسایی شد.</p>',
+            '<div style="font-size:12px;line-height:2">',
+            '<div>فایل: <strong>' + this._esc(file.name) + '</strong></div>',
+            '<div>محتوای بسته: <strong>' + this._esc(report.entryName) + '</strong></div>',
+            '<div>حجم فایل داخلی: <strong>' + Formatters.number(report.uncompressedSize) + '</strong> بایت</div>',
+            '</div>',
+            '<div class="backup-warning" style="margin-top:12px">',
+            '⚠️ این نتیجه به معنای صحت بکاپ SQL Server یا امکان انتقال اطلاعات مالی نیست. ',
+            'برای ادامه باید فایل در محیط ایزوله بازیابی و ساختار جداول و مانده‌ها تطبیق داده شود. ',
+            'تا آن زمان هیچ داده‌ای وارد نرم‌افزار نمی‌شود.',
+            '</div>'
+          ].join(''),
+          footer: '<button class="btn" onclick="FINORA.Modal.close()">متوجه شدم</button>',
+          size: 'md'
+        });
+      } catch (error) {
+        const messages = {
+          HOLOO_FILE_REQUIRED: 'فایل انتخاب‌شده معتبر نیست',
+          HOLOO_NOT_ZIP: 'فایل ZIP شناسایی نشد',
+          HOLOO_ENCRYPTED_ZIP: 'بسته رمزگذاری‌شده پشتیبانی نمی‌شود',
+          HOLOO_ZIP_SINGLE_ENTRY_REQUIRED: 'ساختار بسته با نمونه تک‌فایلی مورد انتظار سازگار نیست',
+          HOLOO_ZIP_TOO_LARGE: 'فایل برای پیش‌بررسی محلی بیش از حد بزرگ است'
+        };
+        Toast.error('بکاپ قابل پیش‌بررسی نیست: ' +
+          (messages[error.message] || 'ساختار ZIP نامعتبر یا پشتیبانی‌نشده است'));
+      }
+    };
+    input.click();
   }
 
   // ============================================================
@@ -767,6 +897,7 @@ class SettingsViewImpl {
       + this._renderExcelCard()
       + this._renderShortcutsCard()
       + this._renderBackupCard()
+      + (Auth.isAdmin() ? this._renderHolooBackupCard() : '')
       + (Auth.isAdmin() ? this._renderLicenseCard() : '')
       + this._renderStatsCard()
       + (Auth.isAdmin() ? this._renderHealthCard() : '')
@@ -780,7 +911,7 @@ class SettingsViewImpl {
   // ============================================================
   async openCompanySwitcher() {
     const companies = await globalThis.FINORA.Company.list();
-    const body = companies.map(c => `<button class="btn" style="width:100%;margin:4px 0" onclick="window.SettingsView.selectCompany('${c.id}')">${this._esc(c.name || 'شرکت')}</button>`).join('');
+    const body = companies.map(c => `<button class="btn" style="width:100%;margin:4px 0" onclick="window.SettingsView.selectCompany(${this._esc(JSON.stringify(String(c.id ?? '')))})">${this._esc(c.name || 'شرکت')}</button>`).join('');
     Modal.open({ title: 'تغییر شرکت فعال', body: body || '<div class="empty-mini">شرکتی یافت نشد</div>', footer: '', size: 'sm' });
   }
 
@@ -955,7 +1086,7 @@ class SettingsViewImpl {
         <p style="font-size:12px;color:var(--danger);margin-bottom:16px">
           لطفاً برای تأیید، کلمه‌ی <code style="background:var(--danger);color:#fff;padding:2px 8px;border-radius:4px">حذف</code> رو تایپ کنید
         </p>
-        <input type="text" class="form-control" id="wipeConfirm" placeholder="حذف" style="text-align:center;max-width:200px;margin:0 auto" />
+        <input type="text" class="form-control" id="wipeConfirm" aria-label="متن تایید پاک کردن داده‌ها" placeholder="حذف" style="text-align:center;max-width:200px;margin:0 auto" />
       </div>
     `;
     const footer = `

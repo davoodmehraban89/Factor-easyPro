@@ -168,7 +168,7 @@ class StockKardexModalImpl {
 
       <div class="form-group">
         <label class="form-label">موجودی واقعی جدید <span class="req">*</span></label>
-        <input type="text" inputmode="numeric" class="form-control" id="adjQty" value="${NumberInput.format(currentStock)}" />
+        <input type="text" inputmode="numeric" class="form-control" id="adjQty" data-decimals="3" value="${NumberInput.format(currentStock, 3)}" />
         <small style="color:var(--text-muted);font-size:11.5px;display:block;margin-top:4px">
           عددی که اینجا وارد می‌کنی، به‌عنوان موجودی نهایی تنظیم می‌شه.
         </small>
