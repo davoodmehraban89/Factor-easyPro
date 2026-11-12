@@ -91,7 +91,27 @@ async function connect(url) {
     const r = await command('Runtime.evaluate', {
       expression, awaitPromise: true, returnByValue: true
     }, timeoutMs);
-    if (r.exceptionDetails) throw Error('Native UI exception: ' + r.exceptionDetails.text);
+    if (r.exceptionDetails) {
+      const detail=r.exceptionDetails;
+      const exception=detail.exception||{};
+      const frames=(detail.stackTrace?.callFrames||[]).slice(0,8).map(frame=>({
+        functionName:frame.functionName||'',url:frame.url||'',
+        line:frame.lineNumber,column:frame.columnNumber
+      }));
+      let pageContext=null;
+      try {
+        const context=await command('Runtime.evaluate',{
+          expression:"JSON.stringify({stage:window.__Q01_AUDIT_STAGE||null,route:window.FINORA?.Router?.current?.()||null,modalDepth:window.FINORA?.Modal?.stack?.length??null})",
+          returnByValue:true
+        },5000);
+        pageContext=context.result?.value||null;
+      } catch (_) {}
+      throw Error('Native UI exception: '+JSON.stringify({
+        text:detail.text||'',description:exception.description||'',
+        value:exception.value??null,line:detail.lineNumber,column:detail.columnNumber,
+        frames,pageContext
+      }));
+    }
     if (r.result?.subtype === 'error') throw Error('Native UI rejected JavaScript evaluation');
     return r.result?.value;
   };
@@ -370,6 +390,128 @@ async function connect(url) {
         // A screenshot is NOT claimed as verified if native CDP denies it.
         report.screenshot = 'UNVERIFIED: ' + screenshotError.message;
       }
+    }
+    if (mode === 'fresh') {
+      // Q01: click every safe, visible route/tab/form opener in the installed
+      // WebView2 (not only a preview). Financial writes remain separately
+      // guarded by the real synthetic functional matrix already run above.
+      const auditSource = fs.readFileSync(
+        path.join(__dirname, 'windows-vm-ui-interaction-audit-browser.js'), 'utf8');
+      assert.equal(auditSource.split('const safeConfirmAction =').length-1,1,
+        'native UI audit must define its cancel-only destructive matcher exactly once');
+      assert.ok(auditSource.includes('const q01TextOnlyConfirmCard_20261031='),
+        'native UI audit must use a collision-resistant confirmation-card binding');
+      assert.ok(!auditSource.includes('const safeConfirm='),
+        'generic safeConfirm lexical binding can collide in the long-lived WebView2 realm');
+      assert.ok(auditSource.includes('const deferredSafeActions=[]'),
+        'native UI audit must defer filters until row-scoped probes finish');
+      assert.ok(auditSource.includes('for(const group of deferredSafeActions)'),
+        'native UI audit must execute queued filters after editor/confirmation probes');
+      const audit = await cdp.evaluate(auditSource, 240000);
+      assert.equal(audit.environment, 'installed-Windows-Tauri-WebView2-synthetic-VM');
+      assert.equal(audit.routesVisited, 10);
+      assert.equal(audit.shellResults.keyboardReachableSidebarLinks, 10);
+      assert.equal(audit.shellResults.sidebarCollapseClickAndPersistence, true);
+      assert.equal(audit.shellResults.themeToggleClickAndPersistence, true);
+      assert.equal(audit.shellResults.activeRouteAriaCurrent, true);
+      assert.equal(audit.shellResults.modalKeyboard.nestedDialogIsolation, true);
+      assert.equal(audit.shellResults.modalKeyboard.modalFormLabelsLinked, true);
+      assert.equal(audit.shellResults.modalKeyboard.expenseUnsafeHtmlEscaped, true);
+      assert.equal(audit.shellResults.modalKeyboard.importedInvoiceHtmlEscaped, true);
+      assert.equal(audit.shellResults.modalKeyboard.excelReplacementRejectedWithoutWrites, true);
+      assert.equal(audit.shellResults.modalKeyboard.financialLedgerContentEscaped, true);
+      assert.equal(audit.shellResults.modalKeyboard.privateExcelPreviewAndSingleFlight, true);
+      assert.equal(audit.shellResults.modalKeyboard.escapeClosesWithoutConfirm, true);
+      assert.equal(audit.shellResults.modalKeyboard.focusReturnsToTrigger, true);
+      assert.equal(audit.shellResults.modalKeyboard.visibleInputAutoFocused, true);
+      assert.equal(audit.problems.filter(x=>x.kind==='modal-a11y-missing').length, 0,
+        'An opened financial dialog failed to move keyboard focus inside itself');
+      assert.equal(audit.shellResults.modalKeyboard.enterOnFocusedCancelDoesNotSave, true);
+      assert.equal(audit.shellResults.modalKeyboard.enterOnInputDoesNotSubmit, true);
+      assert.equal(audit.shellResults.modalKeyboard.tabAndShiftTabStayInsideTopDialog, true);
+      assert.equal(audit.shellResults.modalKeyboard.cancelDoesNotConfirmAndRestoresFocus, true);
+      assert.equal(audit.shellResults.modalKeyboard.syntheticConfirmRunsExactlyOnce, true);
+      assert.equal(audit.shellResults.modalKeyboard.staleFinancialConfirmIgnored, true);
+      assert.equal(audit.shellResults.toastResults.importantErrorsRemain, true);
+      assert.equal(audit.shellResults.toastResults.dismissButtonsWork, true);
+      assert.ok(audit.inventoryCount >= 25, 'Too few visible controls discovered');
+      assert.ok(audit.uniqueActionCount >= 20 &&
+        audit.uniqueActionCount <= audit.inventoryCount,
+        'Unique action signatures have an invalid or unexpectedly small count');
+      assert.ok(audit.uniqueActionClicked <= audit.uniqueActionCount &&
+        audit.uniqueActionUnverified <= audit.uniqueActionCount,
+        'Unique action status totals exceed unique action signatures');
+      assert.equal(audit.duplicateInstanceCount,
+        audit.inventoryCount-audit.uniqueActionCount);
+      assert.ok(audit.controls.every(x=>x.status!=='not-clicked' || !!x.reason),
+        'Every nonclicked control must have a machine-readable reason');
+      assert.ok(audit.fieldsInspected >= 15, 'Visible form-field inventory unexpectedly small');
+      assert.ok(Number.isInteger(audit.fieldsMissingProgrammaticLabel), 'No programmatic label coverage reported');
+      assert.equal(audit.fieldsMissingProgrammaticLabel, 0,
+        'Every visible financial input must have a programmatic label');
+      assert.ok(audit.safeClickCount >= 15, 'Safe interaction coverage unexpectedly low');
+      assert.equal(audit.uniqueActionFailed, 0, 'A native UI action click failed');
+      assert.equal(audit.brokenHandlerCount, 0, 'A visible control points to a missing handler');
+      assert.equal(audit.accessibilityNameGaps, 0, 'A visible control has no accessible name');
+      const blockingUiProblems=audit.problems.filter(x=>[
+        'safe-action-vanished','safe-tab-vanished','confirm-action-vanished',
+        'open-action-vanished','confirmation-prompt-missing',
+        'confirmation-cancel-missing','confirmation-cancel-did-not-close',
+        'cancel-mutated-persistent-data','responsive-horizontal-overflow',
+        'cheque-table-horizontal-scroll-accessibility',
+        'cheque-table-scroll-not-keyboard-focusable'
+      ].includes(x.kind));
+      assert.deepEqual(blockingUiProblems,[],
+        'Native UI audit has unresolved action-target, cancel-safety or responsive-layout failures');
+      assert.equal(audit.customerDataUsed, false);
+      assert.equal(audit.financialActionsNotBulkClicked, true);
+      assert.equal(audit.everyActionVerified, false,
+        'A safe-navigation sweep cannot claim every financial action is verified');
+      report.nativeControlAudit = {
+        routesVisited: audit.routesVisited, shellResults: audit.shellResults,
+        inventoryCount: audit.inventoryCount,
+        uniqueActionCount: audit.uniqueActionCount,
+        uniqueActionClicked: audit.uniqueActionClicked,
+        uniqueActionUnverified: audit.uniqueActionUnverified,
+        uniqueActionDisabled: audit.uniqueActionDisabled,
+        uniqueActionFailed: audit.uniqueActionFailed,
+        duplicateInstanceCount: audit.duplicateInstanceCount,
+        unclassifiedInstances: audit.unclassifiedInstances,
+        safeClickCount: audit.safeClickCount, skippedCount: audit.skippedCount,
+        accessibilityNameGaps: audit.accessibilityNameGaps,
+        fieldsInspected: audit.fieldsInspected,
+        fieldsMissingProgrammaticLabel: audit.fieldsMissingProgrammaticLabel,
+        fieldCoverageByRoute: audit.fieldCoverageByRoute,
+        brokenHandlerCount: audit.brokenHandlerCount,
+        problems: audit.problems.length, byRoute: audit.byRoute,
+        evidenceFile: 'fresh-native-ui-control-click-audit.json',
+        claim: 'safe-clicks-and-inventory-only-not-every-button-verified'
+      };
+      fs.writeFileSync(path.join(path.dirname(reportPath),
+        report.nativeControlAudit.evidenceFile),
+        JSON.stringify(audit, null, 2), { flag: 'wx' });
+      // The Markdown matrix is for owner/QA review and includes every
+      // remaining unique action with its route, reason and handler.
+      const gapReport=require('../scripts/q01-native-action-gap-report.cjs').buildReport(audit);
+      report.nativeControlAudit.gapReportFile='q01-native-unverified-controls.md';
+      fs.writeFileSync(path.join(path.dirname(reportPath),
+        report.nativeControlAudit.gapReportFile),gapReport,{flag:'wx'});
+      const routeScreenshots = [];
+      for (const route of audit.routeNames) {
+        await cdp.evaluate('FINORA.Router.go(' + JSON.stringify(route) + ')', 20000);
+        const screen = await cdp.command('Page.captureScreenshot', {
+          format: 'png', captureBeyondViewport: false, fromSurface: true
+        }, 20000);
+        assert.ok(screen?.data, 'Screenshot missing for route ' + route);
+        const image = Buffer.from(screen.data, 'base64');
+        assert.ok(image.length > 1000 && image.subarray(1,4).toString('ascii') === 'PNG',
+          'Bad native WebView2 PNG for route ' + route);
+        const filename = 'q01-ui-' + route + '.png';
+        fs.writeFileSync(path.join(path.dirname(reportPath), filename), image, { flag: 'wx' });
+        routeScreenshots.push(filename);
+      }
+      report.nativeControlAudit.routeScreenshots = routeScreenshots;
+      await cdp.evaluate('FINORA.Router.go("dashboard")');
     }
     if (mode === 'fresh') {
       // A07: emulate a disconnected WebView2 network on the REAL installed app.

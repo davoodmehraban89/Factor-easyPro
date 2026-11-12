@@ -6,6 +6,22 @@ import { StorageService } from '../core/StorageService.js';
 import { Auth } from '../core/Auth.js';
 import { DataScope } from '../core/DataScope.js';
 import { RetailPostingService } from '../core/RetailPostingService.js';
+import { amount, qtyUnits } from '../core/RetailFinanceCore.mjs';
+
+// Validate at the persistence boundary: UI formatting is not a financial
+// validator and must never coerce invalid product prices to zero.
+function productRial(value, label) {
+  return amount(value === null || value === undefined || value === '' ? 0 : value, label);
+}
+
+function reorderPoint(value) {
+  if (value === null || value === undefined || value === '') return 0;
+  const quantity = Number(value);
+  if (quantity === 0) return 0;
+  qtyUnits(quantity); // enforce positive, finite and at most three decimals
+  return quantity;
+}
+
 
 class ProductControllerImpl {
   // ----- واحدها -----
@@ -114,12 +130,12 @@ class ProductControllerImpl {
       categoryId: data.categoryId || null,
       unitId: data.unitId || null,
       unit: data.unit || 'عدد',
-      buyPrice: Number(data.buyPrice) || 0,
-      sellPrice: Number(data.sellPrice) || 0,
+      buyPrice: productRial(data.buyPrice, 'قیمت خرید'),
+      sellPrice: productRial(data.sellPrice, 'قیمت فروش'),
       trackInventory: data.trackInventory !== false,
       isActiveSell: data.isActiveSell !== false,
       isActiveBuy: data.isActiveBuy !== false,
-      minStock: Number(data.minStock) || 0,
+      minStock: reorderPoint(data.minStock),
       description: (data.description || '').trim()
     };
     return await StorageService.put('products', await DataScope.stamp('products', product));
@@ -142,12 +158,12 @@ class ProductControllerImpl {
       categoryId: data.categoryId || null,
       unitId: data.unitId || null,
       unit: data.unit || existing.unit || 'عدد',
-      buyPrice: Number(data.buyPrice) || 0,
-      sellPrice: Number(data.sellPrice) || 0,
+      buyPrice: productRial(data.buyPrice, 'قیمت خرید'),
+      sellPrice: productRial(data.sellPrice, 'قیمت فروش'),
       trackInventory: data.trackInventory !== false,
       isActiveSell: data.isActiveSell !== false,
       isActiveBuy: data.isActiveBuy !== false,
-      minStock: Number(data.minStock) || 0,
+      minStock: reorderPoint(data.minStock),
       description: (data.description || '').trim()
     };
     return await StorageService.put('products', await DataScope.stamp('products', updated));

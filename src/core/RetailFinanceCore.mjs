@@ -25,6 +25,18 @@ export function qtyUnits(q) {
     Math.abs(scaled-Math.round(scaled))>1e-7) throw Error('مقدار کالا نامعتبر است');
   return Math.round(scaled);
 }
+// Round a quantity multiplied by a whole-rial unit price ONCE per line.
+// Integer thousandths and bigint avoid binary-float centering errors and
+// enforce the application's whole-rial accounting policy at the source.
+export function lineGrossRials(quantity, unitPrice) {
+  const units = qtyUnits(quantity);
+  const price = amount(unitPrice, 'قیمت');
+  const gross = (BigInt(units) * BigInt(price) + BigInt(QTY_SCALE) / 2n) /
+    BigInt(QTY_SCALE);
+  if (gross > BigInt(Number.MAX_SAFE_INTEGER))
+    throw Error('جمع ردیف فاکتور از محدوده مجاز ریالی بیشتر است');
+  return Number(gross);
+}
 export const fromQtyUnits=q=>q/QTY_SCALE;
 const plus=(a,b)=>{const n=a+b;if(!Number.isSafeInteger(n))throw Error('سرریز موجودی یا مبلغ');return n};
 export function receiveStock(current,quantity,totalCost) {
