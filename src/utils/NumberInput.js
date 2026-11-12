@@ -1,126 +1,136 @@
-// ============================================================
-// NumberInput — جداکننده‌ی هزارگان زنده برای input ها
-// ============================================================
+// NumberInput — live thousands separators with opt-in fractional quantities.
+// Financial amounts remain integer by default; quantity fields can declare
+// data-decimals="3" to preserve the application's three decimal stock units.
+const latinDigits = value => String(value)
+  .replace(/[۰-۹]/g, digit => String(digit.charCodeAt(0) - 1776))
+  .replace(/[٠-٩]/g, digit => String(digit.charCodeAt(0) - 1632))
+  .replace(/٫/g, '.');
+
+const fractionLimit = value => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? Math.max(0, Math.min(3, parsed)) : 0;
+};
 
 export const NumberInput = {
-  // فرمت کردن عدد → "1,234,567"
-  format(n) {
-    if (n === '' || n === null || n === undefined) return '';
-    const num = Math.round(Number(n));
-    if (isNaN(num)) return '';
-    return num.toLocaleString('en-US');
+  format(value, fractionDigits = 0) {
+    if (value === '' || value === null || value === undefined) return '';
+    const number = Number(value);
+    if (!Number.isFinite(number)) return '';
+    const digits = fractionLimit(fractionDigits);
+    return (digits ? number : Math.round(number)).toLocaleString('en-US', {
+      maximumFractionDigits: digits
+    });
   },
 
-  // تبدیل رشته یا element → عدد خالص
   parse(input) {
     if (input === null || input === undefined) return 0;
-    const s = typeof input === 'string' ? input : (input.value || '');
-    const cleaned = String(s).replace(/[^\d.-]/g, '');
+    const value = typeof input === 'string' || typeof input === 'number'
+      ? input : (input.value ?? '');
+    const cleaned = latinDigits(value).replace(/[,٬،\s]/g, '').replace(/[^\d.-]/g, '');
     return Number(cleaned) || 0;
   },
 
-  // خواندن مقدار عددی از element
   value(el) {
     return this.parse(el);
   },
 
-  // فرمت‌دهی زنده با حفظ موقعیت cursor
+  _fractionDigits(el) {
+    return fractionLimit(el.dataset.decimals);
+  },
+
+  // Format as decimal text, not Number(), so typing never changes a quantity
+  // such as 2.5 to 25 and large integers cannot become exponential notation.
+  _formatText(value, digits) {
+    const normalized = latinDigits(value).replace(/[,٬،\s]/g, '');
+    const negative = normalized.startsWith('-');
+    const positive = negative ? normalized.slice(1) : normalized;
+    const numeric = positive.replace(/[^\d.]/g, '');
+    const point = numeric.indexOf('.');
+    let integer = (point >= 0 ? numeric.slice(0, point) : numeric).replace(/^0+(?=\d)/, '');
+    const fraction = point >= 0 ? numeric.slice(point + 1).replace(/\./g, '').slice(0, digits || 3) : '';
+    if (!integer && (point >= 0 || negative)) integer = '0';
+    const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    const decimal = point >= 0 ? '.' + fraction : '';
+    return (negative ? '-' : '') + grouped + decimal;
+  },
+
   _formatLive(el) {
-    const cursorStart = el.selectionStart;
     const oldValue = el.value;
-
-    let raw = oldValue.replace(/[^\d]/g, '');
-    if (raw.length > 1) raw = raw.replace(/^0+/, '');
-
-    const formatted = raw ? Number(raw).toLocaleString('en-US') : '';
+    const cursor = el.selectionStart ?? oldValue.length;
+    const digits = this._fractionDigits(el);
+    const formatted = this._formatText(oldValue, digits);
     if (formatted === oldValue) return;
 
-    const digitsBefore = oldValue.slice(0, cursorStart).replace(/\D/g, '').length;
-
+    // Preserve the count of significant characters before the caret, while
+    // ignoring inserted grouping commas and normalizing Persian/Arabic digits.
+    const before = latinDigits(oldValue.slice(0, cursor))
+      .replace(/[,٬،\s]/g, '')
+      .replace(digits ? /[^\d.]/g : /[^\d]/g, '');
     el.value = formatted;
-
-    if (digitsBefore === 0) {
-      el.setSelectionRange(0, 0);
-    } else if (digitsBefore >= raw.length) {
-      el.setSelectionRange(formatted.length, formatted.length);
+    let position = formatted.length;
+    if (!before.length) {
+      position = 0;
     } else {
-      let pos = 0, count = 0;
+      let seen = 0;
       for (let i = 0; i < formatted.length; i++) {
-        if (/\d/.test(formatted[i])) count++;
-        if (count === digitsBefore) { pos = i + 1; break; }
+        if (isDigitOrDot(formatted[i], digits) && ++seen === before.length) {
+          position = i + 1;
+          break;
+        }
       }
-      el.setSelectionRange(pos, pos);
     }
+    if (typeof el.setSelectionRange === 'function') el.setSelectionRange(position, position);
   },
 
-  // بررسی اینکه آیا این input باید فرمت بشه؟
   _shouldFormat(el) {
     if (!el || el.tagName !== 'INPUT') return false;
-    if (el.type === 'number') return true;
-    if (el.dataset.money === '1') return true;
-    if (el.getAttribute('inputmode') === 'numeric') return true;
-    return false;
+    return el.type === 'number' || el.dataset.money === '1' ||
+      el.hasAttribute('data-decimals') || el.getAttribute('inputmode') === 'numeric';
   },
 
-  // تبدیل و علامت‌گذاری input ها
   _markAndFormat(el) {
     if (!this._shouldFormat(el)) return;
-
-    // تبدیل number به text
     if (el.type === 'number') {
+      // A native number input with a fractional step must not lose its step.
+      const step = el.getAttribute('step');
+      if (!el.hasAttribute('data-decimals') && step && /^0\.\d+$/.test(step)) {
+        el.dataset.decimals = String(fractionLimit(step.split('.')[1].length));
+      }
       el.type = 'text';
     }
-
-    // علامت‌گذاری
     el.setAttribute('data-money', '1');
-    el.setAttribute('inputmode', 'numeric');
+    const digits = this._fractionDigits(el);
+    el.setAttribute('inputmode', digits ? 'decimal' : 'numeric');
     el.setAttribute('autocomplete', 'off');
-
-    // فرمت کردن مقدار اولیه اگه خالص عددی بود
-    const raw = (el.value || '').replace(/,/g, '').trim();
-    if (raw && /^-?\d+$/.test(raw) && raw !== '0') {
-      el.value = this.format(raw);
-    } else if (raw === '0') {
-      // 0 رو نگه‌دار بدون فرمت اضافی
-      el.value = '0';
+    const normalized = latinDigits(el.value || '').replace(/[,٬،\s]/g, '');
+    if (/^-?\d+(?:\.\d+)?$/.test(normalized)) {
+      el.value = this._formatText(normalized, digits);
     }
   },
 
-  // اسکن کل DOM
   _convertAll() {
     document.querySelectorAll('input').forEach(el => {
-      if (this._shouldFormat(el)) {
-        this._markAndFormat(el);
-      }
+      if (this._shouldFormat(el)) this._markAndFormat(el);
     });
   },
 
   init() {
-    // تبدیل اولیه
     this._convertAll();
-
-    // ناظر برای ورودی‌های جدید (مودال‌ها، ردیف‌های جدید و...)
-    const observer = new MutationObserver(() => {
-      this._convertAll();
-    });
+    const observer = new MutationObserver(() => this._convertAll());
     observer.observe(document.body, { childList: true, subtree: true });
-
-    // فرمت‌دهی زنده در هنگام تایپ
-    document.addEventListener('input', (e) => {
-      const el = e.target;
-      if (!el || !el.matches || !el.matches('input')) return;
-      if (el.getAttribute('data-money') !== '1') return;
-      this._formatLive(el);
+    document.addEventListener('input', event => {
+      const el = event.target;
+      if (el?.matches?.('input') && el.getAttribute('data-money') === '1') this._formatLive(el);
     });
-
-    // پاک کردن مقدار صفر در ورودی اگه کاربر کلیک کرد و تایپ کرد
-    document.addEventListener('focus', (e) => {
-      const el = e.target;
-      if (!el || !el.matches || !el.matches('input')) return;
-      if (el.getAttribute('data-money') !== '1') return;
-      if (el.value === '0') {
+    document.addEventListener('focus', event => {
+      const el = event.target;
+      if (el?.matches?.('input') && el.getAttribute('data-money') === '1' && el.value === '0') {
         el.value = '';
       }
     }, true);
   }
 };
+
+function isDigitOrDot(char, digits) {
+  return /\d/.test(char) || Boolean(digits && char === '.');
+}
