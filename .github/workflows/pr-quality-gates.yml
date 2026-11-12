@@ -61,6 +61,19 @@ jobs:
         run: npm ci
       - name: Windows integration regression
         run: npm test
+      - name: Holoo ZIP private staging regression (synthetic only)
+        shell: pwsh
+        run: |
+          $output = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File './scripts/a02-private-holoo-zip-staging.ps1' -Mode Test
+          if ($LASTEXITCODE -ne 0) { throw 'A02 private ZIP staging selftest failed' }
+          $report = ($output | Out-String | ConvertFrom-Json)
+          if ($report.status -ne 'synthetic-zip-staging-selftest-passed' -or
+              $report.ownerBackupUsed -ne $false -or
+              $report.sqlConnected -ne $false -or
+              $report.financialDataImported -ne $false -or
+              $report.canImport -ne $false) {
+            throw 'A02 ZIP staging synthetic selftest safety contract failed'
+          }
       - name: Build Tauri installer
         run: npm exec tauri build
       - name: Inspect produced Windows x64 installer and checksum
