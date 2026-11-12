@@ -13,6 +13,8 @@ on:
       - 'tests/windows-vm-native-origin.cjs'
       - 'tests/windows-vm-native-origin.test.mjs'
       - 'tests/windows-vm-native-functional-matrix.cjs'
+      - 'tests/windows-vm-ui-interaction-audit-browser.js'
+      - 'scripts/q01-native-action-gap-report.cjs'
       - 'tests/windows-vm-encrypted-company-backup-browser.js'
       - 'tests/windows-vm-native-print-pdf-browser.js'
       - 'tests/windows-vm-native-crash-import-browser.js'
@@ -34,6 +36,8 @@ on:
       - 'tests/windows-vm-native-origin.cjs'
       - 'tests/windows-vm-native-origin.test.mjs'
       - 'tests/windows-vm-native-functional-matrix.cjs'
+      - 'tests/windows-vm-ui-interaction-audit-browser.js'
+      - 'scripts/q01-native-action-gap-report.cjs'
       - 'tests/windows-vm-encrypted-company-backup-browser.js'
       - 'tests/windows-vm-native-print-pdf-browser.js'
       - 'tests/windows-vm-native-crash-import-browser.js'
@@ -45,6 +49,12 @@ on:
 
 permissions:
   contents: read
+
+# Building the Windows installer is costly. For a PR, only the newest source
+# snapshot should consume a runner; main-branch validation remains uncancelled.
+concurrency:
+  group: native-vm-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   native-windows-lab:
@@ -97,6 +107,7 @@ jobs:
             ${{ runner.temp }}/factor-easypro-native-vm-lab/reports/*.json
             ${{ runner.temp }}/factor-easypro-native-vm-lab/reports/*.png
             ${{ runner.temp }}/factor-easypro-native-vm-lab/reports/*.pdf
+            ${{ runner.temp }}/factor-easypro-native-vm-lab/reports/*.md
           retention-days: 30
           if-no-files-found: warn
       - name: State acceptance boundary

@@ -50,6 +50,20 @@ button { cursor: pointer; font-family: inherit; }
 input, select, textarea { font-family: inherit; font-size: inherit; }
 a { color: inherit; }
 
+/* Keyboard users must always be able to identify the focused action.
+   Visible only for keyboard-type focus, not ordinary pointer interaction. */
+:where(button, a[href], input, select, textarea, [role="button"]):focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+.table-wrap[tabindex="0"]:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+:where(button, a[href], [role="button"])[disabled] {
+  cursor: not-allowed;
+}
+
 /* Splash */
 #splash {
   position: fixed; inset: 0;
@@ -157,10 +171,9 @@ a { color: inherit; }
   background: none; border: none;
   font-size: 22px; color: var(--text);
   padding: 6px 10px; border-radius: 8px;
-  display: none;
+  display: inline-flex; align-items: center; justify-content: center;
 }
 .hamburger:hover { background: var(--bg); }
-@media (max-width: 900px) { .hamburger { display: block; } }
 
 .header-title { flex: 1; min-width: 0; }
 .header-title h2 {
@@ -255,7 +268,11 @@ a { color: inherit; }
   position: fixed; top: 20px; left: 20px;
   z-index: 2147483647;
   display: flex; flex-direction: column;
-  gap: 10px; max-width: 380px;
+  gap: 10px; max-width: min(380px, calc(100vw - 28px));
+  max-height: min(60vh, 520px);
+  overflow-y: auto; overflow-x: hidden;
+  padding: 2px 4px 6px;
+  overscroll-behavior: contain;
 }
 .toast {
   background: var(--card-bg);
@@ -304,7 +321,10 @@ a { color: inherit; }
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
 }
 .table-wrap table {
   width: 100%;
@@ -705,8 +725,14 @@ textarea.form-control { min-height: 80px; resize: vertical; }
 }
 
 /* ===== Dashboard Layout ===== */
-@media (max-width: 1024px) {
+.dash-grid-main,
+.dash-grid-main > * {
+  min-width: 0;
+}
+@media (max-width: 1200px) {
+  /* The sidebar consumes part of the viewport. Switch to one column before
+     the remaining content pane becomes narrower than the chart's intrinsic width. */
   .dash-grid-main {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: minmax(0, 1fr) !important;
   }
 }

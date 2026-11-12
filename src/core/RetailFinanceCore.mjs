@@ -25,6 +25,18 @@ export function qtyUnits(q) {
     Math.abs(scaled-Math.round(scaled))>1e-7) throw Error('مقدار کالا نامعتبر است');
   return Math.round(scaled);
 }
+// Round a quantity multiplied by a whole-rial unit price ONCE per line.
+// Integer thousandths and bigint avoid binary-float centering errors and
+// enforce the application's whole-rial accounting policy at the source.
+export function lineGrossRials(quantity, unitPrice) {
+  const units = qtyUnits(quantity);
+  const price = amount(unitPrice, 'قیمت');
+  const gross = (BigInt(units) * BigInt(price) + BigInt(QTY_SCALE) / 2n) /
+    BigInt(QTY_SCALE);
+  if (gross > BigInt(Number.MAX_SAFE_INTEGER))
+    throw Error('جمع ردیف فاکتور از محدوده مجاز ریالی بیشتر است');
+  return Number(gross);
+}
 export const fromQtyUnits=q=>q/QTY_SCALE;
 const plus=(a,b)=>{const n=a+b;if(!Number.isSafeInteger(n))throw Error('سرریز موجودی یا مبلغ');return n};
 export function receiveStock(current,quantity,totalCost) {
@@ -67,8 +79,31 @@ export function differenceLines(accountId,signed,extra={}) {
 export function assertInvoiceTotals(inv) {
   if(!INVOICE_DIRECTIONS[inv.kind])throw Error('نوع فاکتور نامعتبر است');
   if(!Array.isArray(inv.items)||!inv.items.length)throw Error('فاکتور بدون قلم کالا مجاز نیست');
-  const total=inv.items.reduce((s,i)=>{
-    qtyUnits(i.qty);amount(i.price,'قیمت');return s+amount(i.lineTotal,'جمع ردیف');
+  // The transaction service is the last trust boundary. Never trust a
+  // caller-supplied line total merely because the journal balances.
+  const total=inv.items.reduce((sum,i)=>{
+    const gross=lineGrossRials(i.qty,i.price);
+    if(i.lineSubtotal!==undefined && amount(i.lineSubtotal,'جمع ناخالص ردیف')!==gross)
+      throw Error('جمع ناخالص ردیف با مقدار و قیمت ناسازگار است');
+    const discountType=i.discountType||'fixed';
+    if(!['fixed','percent'].includes(discountType))
+      throw Error('نوع تخفیف ردیف نامعتبر است');
+    const discount=amount(i.discount??0,'تخفیف ردیف');
+    if(discount>gross)throw Error('تخفیف ردیف بیش از مبلغ ناخالص است');
+    if(i.discountInput!==undefined) {
+      const raw=Number(i.discountInput);
+      if(!Number.isFinite(raw)||raw<0)throw Error('ورودی تخفیف ردیف نامعتبر است');
+      if(discountType==='percent'){
+        if(raw>100)throw Error('درصد تخفیف ردیف بیش از صد است');
+        if(discount!==Math.round(gross*raw/100))
+          throw Error('تخفیف محاسبه‌شده ردیف با درصد واردشده ناسازگار است');
+      }else if(discount!==amount(i.discountInput,'تخفیف ثابت ردیف')){
+        throw Error('تخفیف ثابت ردیف با ورودی اصلی ناسازگار است');
+      }
+    }
+    const net=amount(i.lineTotal,'جمع ردیف');
+    if(net!==gross-discount)throw Error('جمع خالص ردیف با تعداد، قیمت و تخفیف ناسازگار است');
+    return plus(sum,net);
   },0);
   if(amount(inv.subtotal)!==total)throw Error('جمع ردیف‌ها نادرست است');
   const disc=amount(inv.totalDiscount,'تخفیف'),vat=amount(inv.vatAmount,'مالیات');

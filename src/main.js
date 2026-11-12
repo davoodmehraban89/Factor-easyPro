@@ -52,6 +52,23 @@ const ROUTES = [
   { name: 'settings',  title: 'تنظیمات',            header: 'تنظیمات',            view: SettingsView }
 ];
 
+const SIDEBAR_COLLAPSED_KEY = 'finora_pro_sidebar_collapsed';
+
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const main = document.getElementById('main');
+  const button = document.getElementById('sidebarToggleBtn');
+  if (!sidebar || !main || !button) return false;
+  const collapsed = !sidebar.classList.contains('collapsed');
+  sidebar.classList.toggle('collapsed', collapsed);
+  main.classList.toggle('sidebar-collapsed', collapsed);
+  button.setAttribute('aria-expanded', String(!collapsed));
+  button.setAttribute('aria-label', collapsed ? 'باز کردن منوی اصلی' : 'بستن منوی اصلی');
+  localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
+  return collapsed;
+}
+FINORA.Layout = { toggleSidebar };
+
 const DEFAULT_ROUTE = 'dashboard';
 const LAST_ROUTE_KEY = 'finora_pro_last_route';
 
@@ -104,16 +121,25 @@ async function updateStats() {
 }
 
 function setupSidebar() {
-  document.querySelectorAll('[data-page]').forEach(a => {
+  document.querySelectorAll('#sidebarMenu [data-page]').forEach(a => {
+    const label = a.querySelector('.label')?.textContent?.trim();
+    if (label) {
+      a.setAttribute('aria-label', label);
+      a.setAttribute('title', label);
+    }
     a.addEventListener('click', e => {
       e.preventDefault();
       Router.go(a.dataset.page);
     });
   });
 
-  if (localStorage.getItem('finora_pro_sidebar_collapsed') === 'true') {
-    document.getElementById('sidebar').classList.add('collapsed');
-    document.getElementById('main').classList.add('sidebar-collapsed');
+  const collapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
+  document.getElementById('sidebar').classList.toggle('collapsed', collapsed);
+  document.getElementById('main').classList.toggle('sidebar-collapsed', collapsed);
+  const button = document.getElementById('sidebarToggleBtn');
+  if (button) {
+    button.setAttribute('aria-expanded', String(!collapsed));
+    button.setAttribute('aria-label', collapsed ? 'باز کردن منوی اصلی' : 'بستن منوی اصلی');
   }
 }
 

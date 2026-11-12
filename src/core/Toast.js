@@ -13,6 +13,8 @@ class ToastManager {
       this.container = document.createElement('div');
       this.container.className = 'toast-container';
       this.container.id = 'toastContainer';
+      this.container.setAttribute('aria-live', 'polite');
+      this.container.setAttribute('aria-relevant', 'additions');
       document.body.appendChild(this.container);
     }
     return this.container;
@@ -24,6 +26,7 @@ class ToastManager {
     if (c.parentElement === document.body) document.body.appendChild(c);
     const el = document.createElement('div');
     el.className = `toast toast-${type}`;
+    el.setAttribute('role', type === 'error' ? 'alert' : 'status');
     el.innerHTML = `
       <div class="toast-icon">${ICONS[type]}</div>
       <div class="toast-content">
@@ -33,6 +36,10 @@ class ToastManager {
       <button class="toast-close" aria-label="بستن">×</button>`;
     el.querySelector('.toast-close').onclick = () => el.remove();
     c.appendChild(el);
+    // Cap only transient notices. Never silently discard financial errors or
+    // warnings; their container is scrollable so they cannot cover the page.
+    const passive = [...c.querySelectorAll('.toast-success, .toast-info')];
+    while (passive.length > 3) passive.shift().remove();
     // Errors stay visible until dismissed so users can read and report them.
     if (type !== 'error') setTimeout(() => {
       if (!el.isConnected) return;
