@@ -19,3 +19,9 @@ test('rejects impossible accounting and numbering counts without granting writes
   x=>x.integrity.duplicateInvoiceTypeNumberGroups=6
  ]){const snapshot=base();change(snapshot);const result=assessHolooIntegrity(snapshot);assert.equal(result.status,'INVALID_EVIDENCE');assert.equal(result.productionWritesAuthorized,false);}
 });
+test('excluded orphan rows cannot exceed the total candidate sentinel population',()=>{
+ const impossible=base();impossible.integrity.orphanInvoiceLines=3;impossible.integrity.orphanInvoiceLinesExcludingCandidateSentinel=1;impossible.integrity.candidateSentinelRows=1;
+ assert.equal(assessHolooIntegrity(impossible).status,'INVALID_EVIDENCE');
+ const possible=base();possible.integrity.orphanInvoiceLines=1;possible.integrity.orphanInvoiceLinesExcludingCandidateSentinel=1;possible.integrity.candidateSentinelRows=1;
+ assert.notEqual(assessHolooIntegrity(possible).status,'INVALID_EVIDENCE');
+});
