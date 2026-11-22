@@ -32,10 +32,18 @@ try {
   $integrity | Add-Member -NotePropertyName candidateSentinelRows -NotePropertyValue $r.GetInt64(1)
   $integrity | Add-Member -NotePropertyName missingReferencedAccountingDocuments -NotePropertyValue $r.GetInt64(2)
  } finally {$r.Close()}
+ $q.CommandText="SELECT (SELECT COUNT_BIG(*) FROM (SELECT Fac_Type,Fac_Code_C FROM dbo.FACTURE WHERE Fac_Code_C IS NOT NULL GROUP BY Fac_Type,Fac_Code_C HAVING COUNT_BIG(*)>1) d),(SELECT COUNT_BIG(*) FROM dbo.FACTURE WHERE Sanad_Code IS NULL OR Sanad_Code=0)"
+ $r=$q.ExecuteReader()
+ try {
+  if(-not $r.Read()){throw 'Invoice numbering audit returned no row'}
+  $integrity | Add-Member -NotePropertyName duplicateInvoiceTypeNumberGroups -NotePropertyValue $r.GetInt64(0)
+  $integrity | Add-Member -NotePropertyName invoiceHeadersWithoutAccountingCode -NotePropertyValue $r.GetInt64(1)
+ } finally {$r.Close()}
  $result=[pscustomobject]@{schemaVersion=1;database='HolooBackup_050808_LAB_20261110';readOnlyAudit=$true;tables=$tables;integrity=$integrity;complete=($tables.Count -eq 3);note='Candidate sentinel classification is unverified; raw orphan count retained. No application-level invariants or concurrency claims'}
  if($Json){$result|ConvertTo-Json -Depth 6}else{$tables|Format-Table -AutoSize;Write-Output ('COMPLETE='+$result.complete)}
  if(-not $result.complete){exit 2}
 } finally {$c.Dispose()}
+
 
 
 
