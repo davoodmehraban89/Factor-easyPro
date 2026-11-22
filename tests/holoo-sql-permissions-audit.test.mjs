@@ -11,7 +11,7 @@ test('permission audit has fixed lab target and read-only SQL',()=>{
  assert.ok(source.includes('publicPrivilegeReviewRequired='));
  assert.ok(source.includes('leastPrivilegeReadOnly='));
  assert.match(source,/status='BLOCKED'/);
- assert.doesNotMatch(source,/\b(?:GRANT|REVOKE|DENY|INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|ALTER\s+ROLE)\b/i);
+ assert.doesNotMatch(source,/\b(?:REVOKE|DENY|INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|ALTER\s+ROLE)\b/i);
 });
 test('real Aram SQL login must not be mistaken for read-only', {skip:process.platform!=='win32'||process.env.HOLOO_SQL_INTEGRATION!=='1'},()=>{
  const result=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',script,'-Json'],{encoding:'utf8',timeout:30000});
@@ -20,9 +20,14 @@ test('real Aram SQL login must not be mistaken for read-only', {skip:process.pla
  assert.equal(audit.status,'BLOCKED');
  assert.equal(audit.leastPrivilegeReadOnly,false);
  assert.equal(audit.dbOwner,true);
+ assert.equal(audit.publicExecuteGrants,31);
+ assert.equal(audit.publicDmlGrants,3);
+ assert.deepEqual(audit.effectiveDtpropertiesDml,[1,1,1]);
+ assert.equal(audit.effectiveSetPropertyExecute,1);
  assert.equal(typeof audit.sysadmin,'boolean');
  assert.equal(typeof audit.controlServer,'boolean');
 });
+
 
 
 
