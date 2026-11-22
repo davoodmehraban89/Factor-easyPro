@@ -17,4 +17,7 @@ test('real Aram SQL login must not be mistaken for read-only', {skip:process.pla
  assert.equal(audit.status,'BLOCKED');
  assert.equal(audit.leastPrivilegeReadOnly,false);
  assert.equal(audit.dbOwner,true);
+ assert.equal(typeof audit.sysadmin,'boolean');
+ assert.equal(typeof audit.controlServer,'boolean');
 });
+

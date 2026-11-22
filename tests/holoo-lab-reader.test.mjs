@@ -34,3 +34,10 @@ test('SQL execution rechecks all three tables on the same connection',()=>{
  assert.match(source,/IS_MEMBER\('db_datawriter'\)/);
  assert.match(source,/IS_MEMBER\('db_ddladmin'\)/);
 });
+
+test('same-connection gate checks server-level elevated privileges',()=>{
+ const source=readFileSync(fileURLToPath(new URL('../scripts/holoo-lab-counts.ps1',import.meta.url)),'utf8');
+ assert.match(source,/IS_SRVROLEMEMBER\('sysadmin'\)/);
+ assert.match(source,/HAS_PERMS_BY_NAME\(NULL,NULL,'CONTROL SERVER'\)/);
+ assert.match(source,/@\(1,3,4,5,7,8,9,11,12,13,14,15,16,17\)/);
+});
