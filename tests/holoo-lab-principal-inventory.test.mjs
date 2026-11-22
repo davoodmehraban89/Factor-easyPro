@@ -17,5 +17,9 @@ test('live LAB principal inventory is read-only and scoped', {skip:process.platf
  assert.equal(inventory.identity.database_name,'HolooBackup_050808_LAB_20261110');
  assert.equal(inventory.readOnlyInventory,true);
  assert.equal(inventory.productionWriteGate,'NO-GO');
+ assert.equal(inventory.publicPrivilegeRisk.publicExecuteGrantCount,31);
+ assert.equal(inventory.publicPrivilegeRisk.publicDmlGrantCount,3);
+ assert.deepEqual(inventory.publicPrivilegeRisk.publicDmlTargets,['dbo.dtproperties']);
+ assert.equal(inventory.publicPrivilegeRisk.databaseWideReadOnlyProven,false);
  for(const key of ['databasePrincipals','databaseRoleMemberships','databasePermissions','serverRoleMemberships']) assert.ok(Array.isArray(inventory[key]),key);
 });
