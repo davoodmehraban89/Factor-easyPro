@@ -13,12 +13,22 @@ try {
  try {while($r.Read()){
   if($r.GetString(0) -ne 'HolooBackup_050808_LAB_20261110'){throw 'Unexpected database'}
   $definition=if($r.IsDBNull(4)){$null}else{$r.GetString(4)}
+  # Exclude only the CREATE/ALTER PROCEDURE declaration from DDL classification;
+  # retain all other tokens and conservative flags (comments may still be false positives).
+  $body=$definition
+  if($null -ne $body){$body=[regex]::Replace($body,'(?is)^\s*(?:CREATE|ALTER)\s+(?:PROC|PROCEDURE)\b[^\r\n]*','')}
   $signals=@()
   if($null -ne $definition){
-   foreach($pair in @(@('DML','\b(INSERT|UPDATE|DELETE|MERGE|TRUNCATE)\b'),@('DDL','\b(CREATE|ALTER|DROP)\b'),@('DYNAMIC_SQL','\b(EXEC|EXECUTE|sp_executesql)\b'),@('TRANSACTION','\b(BEGIN\s+TRAN|COMMIT|ROLLBACK)\b'))){if($definition -match $pair[1]){$signals+=$pair[0]}}
+   foreach($pair in @(@('DML','\b(INSERT|UPDATE|DELETE|MERGE|TRUNCATE)\b'),@('DDL','\b(CREATE|ALTER|DROP)\b'),@('DYNAMIC_SQL','\b(EXEC|EXECUTE|sp_executesql)\b'),@('TRANSACTION','\b(BEGIN\s+TRAN|COMMIT|ROLLBACK)\b'))){if($body -match $pair[1]){$signals+=$pair[0]}}
   }
   $items+= [pscustomobject]@{schema=if($r.IsDBNull(1)){$null}else{$r.GetString(1)};name=if($r.IsDBNull(2)){$null}else{$r.GetString(2)};type=if($r.IsDBNull(3)){$null}else{$r.GetString(3)};definitionVisible=($null -ne $definition);signals=@($signals);requiresManualReview=$true}
  }}finally{$r.Close()}
- $result=[pscustomobject]@{database='HolooBackup_050808_LAB_20261110';readOnlyMetadataAudit=$true;grantCount=$items.Count;objects=@($items);status='NO-GO';note='Conservative regex signals only; no stored procedures executed; empty signals are NOT proof of read-only behavior'}
+ # Catalog dependency edges are evidence only; dynamic SQL and cross-database calls may be absent.
+ $d=$c.CreateCommand();$d.CommandTimeout=20
+ $d.CommandText="SELECT OBJECT_SCHEMA_NAME(dep.referencing_id) AS caller_schema,OBJECT_NAME(dep.referencing_id) AS caller_name,dep.referenced_schema_name,dep.referenced_entity_name,dep.referenced_database_name FROM sys.sql_expression_dependencies dep WHERE dep.referencing_id IN (SELECT major_id FROM sys.database_permissions WHERE grantee_principal_id=DATABASE_PRINCIPAL_ID('public') AND permission_name='EXECUTE' AND state_desc='GRANT' AND class=1)"
+ $dr=$d.ExecuteReader();$edges=@()
+ try {while($dr.Read()){$edges+= [pscustomobject]@{caller=($dr.GetString(0)+'.'+$dr.GetString(1));targetSchema=if($dr.IsDBNull(2)){$null}else{$dr.GetString(2)};targetName=if($dr.IsDBNull(3)){$null}else{$dr.GetString(3)};targetDatabase=if($dr.IsDBNull(4)){$null}else{$dr.GetString(4)}}}}finally{$dr.Close();$d.Dispose()}
+ $result=[pscustomobject]@{database='HolooBackup_050808_LAB_20261110';readOnlyMetadataAudit=$true;grantCount=$items.Count;objects=@($items);dependencyEdges=@($edges);status='NO-GO';note='Conservative regex signals only; no stored procedures executed; empty signals are NOT proof of read-only behavior'}
  if($Json){$result|ConvertTo-Json -Depth 6 -Compress}else{$result|Format-List}
 }finally{$c.Dispose()}
+

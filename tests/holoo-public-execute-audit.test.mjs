@@ -18,5 +18,7 @@ test('real lab public EXECUTE inventory stays NO-GO', {skip:process.platform!=='
  assert.equal(audit.database,'HolooBackup_050808_LAB_20261110');
  assert.equal(audit.grantCount,31);
  assert.equal(audit.status,'NO-GO');
+ assert.ok(Array.isArray(audit.dependencyEdges));
  assert.ok(audit.objects.every(x=>x.requiresManualReview===true));
 });
+
