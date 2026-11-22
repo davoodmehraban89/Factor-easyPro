@@ -24,11 +24,14 @@ test('real lab structural audit returns three complete primary-keyed tables', {s
  for(const key of ['orphanInvoiceLinesExcludingCandidateSentinel','candidateSentinelRows','missingReferencedAccountingDocuments','duplicateInvoiceTypeNumberGroups','invoiceHeadersWithoutAccountingCode']) assert.ok(Number.isSafeInteger(audit.integrity[key]) && audit.integrity[key] >= 0, key);
  assert.ok(audit.integrity.orphanInvoiceLinesExcludingCandidateSentinel <= audit.integrity.orphanInvoiceLines);
  assert.deepEqual(audit.tables.map(t => t.table), ['FACTART','FACTURE','SANAD']);
+ assert.deepEqual(audit.procedureConcurrencySignals.map(p => p.name), ['InsertInFacture','InsertInFactureCode','Sp_AppendNewSanad']);
+ for (const proc of audit.procedureConcurrencySignals) for(const key of ['usesCursor','hasUpdateLock','hasSerializable','hasBeginTransaction']) assert.equal(typeof proc[key], 'boolean');
  for (const table of audit.tables) {
   assert.equal(table.primaryKeys, 1);
   for(const key of ['outboundForeignKeys','triggers','checkConstraints']) assert.ok(Number.isInteger(table[key]) && table[key]>=0);
  }
 });
+
 
 
 

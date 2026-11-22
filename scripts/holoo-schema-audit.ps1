@@ -39,10 +39,20 @@ try {
   $integrity | Add-Member -NotePropertyName duplicateInvoiceTypeNumberGroups -NotePropertyValue $r.GetInt64(0)
   $integrity | Add-Member -NotePropertyName invoiceHeadersWithoutAccountingCode -NotePropertyValue $r.GetInt64(1)
  } finally {$r.Close()}
- $result=[pscustomobject]@{schemaVersion=1;database='HolooBackup_050808_LAB_20261110';readOnlyAudit=$true;tables=$tables;integrity=$integrity;complete=($tables.Count -eq 3);note='Candidate sentinel classification is unverified; raw orphan count retained. No application-level invariants or concurrency claims'}
+ $q.CommandText="SELECT p.name,m.definition FROM sys.procedures p JOIN sys.sql_modules m ON p.object_id=m.object_id WHERE p.name IN ('InsertInFacture','InsertInFactureCode','Sp_AppendNewSanad') ORDER BY p.name"
+ $r=$q.ExecuteReader()
+ try {
+  $procedures=@()
+  while($r.Read()){
+   $definition=$r.GetString(1)
+   $procedures += [pscustomobject]@{name=$r.GetString(0);usesCursor=($definition -match '(?i)\bCURSOR\b');hasUpdateLock=($definition -match '(?i)\bUPDLOCK\b');hasSerializable=($definition -match '(?i)\bSERIALIZABLE\b');hasBeginTransaction=($definition -match '(?i)\bBEGIN\s+TRAN(?:SACTION)?\b')}
+  }
+ } finally {$r.Close()}
+ $result=[pscustomobject]@{schemaVersion=1;database='HolooBackup_050808_LAB_20261110';readOnlyAudit=$true;tables=$tables;integrity=$integrity;procedureConcurrencySignals=$procedures;complete=($tables.Count -eq 3 -and $procedures.Count -eq 3);note='Candidate sentinel classification is unverified; raw orphan count retained. No application-level invariants or concurrency claims'}
  if($Json){$result|ConvertTo-Json -Depth 6}else{$tables|Format-Table -AutoSize;Write-Output ('COMPLETE='+$result.complete)}
  if(-not $result.complete){exit 2}
 } finally {$c.Dispose()}
+
 
 
 
