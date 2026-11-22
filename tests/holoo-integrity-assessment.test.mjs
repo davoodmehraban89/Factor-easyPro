@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -11,3 +11,11 @@ test('meaningful orphan and accounting/invoice anomalies remain independent',()=
 test('incomplete, inconsistent, and unauthorized evidence fails closed',()=>{for(const change of [x=>x.complete=false,x=>x.integrity.orphanInvoiceLines=21,x=>x.integrity.orphanInvoiceLinesExcludingCandidateSentinel=2,x=>x.integrity.invoiceHeaders=-1,x=>x.productionWriteGate.status='GO']){const b=base();change(b);assert.equal(assessHolooIntegrity(b).status,'INVALID_EVIDENCE')}});
 test('zero checked anomalies is not permission to write',()=>{const b=base();Object.assign(b.integrity,{orphanInvoiceLines:0,candidateSentinelRows:0});const a=assessHolooIntegrity(b);assert.equal(a.status,'NO_ANOMALIES_IN_CHECKED_METRICS');assert.equal(a.productionWritesAuthorized,false)});
 test('live read-only LAB structural snapshot can be classified', {skip:process.platform!=='win32'||process.env.HOLOO_SQL_INTEGRATION!=='1'},()=>{const path=fileURLToPath(new URL('../scripts/holoo-schema-audit.ps1',import.meta.url));const r=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path,'-Json'],{encoding:'utf8',timeout:45000,maxBuffer:2e6});assert.equal(r.status,0,r.stderr);const a=assessHolooIntegrity(JSON.parse(r.stdout));assert.notEqual(a.status,'INVALID_EVIDENCE');assert.equal(a.productionWritesAuthorized,false);});
+
+test('rejects impossible accounting and numbering counts without granting writes',()=>{
+ for(const change of [
+  x=>x.integrity.missingReferencedAccountingDocuments=11,
+  x=>x.integrity.invoiceHeadersWithoutAccountingCode=11,
+  x=>x.integrity.duplicateInvoiceTypeNumberGroups=6
+ ]){const snapshot=base();change(snapshot);const result=assessHolooIntegrity(snapshot);assert.equal(result.status,'INVALID_EVIDENCE');assert.equal(result.productionWritesAuthorized,false);}
+});
