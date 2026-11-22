@@ -48,10 +48,13 @@ try {
    $procedures += [pscustomobject]@{name=$r.GetString(0);usesCursor=($definition -match '(?i)\bCURSOR\b');hasUpdateLock=($definition -match '(?i)\bUPDLOCK\b');hasSerializable=($definition -match '(?i)\bSERIALIZABLE\b');hasBeginTransaction=($definition -match '(?i)\bBEGIN\s+TRAN(?:SACTION)?\b');readsLastInvoiceNumber=($definition -match '(?is)FETCH\s+LAST\s+FROM\s+FacCursor');insertsInvoiceHeader=($definition -match '(?is)INSERT\s+INTO\s+Facture\s*\(');allocatesNumberWithoutVisibleLock=([bool](($definition -match '(?is)FETCH\s+LAST\s+FROM\s+FacCursor') -and ($definition -match '(?is)INSERT\s+INTO\s+Facture\s*\(') -and ($definition -notmatch '(?i)\bUPDLOCK\b|\bSERIALIZABLE\b|\bBEGIN\s+TRAN(?:SACTION)?\b')))}
   }
  } finally {$r.Close()}
- $result=[pscustomobject]@{schemaVersion=1;database='HolooBackup_050808_LAB_20261110';readOnlyAudit=$true;tables=$tables;integrity=$integrity;procedureConcurrencySignals=$procedures;complete=($tables.Count -eq 3 -and $procedures.Count -eq 3);note='Candidate sentinel classification is unverified; raw orphan count retained. No application-level invariants or concurrency claims'}
+ $riskProcedures=@($procedures | Where-Object {$_.allocatesNumberWithoutVisibleLock} | ForEach-Object {$_.name})
+ $gate=[pscustomobject]@{productionWritesAuthorized=$false;status='NO-GO';blockingReasons=@('No controlled concurrent invoice insertion test has been completed','No verified transaction rollback and inventory/accounting reconciliation evidence exists') + $(if($riskProcedures.Count -gt 0){@('Potential read-last-then-insert race in: '+($riskProcedures -join ', '))}else{@()});evidenceLevel='static SQL definition and read-only lab data audit only'}
+ $result=[pscustomobject]@{schemaVersion=1;database='HolooBackup_050808_LAB_20261110';readOnlyAudit=$true;tables=$tables;integrity=$integrity;procedureConcurrencySignals=$procedures;productionWriteGate=$gate;complete=($tables.Count -eq 3 -and $procedures.Count -eq 3);note='Candidate sentinel classification is unverified; raw orphan count retained. No application-level invariants or concurrency claims'}
  if($Json){$result|ConvertTo-Json -Depth 6}else{$tables|Format-Table -AutoSize;Write-Output ('COMPLETE='+$result.complete)}
  if(-not $result.complete){exit 2}
 } finally {$c.Dispose()}
+
 
 
 
