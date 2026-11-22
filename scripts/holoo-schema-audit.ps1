@@ -24,9 +24,18 @@ try {
   if(-not $r.Read()){throw 'Data integrity query returned no row'}
   $integrity=[pscustomobject]@{invoiceHeaders=$r.GetInt64(0);invoiceLines=$r.GetInt64(1);accountingDocuments=$r.GetInt64(2);orphanInvoiceLines=$r.GetInt64(3)}
  } finally {$r.Close()}
- $result=[pscustomobject]@{schemaVersion=1;database='HolooBackup_050808_LAB_20261110';readOnlyAudit=$true;tables=$tables;integrity=$integrity;complete=($tables.Count -eq 3);note='Structural audit only; no claim of application-level invariants or concurrency safety'}
+ $q.CommandText="SELECT (SELECT COUNT_BIG(*) FROM dbo.FACTART a LEFT JOIN dbo.FACTURE f ON a.Fac_Code=f.Fac_Code AND a.Fac_Type=f.Fac_Type WHERE f.Fac_Code IS NULL AND NOT (a.Fac_Code='000000' AND a.Fac_Type='L' AND a.A_Code='0000000' AND a.A_Index=0)),(SELECT COUNT_BIG(*) FROM dbo.FACTART WHERE Fac_Code='000000' AND Fac_Type='L' AND A_Code='0000000' AND A_Index=0),(SELECT COUNT_BIG(*) FROM dbo.FACTURE f LEFT JOIN dbo.SANAD s ON f.Sanad_Code=s.Sanad_Code WHERE f.Sanad_Code IS NOT NULL AND f.Sanad_Code<>0 AND s.Sanad_Code IS NULL)"
+ $r=$q.ExecuteReader()
+ try {
+  if(-not $r.Read()){throw 'Detailed integrity query returned no row'}
+  $integrity | Add-Member -NotePropertyName orphanInvoiceLinesExcludingCandidateSentinel -NotePropertyValue $r.GetInt64(0)
+  $integrity | Add-Member -NotePropertyName candidateSentinelRows -NotePropertyValue $r.GetInt64(1)
+  $integrity | Add-Member -NotePropertyName missingReferencedAccountingDocuments -NotePropertyValue $r.GetInt64(2)
+ } finally {$r.Close()}
+ $result=[pscustomobject]@{schemaVersion=1;database='HolooBackup_050808_LAB_20261110';readOnlyAudit=$true;tables=$tables;integrity=$integrity;complete=($tables.Count -eq 3);note='Candidate sentinel classification is unverified; raw orphan count retained. No application-level invariants or concurrency claims'}
  if($Json){$result|ConvertTo-Json -Depth 6}else{$tables|Format-Table -AutoSize;Write-Output ('COMPLETE='+$result.complete)}
  if(-not $result.complete){exit 2}
 } finally {$c.Dispose()}
+
 
 
