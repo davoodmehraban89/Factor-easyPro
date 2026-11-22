@@ -30,11 +30,14 @@ try {
  $q.CommandText="SELECT COUNT_BIG(*) FROM sys.database_permissions WHERE grantee_principal_id=DATABASE_PRINCIPAL_ID('public') AND state_desc IN ('GRANT','GRANT_WITH_GRANT_OPTION') AND ((permission_name='EXECUTE') OR (permission_name IN ('INSERT','UPDATE','DELETE','ALTER','CONTROL','TAKE OWNERSHIP')))"
  $publicRisks=[long]$q.ExecuteScalar()
  if($publicRisks -ne 0){throw 'SQL same-connection inherited public privilege gate BLOCKED'}
+ # Reject effective mutation paths even if catalog visibility or public-grant inventory changes.
+ $q.CommandText="SELECT HAS_PERMS_BY_NAME('dbo.dtproperties','OBJECT','INSERT'),HAS_PERMS_BY_NAME('dbo.dtproperties','OBJECT','UPDATE'),HAS_PERMS_BY_NAME('dbo.dtproperties','OBJECT','DELETE'),HAS_PERMS_BY_NAME('dbo.dt_setpropertybyid','OBJECT','EXECUTE')"
+ $er=$q.ExecuteReader()
+ try {
+  if(-not $er.Read()){throw 'SQL effective mutation-path gate BLOCKED'}
+  foreach($i in 0..3){if($er.IsDBNull($i) -or $er.GetInt32($i) -ne 0){throw 'SQL effective mutation-path gate BLOCKED'}}
+ }finally{$er.Close()}
  $q.CommandText=$queries[$QueryId]
  $value=[long]$q.ExecuteScalar()
  [pscustomobject]@{database='HolooBackup_050808_LAB_20261110';queryId=$QueryId;count=$value;readOnly=$true}|ConvertTo-Json -Compress
 } finally {$c.Dispose()}
-
-
-
-

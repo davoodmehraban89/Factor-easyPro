@@ -51,3 +51,13 @@ test('same-connection gate blocks inherited public EXECUTE and DML before counts
  assert.match(source,/permission_name IN \('INSERT','UPDATE','DELETE'/);
  assert.match(source,/inherited public privilege gate BLOCKED/);
 });
+
+test('same-connection gate rejects effective dtproperties writes and executable setter',()=>{
+ const source=readFileSync(fileURLToPath(new URL('../scripts/holoo-lab-counts.ps1',import.meta.url)),'utf8');
+ const check=source.indexOf("HAS_PERMS_BY_NAME('dbo.dtproperties','OBJECT','INSERT')");
+ const count=source.indexOf('$q.CommandText=$queries[$QueryId]');
+ assert.ok(check>source.indexOf('$c.Open()') && count>check);
+ for(const permission of ['INSERT','UPDATE','DELETE']) assert.ok(source.includes(`HAS_PERMS_BY_NAME('dbo.dtproperties','OBJECT','${permission}')`));
+ assert.match(source,/HAS_PERMS_BY_NAME\('dbo\.dt_setpropertybyid','OBJECT','EXECUTE'\)/);
+ assert.match(source,/SQL effective mutation-path gate BLOCKED/);
+});
