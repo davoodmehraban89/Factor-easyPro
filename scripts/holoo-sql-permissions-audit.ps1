@@ -13,9 +13,14 @@ try {
  try {
   if(-not $r.Read()){throw 'No SQL permissions evidence'}
   $owner=($r.GetValue(2) -eq 1);$sel=($r.GetValue(3) -eq 1);$ins=($r.GetValue(4) -eq 1);$upd=($r.GetValue(5) -eq 1);$del=($r.GetValue(6) -eq 1);$sysadmin=($r.GetValue(7) -eq 1);$controlServer=($r.GetValue(8) -eq 1)
-  $result=[pscustomobject]@{database='HolooBackup_050808_LAB_20261110';login=$r.GetString(0);databaseUser=$r.GetString(1);dbOwner=$owner;canSelect=$sel;canInsert=$ins;canUpdate=$upd;canDelete=$del;sysadmin=$sysadmin;controlServer=$controlServer;leastPrivilegeReadOnly=($sel -and -not ($owner -or $ins -or $upd -or $del -or $sysadmin -or $controlServer));status=$(if($sel -and -not ($owner -or $ins -or $upd -or $del -or $sysadmin -or $controlServer)){'PASS'}else{'BLOCKED'});note='ApplicationIntent=ReadOnly is not a SQL permission boundary; effective object permissions checked without writes'}
+  # A table-only permission check is insufficient: inherited public DML/EXECUTE is a blocker.
+  $publicRisk=$true
+  $result=[pscustomobject]@{database='HolooBackup_050808_LAB_20261110';login=$r.GetString(0);databaseUser=$r.GetString(1);dbOwner=$owner;canSelect=$sel;canInsert=$ins;canUpdate=$upd;canDelete=$del;sysadmin=$sysadmin;controlServer=$controlServer;leastPrivilegeReadOnly=$false;tableScopeSelectOnly=($sel -and -not ($owner -or $ins -or $upd -or $del -or $sysadmin -or $controlServer));publicPrivilegeReviewRequired=$publicRisk;status='BLOCKED';note='Fail closed: FACTURE-only permissions cannot prove database-wide read-only; inherited public DML and EXECUTE grants require review'}
  } finally {$r.Close()}
  if($Json){$result|ConvertTo-Json -Compress}else{$result|Format-List}
  if($result.status -ne 'PASS'){exit 2}
 } finally {$c.Dispose()}
+
+
+
 

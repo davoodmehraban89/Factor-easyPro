@@ -8,6 +8,9 @@ test('permission audit has fixed lab target and read-only SQL',()=>{
  const source=readFileSync(script,'utf8');
  assert.match(source,/HolooBackup_050808_LAB_20261110/);
  assert.match(source,/HAS_PERMS_BY_NAME/);
+ assert.ok(source.includes('publicPrivilegeReviewRequired='));
+ assert.ok(source.includes('leastPrivilegeReadOnly='));
+ assert.match(source,/status='BLOCKED'/);
  assert.doesNotMatch(source,/\b(?:GRANT|REVOKE|DENY|INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|ALTER\s+ROLE)\b/i);
 });
 test('real Aram SQL login must not be mistaken for read-only', {skip:process.platform!=='win32'||process.env.HOLOO_SQL_INTEGRATION!=='1'},()=>{
@@ -20,4 +23,7 @@ test('real Aram SQL login must not be mistaken for read-only', {skip:process.pla
  assert.equal(typeof audit.sysadmin,'boolean');
  assert.equal(typeof audit.controlServer,'boolean');
 });
+
+
+
 
