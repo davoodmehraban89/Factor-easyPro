@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 const path = fileURLToPath(new URL('../scripts/holoo-schema-audit.ps1', import.meta.url));
 const script = readFileSync(path, 'utf8');
+const onApprovedLab = process.platform === 'win32' && process.env.HOLOO_SQL_INTEGRATION === '1';
 test('schema audit uses approved preflight and read-only catalog queries', () => {
  assert.match(script, /holoo-direct-sql-readiness\.ps1/);
  assert.match(script, /sys\.foreign_keys/);
@@ -13,7 +14,7 @@ test('schema audit uses approved preflight and read-only catalog queries', () =>
  assert.match(script, /sys\.triggers/);
  assert.doesNotMatch(script, /\b(?:INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|DROP\s+DATABASE|ALTER\s+DATABASE)\b/i);
 });
-test('real lab structural audit returns three complete primary-keyed tables', {skip: process.platform !== 'win32'}, () => {
+test('real lab structural audit returns three complete primary-keyed tables', {skip: !onApprovedLab}, () => {
  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path, '-Json'], {encoding:'utf8', timeout:30000});
  assert.equal(result.status, 0, result.stderr);
  const audit = JSON.parse(result.stdout);
@@ -31,6 +32,7 @@ test('real lab structural audit returns three complete primary-keyed tables', {s
   for(const key of ['outboundForeignKeys','triggers','checkConstraints']) assert.ok(Number.isInteger(table[key]) && table[key]>=0);
  }
 });
+
 
 
 
