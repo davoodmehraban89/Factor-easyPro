@@ -19,9 +19,12 @@ test('real lab structural audit returns three complete primary-keyed tables', {s
  const audit = JSON.parse(result.stdout);
  assert.equal(audit.complete, true);
  assert.equal(audit.readOnlyAudit, true);
+ for (const key of ['invoiceHeaders','invoiceLines','accountingDocuments','orphanInvoiceLines']) assert.ok(Number.isSafeInteger(audit.integrity[key]) && audit.integrity[key] >= 0, key);
+ assert.ok(audit.integrity.orphanInvoiceLines <= audit.integrity.invoiceLines);
  assert.deepEqual(audit.tables.map(t => t.table), ['FACTART','FACTURE','SANAD']);
  for (const table of audit.tables) {
   assert.equal(table.primaryKeys, 1);
   for(const key of ['outboundForeignKeys','triggers','checkConstraints']) assert.ok(Number.isInteger(table[key]) && table[key]>=0);
  }
 });
+

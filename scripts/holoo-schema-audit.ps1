@@ -18,8 +18,15 @@ try {
   $tables=@()
   while($r.Read()){$tables+= [pscustomobject]@{table=$r.GetString(0);outboundForeignKeys=$r.GetInt32(1);triggers=$r.GetInt32(2);checkConstraints=$r.GetInt32(3);primaryKeys=$r.GetInt32(4)}}
  } finally {$r.Close()}
- $result=[pscustomobject]@{schemaVersion=1;database='HolooBackup_050808_LAB_20261110';readOnlyAudit=$true;tables=$tables;complete=($tables.Count -eq 3);note='Structural audit only; no claim of application-level invariants or concurrency safety'}
+ $q.CommandText="SELECT (SELECT COUNT_BIG(*) FROM dbo.FACTURE) AS invoiceHeaders,(SELECT COUNT_BIG(*) FROM dbo.FACTART) AS invoiceLines,(SELECT COUNT_BIG(*) FROM dbo.SANAD) AS accountingDocuments,(SELECT COUNT_BIG(*) FROM dbo.FACTART a LEFT JOIN dbo.FACTURE f ON a.Fac_Code=f.Fac_Code AND a.Fac_Type=f.Fac_Type WHERE f.Fac_Code IS NULL) AS orphanInvoiceLines"
+ $r=$q.ExecuteReader()
+ try {
+  if(-not $r.Read()){throw 'Data integrity query returned no row'}
+  $integrity=[pscustomobject]@{invoiceHeaders=$r.GetInt64(0);invoiceLines=$r.GetInt64(1);accountingDocuments=$r.GetInt64(2);orphanInvoiceLines=$r.GetInt64(3)}
+ } finally {$r.Close()}
+ $result=[pscustomobject]@{schemaVersion=1;database='HolooBackup_050808_LAB_20261110';readOnlyAudit=$true;tables=$tables;integrity=$integrity;complete=($tables.Count -eq 3);note='Structural audit only; no claim of application-level invariants or concurrency safety'}
  if($Json){$result|ConvertTo-Json -Depth 6}else{$tables|Format-Table -AutoSize;Write-Output ('COMPLETE='+$result.complete)}
  if(-not $result.complete){exit 2}
 } finally {$c.Dispose()}
+
 
