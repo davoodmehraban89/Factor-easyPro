@@ -41,3 +41,13 @@ test('same-connection gate checks server-level elevated privileges',()=>{
  assert.match(source,/HAS_PERMS_BY_NAME\(NULL,NULL,'CONTROL SERVER'\)/);
  assert.match(source,/@\(1,3,4,5,7,8,9,11,12,13,14,15,16,17\)/);
 });
+
+test('same-connection gate blocks inherited public EXECUTE and DML before counts',()=>{
+ const source=readFileSync(fileURLToPath(new URL('../scripts/holoo-lab-counts.ps1',import.meta.url)),'utf8');
+ const grantCheck=source.indexOf("grantee_principal_id=DATABASE_PRINCIPAL_ID('public')");
+ const countQuery=source.indexOf('$q.CommandText=$queries[$QueryId]');
+ assert.ok(grantCheck>source.indexOf('$c.Open()') && countQuery>grantCheck);
+ assert.match(source,/permission_name='EXECUTE'/);
+ assert.match(source,/permission_name IN \('INSERT','UPDATE','DELETE'/);
+ assert.match(source,/inherited public privilege gate BLOCKED/);
+});

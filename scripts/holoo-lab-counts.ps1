@@ -25,10 +25,16 @@ try {
   foreach($i in @(1,3,4,5,7,8,9,11,12,13,14,15,16,17)){if($r.IsDBNull($i) -or $r.GetInt32($i) -ne 0){throw 'SQL same-connection privilege gate BLOCKED'}}
   foreach($i in @(2,6,10)){if($r.IsDBNull($i) -or $r.GetInt32($i) -ne 1){throw 'SQL same-connection SELECT gate BLOCKED'}}
  } finally {$r.Close()}
+ # Defense in depth: inherited public EXECUTE and persistent DML grants are not database-wide read-only.
+ # The earlier separate-connection audit is deliberately BLOCKED; this protects against future accidental relaxation.
+ $q.CommandText="SELECT COUNT_BIG(*) FROM sys.database_permissions WHERE grantee_principal_id=DATABASE_PRINCIPAL_ID('public') AND state_desc IN ('GRANT','GRANT_WITH_GRANT_OPTION') AND ((permission_name='EXECUTE') OR (permission_name IN ('INSERT','UPDATE','DELETE','ALTER','CONTROL','TAKE OWNERSHIP')))"
+ $publicRisks=[long]$q.ExecuteScalar()
+ if($publicRisks -ne 0){throw 'SQL same-connection inherited public privilege gate BLOCKED'}
  $q.CommandText=$queries[$QueryId]
  $value=[long]$q.ExecuteScalar()
  [pscustomobject]@{database='HolooBackup_050808_LAB_20261110';queryId=$QueryId;count=$value;readOnly=$true}|ConvertTo-Json -Compress
 } finally {$c.Dispose()}
+
 
 
 
