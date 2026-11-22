@@ -23,3 +23,14 @@ test('count SQL is gated by effective permission audit before connection',()=>{
  assert.match(source,/leastPrivilegeReadOnly/);
  assert.match(source,/SQL least-privilege gate BLOCKED/);
 });
+
+test('SQL execution rechecks all three tables on the same connection',()=>{
+ const source=readFileSync(fileURLToPath(new URL('../scripts/holoo-lab-counts.ps1',import.meta.url)),'utf8');
+ const open=source.indexOf('$c.Open()');
+ const permission=source.indexOf('SQL same-connection privilege gate BLOCKED');
+ const query=source.indexOf('$q.CommandText=$queries[$QueryId]');
+ assert.ok(open>=0 && permission>open && query>permission);
+ for(const table of ['FACTURE','FACTART','SANAD']) assert.match(source,new RegExp(`dbo\\.${table}`));
+ assert.match(source,/IS_MEMBER\('db_datawriter'\)/);
+ assert.match(source,/IS_MEMBER\('db_ddladmin'\)/);
+});
