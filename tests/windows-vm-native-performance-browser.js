@@ -90,7 +90,12 @@
       const firstPageRows = region.querySelectorAll('tbody tr').length;
       const firstPageHtml = region.innerHTML.length;
       if (!pagination || firstPageRows !== 100 || firstPageHtml > 250000) {
-        throw Error('A08 product report must render a bounded 100-row page for 10k products');
+        throw Error('A08 product report must render a bounded 100-row page for 10k products: '+
+          JSON.stringify({pagination:!!pagination,firstPageRows,firstPageHtml,
+            pageSummary:region.querySelector('[data-report-page-summary]')?.textContent,
+            reportText:region.textContent?.trim().slice(0,180),
+            visibleProducts:await db.count('products'),
+            visibleInvoices:await db.count('invoices')}));
       }
       const pageTwoStart = performance.now();
       window.ReportsView._setProductsPage(2);
