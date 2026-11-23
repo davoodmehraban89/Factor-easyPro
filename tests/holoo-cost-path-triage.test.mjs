@@ -12,6 +12,7 @@ test('triage is lexical and never approves writes',()=>{const r=triageCostPaths(
 test('rejects invalid source evidence',()=>{const r=valid();r.procedureCount=3;assert.equal(triageCostPaths(r).status,'INVALID_EVIDENCE');});
 test('missing target is unresolved, not evidence of absence of behavior',()=>{const r=valid();r.procedures.pop();r.procedureCount=1;assert.equal(triageCostPaths(r).candidates[1].status,'UNRESOLVED');});
 test('duplicate target names across schemas are ambiguous',()=>{const r=valid();r.procedures.push({...proc('checkgeymattamamshodeh2'),schema:'other'});r.procedureCount=3;assert.equal(triageCostPaths(r).candidates[0].status,'UNRESOLVED');});
+test('zero cost and quantity tokens are unresolved, not promoted',()=>{const r=valid();assert.equal(triageCostPaths(r).candidates[0].status,'UNRESOLVED');});
 test('unavailable definition is unresolved',()=>{const r=valid();r.procedures[0].definitionAvailable=false;for(const t of terms)r.procedures[0].signals[t]=null;assert.equal(triageCostPaths(r).candidates[0].status,'UNRESOLVED');});
 test('real LAB triage remains read-only', {skip:process.platform!=='win32'||process.env.HOLOO_SQL_INTEGRATION!=='1'},()=>{
  const script=resolve(import.meta.dirname ?? resolve('.','tests'),'../scripts/holoo-financial-procedure-signals.ps1');
