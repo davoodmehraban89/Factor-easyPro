@@ -30,6 +30,26 @@ async function setup(){
     contactId:'g316-foreign-contact',date});
   await retail.activate();
 }
+
+test('G316: invoice issuance rejects a foreign company identity without any financial writes',async()=>{
+  await setup();
+  const attempt={id:'g316-foreign-issue-attempt',companyId:'g316-scope-foreign',
+    number:'G316-FOREIGN-ISSUE',clientUuid:'g316-foreign-issue-attempt',kind:'sale',
+    date,contactId:'g316-local-contact',contactName:'G316 local supplier',
+    isPreInvoice:false,items:[{productId:null,productName:'Synthetic service',qty:1,
+      price:100,lineSubtotal:100,lineTotal:100,discount:0}],
+    subtotal:100,totalDiscount:0,vatAmount:0,grandTotal:100,paidAmount:0,
+    paymentMethod:'cash',status:'unpaid',remaining:100};
+  const before={invoices:(await db.getAll('invoices')).length,
+    journals:(await db.getAll('journal_entries')).length,
+    receipts:(await db.getAll('settings')).filter(x=>String(x.id).startsWith('issuance_receipt_')).length};
+  await assert.rejects(retail.issueInvoice(attempt),/company|شرکت|مجاز|دسترسی|تعلق/i);
+  assert.equal(await db.get('invoices',attempt.id),undefined);
+  assert.deepEqual({invoices:(await db.getAll('invoices')).length,
+    journals:(await db.getAll('journal_entries')).length,
+    receipts:(await db.getAll('settings')).filter(x=>String(x.id).startsWith('issuance_receipt_')).length},before);
+});
+
 test('G316: treasury posting rejects foreign-company invoice, contact and bank account without writes',async()=>{
   await setup();
   const before={

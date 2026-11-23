@@ -226,6 +226,8 @@ class RetailPostingServiceImpl {
       invoice.idempotencyKey || ('factor-easypro-invoice-id:' + invoice.id));
     invoice = { ...invoice, ...identity };
     const company=await DataScope.companyId();
+    if(invoice.companyId!==company)
+      throw Error('شناسه شرکت فاکتور با شرکت فعال مطابقت ندارد');
     if(!await this.isEnabled())throw Error('حسابداری یکپارچه برای این شرکت فعال نیست');
     assertInvoiceTotals(invoice);
     // A return is a new commercial/ledger document, not authorization for
