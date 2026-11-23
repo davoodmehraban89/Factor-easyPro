@@ -1949,6 +1949,17 @@ module.exports = async function nativeFunctionalMatrix(cdp) {
   ];
   const report = {};
   for (const [name, fn] of phases) {
+    // Toasts are transient global UI state, unlike the persistent accounting
+    // stores. A previous phase can intentionally produce an error toast while
+    // verifying that an invalid operation was rejected. Dismiss only those
+    // completed-phase notices before checking the next phase's own errors.
+    // Never dismiss modals or change any accounting data at this boundary.
+    await cdp.evaluate(`(() => {
+      for (const toast of document.querySelectorAll('.toast-error, .toast-warning')) {
+        const close = toast.querySelector('.toast-close');
+        if (close) close.click();
+      }
+    })()`);
     const value = await cdp.evaluate('(' + fn.toString() + ')()');
     assert.ok(value && typeof value === 'object', 'invalid native E2E result from ' + name);
     report[name] = value;
