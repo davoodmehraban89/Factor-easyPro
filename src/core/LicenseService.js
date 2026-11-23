@@ -1,4 +1,6 @@
 import { SecureState } from './SecureState.js';
+import { StorageService } from './StorageService.js';
+import { counterKey } from './IssuanceReceipt.mjs';
 import { trialStatus, licensedStatus } from './LicensePolicy.mjs';
 import { validateEntitlementPayload } from './EntitlementVerifier.mjs';
 import { loadProductionLicensePublicKey, validateOfflineActivation } from './LicenseActivationCore.mjs';
@@ -45,6 +47,7 @@ class LicenseServiceImpl {
     this.clockRollback = Number.isFinite(previousClock) && now + 5 * 60 * 1000 < previousClock;
     this.state = stored;
     this.verifiedPayload = null;
+    await this.reconcileIssuedInvoices();
     if (!this.clockRollback && await validateOfflineActivation(
       stored.signedEntitlement, trustedPublicKey, stored.installationId, now
     )) {
@@ -58,6 +61,42 @@ class LicenseServiceImpl {
   }
 
   async _save() { await SecureState.set(KEY, this.state); }
+  issuanceQuota() {
+    this.assertWritable();
+    const count = this.state?.issuedInvoiceCount;
+    if (!Number.isSafeInteger(count) || count < 0)
+      throw Error('Invalid persisted invoice count');
+    return { floor: count, limit: this.verifiedPayload ? Number.MAX_SAFE_INTEGER : 20 };
+  }
+  async reconcileIssuedInvoices() {
+    const previous = this.state?.issuedInvoiceCount;
+    if (previous !== undefined && (!Number.isSafeInteger(previous) || previous < 0))
+      throw Error('Corrupt secure invoice count');
+    const reconciled = await StorageService.transaction(['invoices', 'settings'], async tx => {
+      const persisted = await tx.get('settings', counterKey);
+      if (persisted && (!Number.isSafeInteger(persisted.count) || persisted.count < 0))
+        throw Error('Corrupt atomic issuance counter');
+      const settings = await tx.getAll('settings');
+      const receipts = settings.filter(row =>
+        typeof row.id === 'string' && row.id.startsWith('issuance_receipt_')).length;
+      const invoices = await tx.getAll('invoices');
+      // If older installations have no receipt ledger, conservatively count
+      // every surviving finalized invoice rather than silently granting a fresh trial.
+      const historical = invoices.filter(row => row && !row.isPreInvoice).length;
+      const count = Math.max(previous ?? 0, persisted?.count ?? 0, receipts, historical);
+      if (!persisted || persisted.count !== count) {
+        await tx.put('settings', { id: counterKey, count, schemaVersion: 1 });
+      }
+      return count;
+    });
+    this.state.issuedInvoiceCount = reconciled;
+    return reconciled;
+  }
+  async recordIssuedInvoice() {
+    await this.reconcileIssuedInvoices();
+    await this._save();
+    return this.status();
+  }
   hasTrustedIssuer() { return Boolean(trustedPublicKey); }
   installationId() { return this.state?.installationId || null; }
 
@@ -110,11 +149,6 @@ class LicenseServiceImpl {
       throw new Error('دوره استفاده یا مجوز به پایان رسیده است؛ اطلاعات فقط قابل مشاهده‌اند.');
     }
   }
-  async recordIssuedInvoice() {
-    this.assertWritable();
-    this.state.issuedInvoiceCount = (this.state.issuedInvoiceCount || 0) + 1;
-    await this._save();
-    return this.status();
-  }
+
 }
 export const LicenseService = new LicenseServiceImpl();

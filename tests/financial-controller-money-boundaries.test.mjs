@@ -41,6 +41,26 @@ test('treasury account and transaction controller reject malformed, fractional a
  assert.equal(receipt.amount,125);
 });
 
+test('treasury controller legacy path replays an idempotent request without duplicate writes',async()=>{
+ await setup();
+ const {TreasuryController}=await import('../src/controllers/TreasuryController.js');
+ const {RetailPostingService}=await import('../src/core/RetailPostingService.js');
+ const original=RetailPostingService.isEnabled;
+ RetailPostingService.isEnabled=async()=>false;
+ try {
+  const account=await TreasuryController.createAccount({name:'Legacy synthetic cash',initialBalance:0});
+  const request={type:'receipt',amount:125,toAccountId:account.id,
+    idempotencyKey:'treasury:legacy-retry-001',date:'1405/07/18'};
+  const first=await TreasuryController.createTransaction(request);
+  const replay=await TreasuryController.createTransaction(request);
+  assert.equal(replay.id,first.id);
+  assert.equal((await rows('treasury')).filter(x=>x.recordType==='transaction').length,1);
+  await assert.rejects(TreasuryController.createTransaction({...request,amount:126}),/کلید تکرارپذیری/);
+  assert.equal((await rows('treasury')).filter(x=>x.recordType==='transaction').length,1);
+ } finally {
+  RetailPostingService.isEnabled=original;
+ }
+});
 test('cheque controller rejects invalid directions and all nonpositive/nonintegral rial amounts',async()=>{
  await setup();
  const {ChequeController}=await import('../src/controllers/ChequeController.js');

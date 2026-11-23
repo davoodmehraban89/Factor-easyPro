@@ -163,3 +163,39 @@ test('legacy concurrent duplicate invoice numbers serialize and reject one save'
   assert.equal(results.filter(x => x.status === 'rejected').length, 1);
   assert.equal((await StorageService.getByCompany('invoices', 'markpaid-company')).filter(x => !x.isPreInvoice).length, 1);
 });
+
+test('legacy preinvoice conversion replay returns the same invoice and increments quota once', async () => {
+  await seed({ isPreInvoice: true, number: '10', items: [], date: '1405/08/12',
+    subtotal: 1000, totalDiscount: 0, discountType: 'fixed', discountInput: 0,
+    vatEnabled: false, vatRate: 0, vatAmount: 0, grandTotal: 1000,
+    paidAmount: 0, paymentMethod: 'cash', remaining: 1000 });
+  const first = await InvoiceController.convertPreInvoice('markpaid-invoice');
+  const second = await InvoiceController.convertPreInvoice('markpaid-invoice');
+  assert.equal(first.id, second.id);
+  assert.equal(second.isPreInvoice, false);
+  assert.equal(await StorageService.count('invoices'), 1);
+  const receipts = (await StorageService.getAll('settings'))
+    .filter(row => String(row.id).startsWith('issuance_receipt_'));
+  assert.equal(receipts.length, 1);
+  const counter = await StorageService.get('settings', 'issuance_global_counter_v1');
+  assert.equal(counter.count, 1);
+});
+
+test('legacy save-based preinvoice finalization uses payload-bound idempotency on retry', async () => {
+  await seed({ isPreInvoice: true, number: '10', items: [], date: '1405/08/12' });
+  const payload = {
+    kind: 'sale', isPreInvoice: false, number: '10', items: [],
+    vatEnabled: false, vatRate: 0, paidAmount: 0, discountInput: 0,
+    idempotencyKey: 'preinvoice-finalize:markpaid-invoice'
+  };
+  const first = await InvoiceController.save(payload, 'markpaid-invoice');
+  const second = await InvoiceController.save(payload, 'markpaid-invoice');
+  assert.equal(first.id, second.id);
+  assert.equal(second.isPreInvoice, false);
+  assert.equal((await StorageService.getAll('settings')).filter(row =>
+    String(row.id).startsWith('issuance_receipt_')).length, 1);
+  assert.equal((await StorageService.get('settings', 'issuance_global_counter_v1')).count, 1);
+  await assert.rejects(InvoiceController.save({
+    ...payload, description: 'tampered retry', idempotencyKey: payload.idempotencyKey
+  }, 'markpaid-invoice'));
+});

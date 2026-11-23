@@ -400,7 +400,8 @@ class ReportControllerImpl {
           totalReturns: 0,
           netSales: 0,
           totalPaid: 0,
-          totalRemaining: 0
+          totalRemaining: 0,
+          returnCreditRemaining: 0
         };
       }
       if (invoice.kind === 'sale') {
@@ -411,6 +412,10 @@ class ReportControllerImpl {
       } else {
         contactStats[key].returnCount += 1;
         contactStats[key].totalReturns += Number(invoice.grandTotal) || 0;
+        contactStats[key].totalPaid -= Number(invoice.paidAmount) || 0;
+        const returnCreditRemaining = Number(invoice.remaining) || 0;
+        contactStats[key].returnCreditRemaining += returnCreditRemaining;
+        contactStats[key].totalRemaining -= returnCreditRemaining;
       }
     });
 
@@ -462,6 +467,7 @@ class ReportControllerImpl {
           netSales: 0,
           totalPaid: 0,
           totalRemaining: 0,
+          returnCreditRemaining: 0,
           lastInvoiceDate: ''
         };
       }
@@ -473,6 +479,10 @@ class ReportControllerImpl {
       } else {
         stats[key].returnCount += 1;
         stats[key].totalReturns += Number(invoice.grandTotal) || 0;
+        stats[key].totalPaid -= Number(invoice.paidAmount) || 0;
+        const returnCreditRemaining = Number(invoice.remaining) || 0;
+        stats[key].returnCreditRemaining += returnCreditRemaining;
+        stats[key].totalRemaining -= returnCreditRemaining;
       }
       if (invoice.date > (stats[key].lastInvoiceDate || ''))
         stats[key].lastInvoiceDate = invoice.date;

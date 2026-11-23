@@ -3,6 +3,7 @@
 // ============================================================
 
 import { StorageService } from '../core/StorageService.js';
+import { recordIssuanceReceipt, findIdempotentInvoice, createIssuanceIdentity, idempotencyRecordKey } from '../core/IssuanceReceipt.mjs';
 import { Auth } from '../core/Auth.js';
 import { ProductController } from './ProductController.js';
 import { SettingsController } from './SettingsController.js';
@@ -30,12 +31,13 @@ class InvoiceControllerImpl {
 
   // ذخیره‌ی فاکتور (ایجاد یا ویرایش)
   async save(data, id = null) {
+    const retryId = typeof data?.idempotencyKey === 'string' && data.idempotencyKey.length >= 16
+      ? data.idempotencyKey : null;
     if (id) {
       const previous = await StorageService.get('invoices', id);
       if (!previous || previous.companyId !== await DataScope.companyId())
         throw new Error('فاکتور در شرکت فعال یافت نشد');
-      if (previous.financePosted)
-        throw new Error('فاکتور ثبت‌شده در حسابداری قطعی است؛ ویرایش مستقیم حتی به پیش‌فاکتور مجاز نیست');
+      // Finalized records are rejected inside the issuance transaction unless this is a verified idempotent retry.
     }
     const user = Auth.current();
     const items = (data.items || []).map(it => {
@@ -112,6 +114,7 @@ class InvoiceControllerImpl {
       ownerUserId: user.id,
       companyId: await DataScope.companyId(),
       kind: data.kind || 'sale',
+      requestedNumber: null,
       isPreInvoice: !!data.isPreInvoice,
       date: data.date || this._todayJalali(),
       contactId: data.contactId || null,
@@ -139,7 +142,7 @@ class InvoiceControllerImpl {
     if (await RetailPostingService.isEnabled() && !baseData.isPreInvoice) {
       LicenseService.assertWritable();
       const previous = id ? await StorageService.get('invoices', id) : null;
-      if (id && (!previous || previous.companyId !== baseData.companyId || !previous.isPreInvoice))
+      if (id && (!previous || previous.companyId !== baseData.companyId))
         throw new Error('فاکتور قطعی قابل ویرایش مستقیم نیست؛ اصلاح از مسیر مرجوعی یا سند معکوس انجام شود');
       const settings = await SettingsController.getInvoiceSettings();
       const minimum = await this.getNextNumber(baseData.kind);
@@ -147,17 +150,23 @@ class InvoiceControllerImpl {
       const number = settings.numberingMode === 'manual' && typed ? typed : String(minimum);
       if (!/^\d+$/.test(number) || !Number.isSafeInteger(Number(number)) || Number(number)<minimum)
         throw new Error('شماره فاکتور از محدوده مجاز کوچک‌تر است');
-      const issued = await RetailPostingService.issueInvoice({ ...baseData,
-        id: id || StorageService.uid('inv_'), clientUuid: previous?.clientUuid || this._uuid(), number });
+      const invoiceId = id || retryId || StorageService.uid('inv_');
+      const idempotencyKey = retryId || (id
+        ? 'preinvoice-finalize:' + baseData.companyId + ':' + id
+        : 'factor-easypro-invoice-id:' + invoiceId);
+      const issueRequest = { ...baseData, id: invoiceId,
+        requestedNumber: settings.numberingMode === 'manual' ? (data.number ?? null) : null,
+        idempotencyKey, clientUuid: previous?.clientUuid || this._uuid(), number };
+      const identity = await createIssuanceIdentity(issueRequest, idempotencyKey);
+      const issued = await RetailPostingService.issueInvoice({ ...issueRequest, ...identity });
       await LicenseService.recordIssuedInvoice();
-      await SettingsController.saveInvoiceSettings({ ...settings,
-        nextNumber: Math.max(Number(settings.nextNumber)||1, Number(number)+1) });
+      // V2 numbering metadata is committed in issueInvoice's transaction.
       return issued;
     }
 
-    // Prepare the legacy invoice before opening IndexedDB transaction.
-    // License counters and settings are secondary metadata and cannot be
-    // atomically committed with IndexedDB; they are updated only after commit.
+    // The invoice, stock movements, receipt, idempotency record and IndexedDB
+    // quota counter commit together. DPAPI SecureState is a separate high-water
+    // mirror and is reconciled from the committed IndexedDB ledger on restart.
     let saved;
     let settings = null;
     let issuedNow = false;
@@ -178,7 +187,7 @@ class InvoiceControllerImpl {
         throw new Error(`Invoice number must be at least ${minimum}`);
       }
       saved = {
-        id: StorageService.uid('inv_'),
+        id: retryId || StorageService.uid('inv_'),
         clientUuid: this._uuid(),
         number,
         ...baseData
@@ -186,27 +195,48 @@ class InvoiceControllerImpl {
       issuedNow = !baseData.isPreInvoice;
       if (issuedNow) nextNumber = Math.max(Number(settings.nextNumber) || 1, Number(number) + 1);
     }
-
-    await this._commitLegacyInvoiceWithStock(saved, { requireExisting: Boolean(id), requirePreInvoice: false });
-    if (issuedNow) await LicenseService.recordIssuedInvoice();
-    if (nextNumber !== null) {
-      await SettingsController.saveInvoiceSettings({ ...settings, nextNumber });
+    if (!saved.isPreInvoice) {
+      saved.requestedNumber = id
+        ? (saved.requestedNumber ?? saved.number ?? null)
+        : (settings?.numberingMode === 'manual' ? (data.number ?? null) : null);
+      const idempotencyKey = retryId || (id
+        ? 'preinvoice-finalize:' + baseData.companyId + ':' + id
+        : 'factor-easypro-invoice-id:' + saved.id);
+      const identity = await createIssuanceIdentity(saved, idempotencyKey);
+      saved = { ...saved, ...identity };
     }
+
+    saved = await this._commitLegacyInvoiceWithStock(saved, {
+      requireExisting: Boolean(id), requirePreInvoice: false
+    });
+    if (!saved.isPreInvoice) await LicenseService.recordIssuedInvoice();
+    // Return the row read/committed inside the transaction, including on replay.
     return saved;
   }
 
   // All legacy invoice and inventory mutations share one transaction. Both
   // active-company checks and concurrent update checks run inside the lock.
   async _commitLegacyInvoiceWithStock(invoice, { requireExisting = false, requirePreInvoice = false } = {}) {
+    if (invoice && !invoice.isPreInvoice) {
+      const identity = await createIssuanceIdentity(invoice,
+        invoice.idempotencyKey || ('factor-easypro-invoice-id:' + invoice.id));
+      invoice = { ...invoice, ...identity };
+    }
     const companyId = await DataScope.companyId();
     if (!invoice || invoice.companyId !== companyId) throw new Error('Invoice outside active company');
     const user = Auth.current();
     const direction = ['purchase', 'sale_return'].includes(invoice.kind) ? 'in' : 'out';
-    return StorageService.transaction(['invoices', 'stock_movements', 'products'], async tx => {
+    return StorageService.transaction(['invoices', 'stock_movements', 'products', 'settings'], async tx => {
+      if (!invoice.isPreInvoice) {
+        const replay = await findIdempotentInvoice(tx, invoice);
+        if (replay) return replay;
+      }
       const existing = await tx.get('invoices', invoice.id);
       if (requireExisting && (!existing || existing.companyId !== companyId)) throw new Error('Invoice not found in active company');
       if (!requireExisting && existing) throw new Error('Duplicate invoice id');
       if (existing?.financePosted) throw new Error('Posted invoice is immutable');
+      if (existing && !existing.isPreInvoice && !invoice.isPreInvoice)
+        throw new Error('Issued invoice is immutable; only a verified idempotent retry may replay it');
       if (requirePreInvoice && !existing?.isPreInvoice) throw new Error('Preinvoice required');
       if (existing && !requirePreInvoice && existing.isPreInvoice !== invoice.isPreInvoice && !existing.isPreInvoice) {
         throw new Error('Issued invoice cannot be reverted to preinvoice');
@@ -236,6 +266,22 @@ class InvoiceControllerImpl {
         }
       }
       await tx.put('invoices', invoice);
+      if (!invoice.isPreInvoice && (!existing || existing.isPreInvoice)) {
+        await recordIssuanceReceipt(tx, invoice, LicenseService.issuanceQuota());
+      }
+      if (!invoice.isPreInvoice) {
+        const key = `invoice_numbering_${companyId}`;
+        const prior = await tx.get('settings', key);
+        const numeric = Number(invoice.number);
+        if (!Number.isSafeInteger(numeric) || numeric < 1 || numeric >= Number.MAX_SAFE_INTEGER) {
+          throw new Error('Invalid invoice number for atomic numbering');
+        }
+        await tx.put('settings', {
+          ...prior, id: key, companyId,
+          numberingMode: prior?.numberingMode === 'manual' ? 'manual' : 'auto',
+          nextNumber: Math.max(Number(prior?.nextNumber) || 1, numeric + 1)
+        });
+      }
       return invoice;
     });
   }
@@ -315,24 +361,35 @@ class InvoiceControllerImpl {
   }
   // تبدیل پیش‌فاکتور به فاکتور
   async convertPreInvoice(id) {
+    const companyId = await DataScope.companyId();
+    const idempotencyKey = 'factor-easypro-preinvoice-finalize:' + companyId + ':' + id;
+    const priorRecord = await StorageService.get('settings', idempotencyRecordKey(companyId, idempotencyKey));
+    if (priorRecord) {
+      const priorInvoice = await StorageService.get('invoices', priorRecord.invoiceId);
+      if (!priorInvoice || priorInvoice.companyId !== companyId)
+        throw Error('Preinvoice idempotency record requires recovery');
+      return priorInvoice;
+    }
     LicenseService.assertWritable();
     const inv = await StorageService.get('invoices', id);
-    if (!inv || inv.companyId !== await DataScope.companyId() || !inv.isPreInvoice)
+    if (!inv || inv.companyId !== companyId || !inv.isPreInvoice)
       throw new Error('Preinvoice not found in active company');
     if (await RetailPostingService.isEnabled()) {
       const number = await this.getNextNumber(inv.kind);
-      const issued = await RetailPostingService.issueInvoice({ ...inv, isPreInvoice: false, number });
+      const issued = await RetailPostingService.issueInvoice({ ...inv, isPreInvoice: false, number, idempotencyKey });
       await LicenseService.recordIssuedInvoice();
       const settings = await SettingsController.getInvoiceSettings();
-      await SettingsController.saveInvoiceSettings({ ...settings, nextNumber: Math.max(Number(settings.nextNumber) || 1, Number(number) + 1) });
+      // V2 numbering metadata is committed in issueInvoice's transaction.
       return issued;
     }
     const number = await this.getNextNumber(inv.kind);
     await this._assertUniqueNumber(number, inv.id);
-    const issued = { ...inv, isPreInvoice: false, number };
-    await this._commitLegacyInvoiceWithStock(issued, { requireExisting: true, requirePreInvoice: true });
+    const issued = { ...inv, isPreInvoice: false, number, idempotencyKey };
+    const committed = await this._commitLegacyInvoiceWithStock(issued, {
+      requireExisting: true, requirePreInvoice: true
+    });
     await LicenseService.recordIssuedInvoice();
-    return issued;
+    return committed;
   }
 
   // Payments serialize with invoice mutations.

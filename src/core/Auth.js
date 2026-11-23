@@ -160,7 +160,7 @@ class AuthImpl {
       root.setAttribute('dir', 'rtl');
       root.style.cssText = 'position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;background:#0f172a;font-family:inherit;';
       root.innerHTML = `
-        <form id="finoraAuthForm" autocomplete="on" style="width:min(92vw,380px);background:#fff;color:#0f172a;border-radius:16px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.4);display:flex;flex-direction:column;gap:12px;">
+        <form id="finoraAuthForm" autocomplete="off" style="width:min(92vw,380px);background:#fff;color:#0f172a;border-radius:16px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.4);display:flex;flex-direction:column;gap:12px;">
           <div id="faTitle" style="font-size:20px;font-weight:700;"></div>
           <div id="faHint" style="font-size:13px;color:#475569;line-height:1.7;"></div>
           <input id="faUser" name="username" type="text" placeholder="نام کاربری" autocomplete="username" style="padding:12px;border:1px solid #cbd5e1;border-radius:10px;font:inherit;">

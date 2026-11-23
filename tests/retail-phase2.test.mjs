@@ -6,11 +6,17 @@ import { AccountingService as accounts } from '../src/core/AccountingService.js'
 import { RetailPostingService as retail } from '../src/core/RetailPostingService.js';
 import { Auth } from '../src/core/Auth.js';
 import { CompanyService } from '../src/core/CompanyService.js';
+import { LicenseService } from '../src/core/LicenseService.js';
 
 const date='1405/07/18';
 const company='c2-phase2';
 async function setup(){
   await db.clearAll();
+  // Each integration test receives an explicit, valid isolated trial state.
+  // Production authorization remains mandatory; tests do not bypass it.
+  LicenseService.state = { trialStartedAt: new Date().toISOString(), lastSeenAt: new Date().toISOString(), installationId: 'retail-phase2-test-installation', issuedInvoiceCount: 0 };
+  LicenseService.verifiedPayload = null;
+  LicenseService.clockRollback = false;
   await db.put('companies',{id:company,name:'Store 2'});
   Auth.currentUser={id:'phase2-admin',role:'admin',username:'admin'};
   CompanyService.activeCompanyId=company;
@@ -54,7 +60,7 @@ test('v2 sale-purchase cash settlement balance, weighted average and exactly onc
  assert.equal(journals.length,3);
  const trial=await accounts.trialBalance();
  assert.equal(trial.totals.debit,trial.totals.credit);
- await assert.rejects(retail.issueInvoice(sold),/قطعی|تکراری/);
+ const replayed=await retail.issueInvoice(sold); assert.equal(replayed.id,sold.id);
  assert.equal((await accounts.listJournals()).length,3);
  const receipt=await retail.postTransaction({id:'receipt-1',type:'receipt',date,amount:400,
    contactId:'contact-1',refInvoiceId:sold.id,toAccountId:'cash-1',method:'cash'});
@@ -63,6 +69,59 @@ test('v2 sale-purchase cash settlement balance, weighted average and exactly onc
  assert.equal((await db.getAllByIndex('settlements','invoiceId',sold.id)).length,2);
  assert.deepEqual((await accounts.trialBalance()).totals.debit,(await accounts.trialBalance()).totals.credit);
  assert.equal((await retail.stockBalances({warehouseId:warehouse.id}))[0].value,700);
+});
+test('v2 treasury idempotency key replays one linked receipt across fresh transaction ids',async()=>{
+ await setup();await purchase10();
+ const sold=await sale3();
+ const request={type:'receipt',date,amount:200,contactId:'contact-1',
+   refInvoiceId:sold.id,toAccountId:'cash-1',method:'cash',
+   idempotencyKey:'treasury:stable-request-001'};
+ const first=await retail.postTransaction({...request,id:'receipt-attempt-1'});
+ const replay=await retail.postTransaction({...request,id:'receipt-attempt-2'});
+ assert.equal(replay.id,first.id);
+ assert.equal(replay.id,'receipt-attempt-1');
+ assert.equal((await db.getAll('treasury')).filter(x=>x.recordType==='transaction').length,1);
+ assert.equal((await db.getAll('journal_entries')).length,3);
+ assert.equal((await db.getAll('settlements')).length,1);
+ assert.equal((await db.get('invoices',sold.id)).paidAmount,200);
+ assert.equal((await db.get('invoices',sold.id)).remaining,400);
+ await assert.rejects(retail.postTransaction({...request,id:'receipt-attempt-3',amount:201}),/کلید تکرارپذیری/);
+ assert.equal((await db.getAll('treasury')).filter(x=>x.recordType==='transaction').length,1);
+ assert.equal((await db.getAll('journal_entries')).length,3);
+ assert.equal((await db.getAll('settlements')).length,1);
+ assert.equal((await db.get('invoices',sold.id)).paidAmount,200);
+ const trial=await accounts.trialBalance();assert.equal(trial.totals.debit,trial.totals.credit);
+});
+test('v2 concurrent treasury requests with one idempotency key commit once',async()=>{
+ await setup();await purchase10();
+ const sold=await sale3();
+ const request={type:'receipt',date,amount:150,contactId:'contact-1',
+   refInvoiceId:sold.id,toAccountId:'cash-1',method:'cash',
+   idempotencyKey:'treasury:concurrent-request-001'};
+ const [first,second]=await Promise.all([
+   retail.postTransaction({...request,id:'concurrent-attempt-1'}),
+   retail.postTransaction({...request,id:'concurrent-attempt-2'})
+ ]);
+ assert.equal(first.id,second.id);
+ assert.equal((await db.getAll('treasury')).filter(x=>x.recordType==='transaction').length,1);
+ assert.equal((await db.getAll('settlements')).length,1);
+ assert.equal((await db.getAll('journal_entries')).length,3);
+ assert.equal((await db.get('invoices',sold.id)).paidAmount,150);
+ assert.equal((await db.get('invoices',sold.id)).remaining,450);
+ const trial=await accounts.trialBalance();assert.equal(trial.totals.debit,trial.totals.credit);
+});
+test('v2 treasury transfer idempotency key replays without a second journal',async()=>{
+ await setup();
+ const second=await retail.createTreasuryAccount({id:'cash-2',recordType:'account',type:'cashbox',
+   name:'Second cashbox',initialBalance:0,isActive:true,isDefault:false});
+ const request={type:'transfer',date,amount:50,fromAccountId:'cash-1',toAccountId:second.id,
+   method:'transfer',idempotencyKey:'treasury:transfer-request-001'};
+ const first=await retail.postTransaction({...request,id:'transfer-attempt-1'});
+ const replay=await retail.postTransaction({...request,id:'transfer-attempt-2'});
+ assert.equal(replay.id,first.id);
+ assert.equal((await db.getAll('treasury')).filter(x=>x.recordType==='transaction').length,1);
+ assert.equal((await db.getAll('journal_entries')).length,1);
+ const trial=await accounts.trialBalance();assert.equal(trial.totals.debit,trial.totals.credit);
 });
 test('v2 stock over-issue aborts invoice, stock and journal atomically',async()=>{
  await setup();await purchase10();
@@ -237,8 +296,9 @@ test('v2 concurrent posting of same invoice commits exactly once',async()=>{
  await setup();await purchase10();
  const same=invoice('sale',1,200);
  const [a,b]=await Promise.allSettled([retail.issueInvoice(same),retail.issueInvoice(same)]);
- assert.equal([a,b].filter(x=>x.status==='fulfilled').length,1);
- assert.equal([a,b].filter(x=>x.status==='rejected').length,1);
+ assert.equal([a,b].filter(x=>x.status==='fulfilled').length,2);
+ assert.equal([a,b].filter(x=>x.status==='rejected').length,0);
+ assert.equal(a.value.id,b.value.id);
  assert.equal((await accounts.listJournals()).length,2);
  assert.equal((await retail.stockBalances())[0].quantityUnits,9000);
  assert.equal((await db.getAll('stock_movements')).length,2);
@@ -429,7 +489,10 @@ test('A01/A03: a referenced customer return creates one atomic correction and co
     a.eventType === 'commercial_journal_posted'));
   assert.equal((await db.get('invoices', sold.id)).grandTotal, 600);
   assert.equal((await db.get('invoices', sold.id)).paidAmount, 200);
-  assert.equal((await db.getAll('settlements')).length, 1);
+  const settlements = await db.getAll('settlements');
+  assert.equal(settlements.length, 2);
+  assert.equal(settlements.filter(x => x.settlementType === 'credit_allocation' && x.sourceInvoiceId === returned.id).length, 1);
+  assert.equal(settlements.find(x => x.settlementType === 'credit_allocation').amount, 200);
   assert.equal((await db.getAll('stock_movements')).filter(x => x.refId === returned.id).length, 1);
   await assert.rejects(retail.issueInvoice(invoice('sale_return', 3, 200, {
     originalInvoiceId: sold.id
