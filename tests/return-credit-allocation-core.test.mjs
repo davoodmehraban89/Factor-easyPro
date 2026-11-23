@@ -43,6 +43,26 @@ test('multiple return allocations consume the original open amount once and cons
   assert.equal(first.returnCreditRemaining+second.returnCreditRemaining,100_000);
 });
 
+
+
+test('exhaustive small Rial allocations preserve both original debt and return-credit value',()=>{
+  for(let originalTotal=1;originalTotal<=30;originalTotal++){
+    for(let originalPaidAmount=0;originalPaidAmount<=originalTotal;originalPaidAmount++){
+      for(let priorCreditApplied=0;priorCreditApplied<=originalTotal-originalPaidAmount;priorCreditApplied++){
+        for(let returnAmount=1;returnAmount<=30;returnAmount++){
+          const result=previewReturnCreditAllocation({originalTotal,originalPaidAmount,priorCreditApplied,returnAmount});
+          assert.equal(result.originalOpenBefore,originalTotal-originalPaidAmount-priorCreditApplied);
+          assert.equal(result.allocatedToOriginal+result.originalOpenAfter,result.originalOpenBefore);
+          assert.equal(result.allocatedToOriginal+result.returnCreditRemaining,returnAmount);
+          assert.ok(result.allocatedToOriginal>=0&&result.originalOpenAfter>=0&&result.returnCreditRemaining>=0);
+          assert.ok(result.allocatedToOriginal<=result.originalOpenBefore);
+          assert.ok(result.allocatedToOriginal<=returnAmount);
+        }
+      }
+    }
+  }
+});
+
 test('unsafe, negative and over-allocated source amounts are rejected',()=>{
   for(const args of [
     {originalTotal:0,returnAmount:1},
