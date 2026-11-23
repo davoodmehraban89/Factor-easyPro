@@ -1,5 +1,38 @@
 # PROJECT_STATUS — Factor-easyPro
 
+## RESUME_PACKET — 2026-11-23 / CI recovery
+
+- schema_version: 1
+- updated_at_utc: 2026-11-23T05:22:24Z
+- run_id: finora-20261123-pr198-ci-recovery-01
+- repository: davoodmehraban89/Factor-easyPro
+- active_goal: Repair PR #198 Windows CI without granting LAB access or weakening the production NO-GO
+- accepted_scope: Test harness isolation, accurate PR metadata and evidence; no real SQL data or production changes
+- current_phase: F0 verification / P0 CI regression; mapping_to_A_B_C: A — Reliable Core
+- worktree_path: C:\Users\Davood\Documents\Factor-easyPro-QA\.worktrees\factor-easypro-holoo-lab-phase1-20261111
+- branch: docs/holoo-lab-stabilization-phase1-20261111
+- baseline_commit: 32222c47a8010555f8e320ed4736e05fd7575000
+- implementation_commit: 2dab2a7e74280f67901e275b603c61ed5e8c89ef (verified local code/test change; do not confuse status commit with implementation)
+- active_pr: #198 (open; 58 commits / 45 files at exact-head 0e355ca before this checkpoint; PR description verified)
+- dependent_prs: none for #198; separately unmerged finance stack #183 → #190 → #191 → #192 → #193 must be evaluated independently
+- local_changes: LAB worktree initially clean; parity worktree has tracked and untracked unpublished changes; root main behind origin/main
+- unpublished_work: parity worktree remains untouched; do not overwrite or commit its contents as part of #198
+- verification: baseline 32222c Windows CI failed due to unintended private LAB test; isolated PR198 Aram Node 24.21.0 npm test 336 pass/0 fail/15 skip, build success, production npm audit 0 high; exact-head 0e355ca Windows installer/upgrade run 45116704593 success, Linux quality job 45116704615 success, Windows native preview job pending; separate unpublished parity worktree npm test 480 pass/0 fail/0 skip and build success, targeted financial 26/26 pass (not part of PR198)
+- delivery_state: pushed / CI partially verified at 0e355ca (installer/upgrade success, Linux success, native preview pending); no merge or release
+- active_task_id: FINORA-CI-PR198-LAB-GATE
+- task_state: Implemented — Partially Verified (exact-head Windows installer/upgrade CI passed; native preview CI pending; security/acceptance NO-GO)
+- last_completed_action: Exact-head Windows installer/upgrade workflow 45116704593 verified success; PR #198 evidence updated; unpublished parity worktree 480/480 tests and frontend build passed; no SQL live test, merge or release
+- interrupted_action: none
+- next_action: Check exact-head PR #198 quality run 45116704615 Windows native preview job conclusion and inspect failure logs if needed; keep LAB NO-GO; isolate and review unpublished parity financial changes before a separate draft PR, preserving dirty worktree
+- blockers: SQL LIVE readiness unverified for public runners (expected: remain fail closed; requires restricted approved LAB to clear); finance PR chain not merged (requires review/approval)
+- approvals: permission for isolated development, tests, branch push and draft PR updates; no merge/main push/release/database write permission
+- security_gates: synthetic unit tests allowed; private LAB SQL opt-in and preflight required; operational DB writes NO-GO
+- do_not_repeat: do not run live LAB integration during generic Windows CI; do not reimplement parity financial fixes already in dirty worktree or PR #193
+- known_limitations: exact-head Windows installer/upgrade run 45116704593 passed, Linux quality job passed, Windows native preview job pending; unpublished parity 480/480 local tests passed and build succeeded but is not merged; A03/A04 accepted in phase A manifest, eight remaining gates not accepted; no independent financial sign-off or physical print verification
+
+---
+
+
 > **نقطه ورود ثابت به پروژه** برای هر چت، توسعه‌دهنده یا اجرای جدید. ابتدا این فایل و سپس اسناد لینک‌شده را بخوانید. این فایل «وضعیت» است، نه سند قابلیت‌های اثبات‌نشده.
 
 **تاریخ بازبینی سند مرجع:** 2026-11-11  
@@ -7,7 +40,8 @@
 **قاعده شروع توسعه:** ابتدا کتابچه ده‌فازی، سپس همین فایل وضعیت، سپس Issue/ADR/PR مرتبط را بخوانید. این فایل همچنان تنها مرجع وضعیت زنده و شواهد انجام کار است.  
 **یادداشت سازگاری:** نقشه ده‌فازی، ساختار کلان را تعریف می‌کند؛ فازهای A/B/C و Issueهای موجود در ادامه این فایل و اسناد مرتبط، خردکارهای اجرایی و تاریخچه قبلی را حفظ می‌کنند و حذف یا جایگزین نمی‌شوند.  
 
-**آخرین بازبینی وضعیت تاریخی ثبت‌شده در این فایل:** 2026-10-16؛ پیش از شروع هر کار، Releases، main، Issueها و PRها را دوباره بررسی کنید.  
+**آخرین بازبینی وضعیت ثبت‌شده در این فایل:** 2026-11-11؛ آخرین وضعیت محیط هلو در بخش پایانی همین فایل و گزارش تثبیت آزمایشگاه ثبت شده است. وضعیت زنده Releases، main، Issueها و PRها باید در هر نوبت دوباره بررسی شود.
+
 **شاخه مرجع:** `main` در [davoodmehraban89/Factor-easyPro](https://github.com/davoodmehraban89/Factor-easyPro)  
 **آخرین نسخه منتشرشده و تأییدشده در Releases:** [v2.0.3](https://github.com/davoodmehraban89/Factor-easyPro/releases/tag/v2.0.3)  
 **هدف محصول مصوب:** رقیب گسترده‌تر هلو، با هسته مالی و انبار مستقل و ماژولار؛ بدون کپی کد/ظاهر اختصاصی رقیب.  
@@ -366,3 +400,38 @@
 - [PR #110](https://github.com/davoodmehraban89/Factor-easyPro/pull/110) پس از [Quality CI #39171146683](https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/39171146683) با نتیجه success در `main` ادغام شد (`76f0a9d4121b158fe1e768e4de370e17be55e5f2`). head آزموده‌شده `2e86a5252c720345df70b51e3a805da48c97e8db`.
 - کنترل انتشار اکنون شناسه‌های دقیق ده گیت و URL کامل شواهد را بررسی می‌کند؛ آزمون‌های منفی برای گیت اضافه، گیت مفقود و لینک دارای suffix یا query نامعتبر اضافه شد.
 - این اصلاح صرفاً حفاظت گیت انتشار است، نه تکمیل A01/A03/A04/A05/A06/A07/A08 یا تأیید مستقل. تمامی `accepted`ها همچنان `false`؛ انتشار جدید ممنوع است. بازگشت: revert PR #110.
+
+
+## آخرین وضعیت واقعی — 2026-11-11 | تثبیت آزمایشگاه هلو
+
+**زیرمرحله اجرایی اولویت‌دار ۱** ذیل فاز ۰ کتابچه ده‌فازی آغاز شد. این عنوان با «فاز ۱ رسمی: هسته معماری، داده و شرکت‌ها» اشتباه نشود.
+
+- گزارش تفصیلی: [تثبیت آزمایشگاه هلو — زیرمرحله ۱](docs/audits/HOLOO_LAB_STABILIZATION_SUBPHASE_01_20261111_FA.md).
+- ثبت این زیرمرحله در [PR #198](https://github.com/davoodmehraban89/Factor-easyPro/pull/198) انجام شده است؛ PR باز و Merge نشده است. نتیجه CI و Build در تب Checks همان PR مرجع نهایی وضعیت است.
+- گزارش ممیزی Runtime/Schema در [PR #197](https://github.com/davoodmehraban89/Factor-easyPro/pull/197) قرار دارد؛ PR هنوز Open و Merge نشده است. CI آن شامل Tests/Frontend Build و Windows Native Build موفق بوده؛ این PR فقط مستندات است و کد اجرایی محصول را تغییر نمی‌دهد.
+- [PR #196](https://github.com/davoodmehraban89/Factor-easyPro/pull/196) نیز مستند Backup بومی هلو است و هنوز Open است؛ Restore در آن PR انجام نشده و A02 پذیرفته نیست.
+- Clone هم‌ساختار Holoo1 با نام Holoo1_FACTORLAB_20261110 در Instance مرجع فقط پس از Backup معتبر و کنترل صفر بودن نشست‌ها به READ_ONLY تغییر کرد. Holoo1 و Holoo6 عملیاتی تغییر نکردند.
+- اختلاف ظاهری شمارش ایندکس حل شد: 440 ردیف PR #197 شامل 2 ردیف system-shipped است؛ شمارش فقط جدول‌های کاربری 438 و شمارش با system-shipped برابر 440 است. هر دو دامنه در Holoo1 و FACTORLAB برابرند.
+- Backup طلایی محلی با SHA-256 برابر B4029F76B53B607FE075416E1949A0EF55FDD0237E7280EF66C63B1C0F93C50B در مسیر خصوصی C:\FINORA-SQL-Lab\backups نگهداری می‌شود. فایل Backup یا داده عملیاتی وارد مخزن نشده است.
+- FINORA_HOLOO_LAB_20261111 از Backup مورخ 2026-10-30 ساخته شده و با Schema فعلی 16 اختلاف ستون، 2 اختلاف ماژول و 4 اختلاف Constraint دارد؛ برای parity نسخه فعلی استفاده نشود. DBCC آن موفق است، اما سلامت فیزیکی، قدیمی‌بودن Schema را جبران نمی‌کند.
+- HolooTemplate و HolooUpgrade هر کدام 106 جدول و 155 ردیف دارند و READ_ONLY هستند؛ Template یک ردیف CUSTOMER و یک ردیف FACTART دارد. هنوز Seed مصنوعی و قابل‌قبول بودن آن تأیید نشده است.
+- Holoo_dataSource.txt به ARAM\\TNC اشاره می‌کند. Alias_Holoo فقط در master همین Instance وجود دارد؛ 10 Alias ثبت شده و فقط 2 مورد به DB آنلاین وصل‌اند. Instance پیش‌فرض Alias_Holoo ندارد؛ بنابراین تغییر ساده DataSource برای ساخت Runtime مستقل کافی نیست و افزودن Alias به Instance عملیاتی ممنوع است. Setup Bootstrap SQL 2008 R2 موجود است اما رسانه کامل نصب محلی پیدا نشد. Microsoft هنوز SP2 Express را فهرست می‌کند، ولی Windows 11 در سیستم‌عامل‌های پشتیبانی‌شده صفحه دانلود نیست و پشتیبانی SQL 2008 R2 در 2019-07-10 پایان یافته؛ نصب بدون VM ایزوله و رضایت صریح EULA انجام نمی‌شود. CPU از مجازی‌سازی پشتیبانی می‌کند اما Virtualization در Firmware خاموش است؛ فعال‌سازی BIOS/UEFI و Restart به اقدام مالک نیاز دارد.
+- DBCC CHECKDB روی Clone طلایی، Template، Upgrade و FINORA_HOLOO_LAB موفق شد. RESTORE VERIFYONLY روی Backup طلایی نیز موفق بود.
+- هیچ Trace، فاکتور آزمایشی، سند، دریافت/پرداخت، اجرای DBTools، Restore یا Migration روی هلو انجام نشده است.
+- گیت آمادگی Trace هنوز BLOCKED است: Runtime مستقل، دیتابیس کاری هم‌ساختار و دارای داده مصنوعی، حساب محدود آزمایشگاهی و جداسازی کامل از Instance عملیاتی هنوز ساخته نشده‌اند.
+
+### وضعیت Git و حفاظت تغییرات محلی
+
+- شاخه مرجع مخزن در GitHub هنگام این ثبت: main روی commit da2692e259fb709e09a31958a2456917bd01fcf0؛ این commit شامل ادغام PR #195 و کتابچه ده‌فازی است.
+- Worktree اصلی محلی قبل از این کار 344 commit عقب بود؛ فقط origin/main با fetch به‌روز شد و شاخه main محلی reset یا merge نشد.
+- شاخه مستندات این زیرمرحله: docs/holoo-lab-stabilization-phase1-20261111، ساخته‌شده از origin/main در commit da2692e.
+- Worktree قدیمی Holoo Parity دارای 55 تغییر ثبت‌نشده است. هیچ reset، clean، checkout اجباری، merge یا حذف روی آن انجام نشود؛ ابتدا تغییرات آن باید جداگانه تعیین تکلیف شوند.
+
+### اقدام بعدی
+
+1. تحلیل فقط‌خواندنی Alias_Holoo، Holoo_dataSource و مسیر اتصال Runtime.
+2. طراحی و ساخت Runtime/Instance مستقل از TNC عملیاتی.
+3. ایجاد دیتابیس کاری هم‌ساختار با داده مصنوعی و تأییدشده؛ نه استفاده از کپی حاوی داده واقعی.
+4. پس از عبور گیت‌های ایمنی، شروع Trace و سناریوی اول سند حسابداری مصنوعی.
+
+**وضعیت محصول:** آخرین Release عمومی همچنان v2.0.3 است. گیت‌های پذیرش انتشار بدون تغییر باقی می‌مانند؛ موفقیت CI مستندات یا DBCC هلو، مجوز انتشار محصول نیست.

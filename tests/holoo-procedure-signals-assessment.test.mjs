@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { spawnSync } from 'node:child_process';
+import { resolve } from 'node:path';
+const require = createRequire(import.meta.url);
+const { assessProcedureSignals } = require('../src/holoo-procedure-signals-assessment.cjs');
+const terms = ['FACTURE','FACTART','SANAD','Sum_Price','Takhfif','Sum_Levy','Sum_Scot','Tedad','Buy_Price','Price_BS','INSERT','UPDATE','DELETE','EXEC','sp_executesql'];
+const valid = () => ({schemaVersion:1,database:'HolooBackup_050808_LAB_20261110',metadataOnly:true,lexicalOnly:true,dynamicSqlAndIndirectCallsUnresolved:true,financialSemanticsVerified:false,productionWriteGate:'NO-GO',procedureCount:1,procedures:[{schema:'dbo',name:'Example',definitionAvailable:true,signals:Object.fromEntries(terms.map(t=>[t,0]))}]});
+test('valid lexical evidence remains NO-GO',()=> { const a=assessProcedureSignals(valid()); assert.equal(a.status,'LEXICAL_ONLY'); assert.equal(a.productionWriteGate,'NO-GO'); });
+test('reject missing or inflated counts',()=> { for(const n of [0,2,-1]) {const r=valid();r.procedureCount=n;assert.equal(assessProcedureSignals(r).status,'INVALID_EVIDENCE');} });
+test('reject duplicate identities regardless of case',()=> {const r=valid();r.procedures.push({...r.procedures[0],name:'example'});r.procedureCount=2;assert.equal(assessProcedureSignals(r).status,'INVALID_EVIDENCE');});
+test('reject missing, fractional and negative lexical counts',()=> {for(const v of [undefined,-1,1.5,'1']) {const r=valid();r.procedures[0].signals.UPDATE=v;assert.equal(assessProcedureSignals(r).status,'INVALID_EVIDENCE');}});
+test('unavailable definitions must have null counts',()=> {const r=valid();r.procedures[0].definitionAvailable=false;assert.equal(assessProcedureSignals(r).status,'INVALID_EVIDENCE');for(const t of terms)r.procedures[0].signals[t]=null;assert.equal(assessProcedureSignals(r).status,'LEXICAL_ONLY');});
+test('unsafe flag changes are rejected',()=> {const r=valid();r.financialSemanticsVerified=true;assert.equal(assessProcedureSignals(r).status,'INVALID_EVIDENCE');});
+test('real LAB report is lexical only', {skip:process.platform!=='win32'||process.env.HOLOO_SQL_INTEGRATION!=='1'},()=> {
+ const script=resolve(import.meta.dirname ?? resolve('.','tests'),'../scripts/holoo-financial-procedure-signals.ps1');
+ const run=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',script,'-Json'],{encoding:'utf8',timeout:60000});
+ assert.equal(run.status,0,run.stderr);
+ const a=assessProcedureSignals(JSON.parse(run.stdout));
+ assert.equal(a.status,'LEXICAL_ONLY',JSON.stringify(a.errors));
+});
