@@ -52,7 +52,15 @@ jobs:
               $run.path -notmatch '(^|/)windows-vm-native-lab[.]yml(@|$)') {
             throw 'Source must be a successful first-party native lab run on exactly this commit'
           }
-          Write-Host ("Verified candidate run "+$run.html_url+" SHA "+$run.head_sha)
+          $artifacts=gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SOURCE_RUN/artifacts?per_page=100" | ConvertFrom-Json
+          $candidate=@($artifacts.artifacts | Where-Object { $_.name -eq 'phase-a-native-candidate-nsis' })
+          if ($candidate.Count -ne 1 -or $candidate[0].expired -or
+              $candidate[0].size_in_bytes -lt 500000 -or
+              $candidate[0].digest -notmatch '^sha256:[a-fA-F0-9]{64}$') {
+            throw 'Missing, expired, duplicated or unverifiable native candidate artifact'
+          }
+          Write-Host ("Verified candidate run "+$run.html_url+" SHA "+$run.head_sha+
+            " artifact "+$candidate[0].id+" archive digest "+$candidate[0].digest)
       - name: Reuse already-built candidate NSIS
         uses: actions/download-artifact@v4
         with:
