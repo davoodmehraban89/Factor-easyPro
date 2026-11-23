@@ -1,3 +1,18 @@
+## RESUME_PACKET — verified independent A08 result (2026-11-23)
+
+- User approved ONLY PR #200 merge; merged to main as e4f9b020f50ba617db7f4a9fdd5eadc8fb6f0fa2. Product PR #199 remains Draft, unmerged.
+- Independent A08 run 45242810197: COMPLETED SUCCESS. Native installed WebView2 benchmark step and evidence upload SUCCESS.
+- Verified artifact ID 14852461701, archive digest sha256:19bdfb1462e0f81c032ff0fa782a1d6b7aa72b391df99505a6912c9670689411. Parsed benchmark-native-result.json from artifact: status PASSED, installedNativeTauri true, CDP ready, version 2.0.4, 10000 products, 50000 invoices, 50000 companyInvoices.
+- Products UI pagination: 100 rows/page, 100 pages, first/second/last page 100 rows; page two index 101. Report reload 956ms; company invoice read P50 470ms P95 501.8ms; encrypted backup 3116.3ms, 58793537 bytes.
+- JS renderer heap after benchmark 630993296 bytes (~602 MiB), scope not total Windows memory. Investigate long-duration memory/GC behavior; single sample does not prove leak.
+- CI source SHA 0ba77a1de4b9ea32434ec4fa1d81dbd639a8a807; installer run 45212480429; archive hash verified on runner.
+- Full native run 45241924392: CANCELLED, not PASS; prior successful full native run 45215772519 on product code 4d48448.
+- Phase A remains NO-GO pending independent QA and remaining release/physical gates. Do not claim all scenarios accepted.
+- Next: inspect cancellation reason and ensure no A08 regression; evaluate memory growth with controlled repeated tests; avoid unnecessary NSIS rebuild.
+- Older RESUME_PACKET below is historical.
+
+---
+
 ## RESUME_PACKET — A08 activation and dispatch checkpoint (2026-11-23)
 
 - User approved merging ONLY PR #200; no product merge, release or production writes.
