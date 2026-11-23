@@ -13,7 +13,7 @@ test('rejects wrong database or incomplete evidence',()=>{
  assert.throws(()=>evaluateReadOnlyRisk({...fixture(),databasePermissions:null}),/Incomplete/);
 });
 test('public mutation and execute grants block read-only certification',()=>{
- const report=evaluateReadOnlyRisk(fixture([{principal_name:'public',state_desc:'GRANT',permission_name:'INSERT',object_name:'dbo.dtproperties'},{principal_name:'public',state_desc:'GRANT',permission_name:'EXECUTE',object_name:'dbo.dt_setpropertybyid'}]));
+ const report=evaluateReadOnlyRisk(fixture([{principal_name:'public',state_desc:'GRANT',permission_name:'INSERT',class_desc:'OBJECT_OR_COLUMN',object_name:'dbo.dtproperties'},{principal_name:'public',state_desc:'GRANT',permission_name:'EXECUTE',class_desc:'OBJECT_OR_COLUMN',object_name:'dbo.dt_setpropertybyid'}]));
  assert.equal(report.status,'NO-GO');assert.equal(report.publicMutationGrantCount,1);assert.equal(report.publicExecuteGrantCount,1);
  assert.ok(report.blockers.some(x=>x.code==='PUBLIC_MUTATION_GRANTS'));
 });
@@ -28,4 +28,11 @@ test('real LAB inventory yields explainable blockers', {skip:process.platform!==
  assert.equal(result.status,0,result.stderr);
  const report=evaluateReadOnlyRisk(JSON.parse(result.stdout));
  assert.equal(report.publicExecuteGrantCount,31);assert.equal(report.publicMutationGrantCount,3);assert.equal(report.status,'NO-GO');
+});
+
+test('malformed catalog rows cannot silently bypass risk detection',()=>{
+ const bad=[null,{}, {principal_name:'public',permission_name:'EXECUTE',state_desc:'GRANT'}];
+ for(const permission of bad) assert.throws(()=>evaluateReadOnlyRisk(fixture([permission])),/Malformed database permission/);
+ assert.throws(()=>evaluateReadOnlyRisk({...fixture(),databaseRoleMemberships:[{}]}),/Malformed database role/);
+ assert.throws(()=>evaluateReadOnlyRisk({...fixture(),serverRoleMemberships:[{}]}),/Malformed server role/);
 });

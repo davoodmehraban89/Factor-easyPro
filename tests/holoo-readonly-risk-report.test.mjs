@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 const require=createRequire(import.meta.url);
 const {generateReport}=require('../scripts/holoo-readonly-risk-report.cjs');
 const script=fileURLToPath(new URL('../scripts/holoo-readonly-risk-report.cjs',import.meta.url));
-const fixture={identity:{database_name:'HolooBackup_050808_LAB_20261110'},readOnlyInventory:true,databasePermissions:[{principal_name:'public',state_desc:'GRANT',permission_name:'EXECUTE',object_name:'dbo.dt_setpropertybyid'}],databaseRoleMemberships:[],serverRoleMemberships:[]};
+const fixture={identity:{database_name:'HolooBackup_050808_LAB_20261110'},readOnlyInventory:true,databasePermissions:[{principal_name:'public',state_desc:'GRANT',permission_name:'EXECUTE',class_desc:'OBJECT_OR_COLUMN',object_name:'dbo.dt_setpropertybyid'}],databaseRoleMemberships:[],serverRoleMemberships:[]};
 test('report pipeline emits explainable NO-GO without SQL writes',()=>{
  const report=generateReport({runner:()=>({status:0,stdout:JSON.stringify(fixture)})});
  assert.equal(report.status,'NO-GO');assert.equal(report.publicExecuteGrantCount,1);assert.equal(report.sqlChangesPerformed,false);
