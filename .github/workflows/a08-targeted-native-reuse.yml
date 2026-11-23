@@ -44,10 +44,13 @@ jobs:
           if ((git rev-parse HEAD).Trim() -ne $env:SOURCE_SHA) { throw 'Checked out source SHA mismatch' }
           if ($env:EXPECTED_VERSION -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid candidate version' }
           $run=gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SOURCE_RUN" | ConvertFrom-Json
-          if ($run.head_sha -ne $env:SOURCE_SHA -or $run.status -ne 'completed' -or
+          # Reject artifacts produced by a fork or by an unrelated workflow.
+          $repo=gh api "repos/$env:GITHUB_REPOSITORY" | ConvertFrom-Json
+          if ($run.repository.id -ne $repo.id -or $run.head_repository.id -ne $repo.id -or
+              $run.head_sha -ne $env:SOURCE_SHA -or $run.status -ne 'completed' -or
               $run.conclusion -ne 'success' -or $run.event -notin @('pull_request','push','workflow_dispatch') -or
-              $run.path -notmatch 'windows-vm-native-lab.yml') {
-            throw 'Source must be a completed native lab run on exactly this commit'
+              $run.path -notmatch '(^|/)windows-vm-native-lab[.]yml(@|$)') {
+            throw 'Source must be a successful first-party native lab run on exactly this commit'
           }
           Write-Host ("Verified candidate run "+$run.html_url+" SHA "+$run.head_sha)
       - name: Reuse already-built candidate NSIS
