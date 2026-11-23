@@ -153,7 +153,16 @@
     await window.SettingsView.restoreBackup();
     if (capturedErrors.length !== 2 || document.querySelector('.toast-error') ||
         document.querySelector('.modal-backdrop')) {
-      throw Error('Correct-password restore failed or left modal/error state');
+      const dialogs = [...document.querySelectorAll('.modal-backdrop')].map(node => ({
+        title: node.querySelector('.modal-title')?.textContent?.trim().slice(0, 100) || '',
+        hasRestoreFile: !!node.querySelector('#restoreFile'),
+        actions: [...node.querySelectorAll('.modal-footer button')]
+          .map(button => button.textContent.trim().slice(0, 60))
+      }));
+      throw Error('Correct-password restore failed or left modal/error state: ' +
+        JSON.stringify({errors:capturedErrors, visibleErrors:[...document.querySelectorAll('.toast-error')]
+          .map(node=>node.textContent.trim().slice(0,180)),dialogs,
+          recoveredContact:!!(await store.get('contacts',contactId))}));
     }
     const recovered = await store.get('contacts', contactId);
     if (recovered?.name !== synthetic || recovered.companyId !== company.id) {

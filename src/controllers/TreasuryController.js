@@ -220,6 +220,7 @@ class TreasuryControllerImpl {
       throw Error('حساب مبدا و مقصد انتقال باید متفاوت و مشخص باشند');
     const tx = {
       id: StorageService.uid('tx_'),
+      idempotencyKey: data.idempotencyKey || null,
       recordType: 'transaction',
       ownerUserId: user.id,
       type: data.type,                       // receipt | payment | transfer
@@ -237,12 +238,36 @@ class TreasuryControllerImpl {
       ...(data.reasonCode ? { reasonCode: data.reasonCode } : {}),
       ...(data.explicitlyApproved === true ? { explicitlyApproved: true } : {})
     };
+    const scoped = await DataScope.stamp('treasury', tx);
     if (await RetailPostingService.isEnabled()) {
-      return RetailPostingService.postTransaction(await DataScope.stamp('treasury',tx));
+      return RetailPostingService.postTransaction(scoped);
     }
-    return await StorageService.put('treasury', await DataScope.stamp('treasury', tx));
+    if (!scoped.idempotencyKey) return StorageService.put('treasury', scoped);
+    if (String(scoped.idempotencyKey).length > 200) throw Error('طول کلید تکرارپذیری بیش از حد مجاز است');
+    return StorageService.transaction('treasury', async store => {
+      const duplicate = (await store.getAll('treasury')).find(row =>
+        row.companyId === scoped.companyId && row.recordType === 'transaction' &&
+        row.idempotencyKey === scoped.idempotencyKey);
+      if (duplicate) {
+        const sameRequest = duplicate.type === scoped.type &&
+          Number(duplicate.amount) === transactionAmount &&
+          (duplicate.fromAccountId || null) === (scoped.fromAccountId || null) &&
+          (duplicate.toAccountId || null) === (scoped.toAccountId || null) &&
+          (duplicate.contactId || null) === (scoped.contactId || null) &&
+          (duplicate.refInvoiceId || null) === (scoped.refInvoiceId || null) &&
+          (duplicate.method || 'cash') === (scoped.method || 'cash') &&
+          (duplicate.date || '') === (scoped.date || '') &&
+          (duplicate.description || '') === (scoped.description || '') &&
+          (duplicate.reasonCode || null) === (scoped.reasonCode || null) &&
+          (duplicate.explicitlyApproved === true) === (scoped.explicitlyApproved === true);
+        if (!sameRequest) throw Error('کلید تکرارپذیری قبلاً برای درخواست مالی متفاوت استفاده شده است');
+        return duplicate;
+      }
+      if (await store.get('treasury', scoped.id)) throw Error('تراکنش تکراری است');
+      await store.put('treasury', scoped);
+      return scoped;
+    });
   }
-
   async deleteTransaction(id) {
     const existing = await StorageService.get('treasury', id);
     if (!existing || existing.companyId !== await DataScope.companyId()) throw new Error('تراکنش در شرکت فعال یافت نشد');

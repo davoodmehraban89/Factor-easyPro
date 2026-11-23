@@ -9,6 +9,9 @@ import { Modal } from '../core/Modal.js';
 import { Toast } from '../core/Toast.js';
 import { Formatters } from '../utils/Formatters.js';
 import { NumberInput } from '../utils/NumberInput.js';
+import { createTreasuryRetryIdentity, clearTreasuryRetryIdentity } from '../core/IssuanceReceipt.mjs';
+import { StorageService } from '../core/StorageService.js';
+import { DataScope } from '../core/DataScope.js';
 
 let currentTab = 'accounts';
 let txFilter = { search: '', type: '', accountId: '' };
@@ -363,6 +366,10 @@ class TreasuryViewImpl {
       Modal.close();
       await this.reload();
       document.getElementById('treasury-content').innerHTML = this.renderTabContent();
+      if (retryStorageKey) {
+        try { await clearTreasuryRetryIdentity(StorageService, { storageKey: retryStorageKey, idempotencyKey: data.idempotencyKey }); }
+        catch (_) { Toast.warning('تراکنش ثبت شد؛ پاک‌سازی نشانگر تکرار انجام نشد.'); }
+      }
     } catch (err) {
       Toast.error('خطا: ' + err.message);
     }
@@ -417,8 +424,14 @@ class TreasuryViewImpl {
     const invoices=cache.invoices.filter(row=>
       row.financePosted && !row.isPreInvoice && kinds.includes(row.kind) &&
       Number(row.remaining)>0);
-    return '<option value="">— دریافت/پرداخت مستقل (بدون اتصال فاکتور) —</option>' +
-      invoices.map(row => `<option value="${this._esc(row.id)}">#${this._esc(row.number)} — ${this._esc(row.contactName||'بدون نام')} (${Formatters.number(row.remaining)} ریال)</option>`).join('');
+    return '<option value="">انتخاب سند برای تسویه</option>' +
+      invoices.map(row => {
+        const balanceLabel=['sale_return','purchase_return'].includes(row.kind)
+          ? 'اعتبار برگشت باقی‌مانده' : 'مانده خالص قابل تسویه';
+        return '<option value="'+this._esc(row.id)+'">#'+this._esc(row.number)+
+          ' — '+this._esc(row.contactName||'طرف حساب')+
+          ' ('+balanceLabel+': '+Formatters.number(row.remaining)+' ریال)</option>';
+      }).join('');
   }
 
   _onInvoiceSelection() {
@@ -634,6 +647,18 @@ class TreasuryViewImpl {
       description: document.getElementById('txDescription')?.value || ''
     };
 
+    const persistRetryIdentity = async () => {
+      const retrySignature = JSON.stringify({
+        companyId: await DataScope.companyId(),
+        type: data.type, date: data.date, amount: data.amount, method: data.method,
+        contactId: data.contactId, refInvoiceId: data.refInvoiceId,
+        fromAccountId: data.fromAccountId, toAccountId: data.toAccountId,
+        description: data.description, reasonCode: data.reasonCode || null
+      });
+      const identity = await createTreasuryRetryIdentity(retrySignature, StorageService);
+      data.idempotencyKey = identity.idempotencyKey;
+      return identity;
+    };
     if (type === 'transfer') {
       if (!data.fromAccountId || !data.toAccountId) {
         Toast.warning('حساب مبدأ و مقصد رو انتخاب کنید');
@@ -652,25 +677,31 @@ class TreasuryViewImpl {
         Toast.warning('برای تسویه مرجوعی دلیل را انتخاب کنید');
         return;
       }
+      const retryIdentity = await persistRetryIdentity();
       Modal.confirm({
         title: type==='payment'?'تأیید بازپرداخت مرجوعی':'تأیید دریافت وجه مرجوعی',
         message: 'آیا مبلغ '+Formatters.number(data.amount)+' ریال برای مرجوعی انتخاب‌شده تأیید می‌شود؟',
         confirmText: 'تأیید و ثبت',
         danger: type==='payment',
-        onConfirm: () => this._commitTransaction(type,{...data,explicitlyApproved:true})
+        onConfirm: () => this._commitTransaction(type,{...data,explicitlyApproved:true},retryIdentity.storageKey)
       });
       return;
     }
-    await this._commitTransaction(type,data);
+    const retryIdentity = await persistRetryIdentity();
+    await this._commitTransaction(type,data,retryIdentity.storageKey);
   }
 
-  async _commitTransaction(type,data) {
+  async _commitTransaction(type,data,retryStorageKey = null) {
     try {
       await TreasuryController.createTransaction(data);
       Toast.success(TreasuryController.getTypeLabel(type) + ' ثبت شد');
       Modal.close();
       await this.reload();
       document.getElementById('treasury-content').innerHTML = this.renderTabContent();
+      if (retryStorageKey) {
+        try { await clearTreasuryRetryIdentity(StorageService, { storageKey: retryStorageKey, idempotencyKey: data.idempotencyKey }); }
+        catch (_) { Toast.warning('تراکنش ثبت شد؛ پاک‌سازی نشانگر تکرار انجام نشد.'); }
+      }
     } catch (err) {
       Toast.error('خطا: ' + err.message);
     }

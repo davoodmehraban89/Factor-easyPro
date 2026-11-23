@@ -250,10 +250,22 @@ export async function restoreCompanyBackup(data, { companyId, userId, mode = 'me
       const invoices=(await tx.getAll('invoices')).filter(x=>x.companyId===companyId);
       const transactions=(await tx.getAll('treasury')).filter(x=>x.companyId===companyId);
       const settlements=await tx.getAllByIndex('settlements','companyId',companyId);
-      for(const row of settlements)if(!invoices.some(i=>i.id===row.invoiceId)||
-        !transactions.some(t=>t.id===row.transactionId&&t.recordType==='transaction')||
-        !Number.isSafeInteger(row.amount)||row.amount<=0)
-        throw Error('تسویه بازیابی‌شده به فاکتور یا تراکنش نامعتبر اشاره دارد');
+      for(const row of settlements){
+        const invoice=invoices.find(i=>i.id===row.invoiceId);
+        const validAmount=Number.isSafeInteger(row.amount)&&row.amount>0;
+        // Return-credit allocations settle an original receivable/payable
+        // against a posted return invoice, without a treasury transaction.
+        // Cash settlements instead require a real treasury transaction.
+        const validLink=row.settlementType==='credit_allocation'
+          ? row.transactionId==null&&row.targetInvoiceId===row.invoiceId&&
+            !!invoices.find(i=>i.id===row.sourceInvoiceId&&i.financePosted&&
+              (i.kind==='sale_return'||i.kind==='purchase_return')&&
+              i.originalInvoiceId===row.invoiceId)&&
+            !!invoice&&invoice.financePosted
+          : transactions.some(t=>t.id===row.transactionId&&t.recordType==='transaction');
+        if(!invoice||!validAmount||!validLink)
+          throw Error('تسویه بازیابی‌شده به فاکتور یا تراکنش نامعتبر اشاره دارد');
+      }
     }
     // Restore only this company's finance activation marker, never global preferences
     // or another company's settings.

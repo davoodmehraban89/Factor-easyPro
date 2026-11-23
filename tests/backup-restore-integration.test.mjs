@@ -222,3 +222,35 @@ test('A04: older backup envelopes without optional checksum retain supported com
   await SettingsController.importBackup(backup);
   assert.equal((await StorageService.get('contacts', 'legacy-contact')).name, 'Legacy');
 });
+
+
+test('A04: legitimate return credit allocation restores without a treasury transaction', async () => {
+  await setup();
+  await StorageService.put('invoices', {
+    id:'origin-credit',companyId:'c1',kind:'sale',financePosted:true
+  });
+  await StorageService.put('invoices', {
+    id:'return-credit',companyId:'c1',kind:'sale_return',
+    originalInvoiceId:'origin-credit',financePosted:true
+  });
+  const allocation={
+    id:'allocation-credit',companyId:'c1',settlementType:'credit_allocation',
+    invoiceId:'origin-credit',targetInvoiceId:'origin-credit',
+    sourceInvoiceId:'return-credit',transactionId:null,amount:50
+  };
+  const data={contacts:[{id:'restored-credit-contact',companyId:'c1',name:'Valid'}],
+    settlements:[allocation]};
+  await restoreCompanyBackup(data,{companyId:'c1',userId:'restore-admin'});
+  assert.equal((await StorageService.get('settlements',allocation.id)).amount,50);
+  assert.equal((await StorageService.get('contacts','restored-credit-contact')).name,'Valid');
+  const beforeAudits=(await StorageService.getAll('audit_events')).length;
+  const invalid={...allocation,id:'forged-credit',sourceInvoiceId:'missing-return'};
+  await assert.rejects(
+    restoreCompanyBackup({contacts:[{id:'rolled-back-credit-contact',companyId:'c1',name:'Invalid'}],
+      settlements:[invalid]},{companyId:'c1',userId:'restore-admin'}),
+    /تسویه بازیابی‌شده/
+  );
+  assert.equal(await StorageService.get('contacts','rolled-back-credit-contact'),undefined);
+  assert.equal(await StorageService.get('settlements','forged-credit'),undefined);
+  assert.equal((await StorageService.getAll('audit_events')).length,beforeAudits);
+});

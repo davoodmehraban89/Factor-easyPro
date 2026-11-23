@@ -1,10 +1,13 @@
 // Phase 2 transactional commercial posting. Every dependent row shares one IndexedDB transaction.
 import { StorageService } from './StorageService.js';
+import { recordIssuanceReceipt, findIdempotentInvoice, createIssuanceIdentity } from './IssuanceReceipt.mjs';
+import { LicenseService } from './LicenseService.js';
 import { DataScope } from './DataScope.js';
 import { Auth } from './Auth.js';
 import { AuditService } from './AuditService.js';
 import { validateJournal, journalSourceKey, assertJalaliDate } from './AccountingCore.mjs';
 import { previewSaleReturnSettlement } from './ReturnSettlementCore.mjs';
+import { previewReturnCreditAllocation } from './ReturnCreditAllocationCore.mjs';
 import { LEDGER_CODES, INVOICE_DIRECTIONS, amount, positiveAmount,
   qtyUnits, fromQtyUnits, receiveStock, issueStock, allocateDiscount,
   postLine, differenceLines, assertInvoiceTotals } from './RetailFinanceCore.mjs';
@@ -218,7 +221,13 @@ class RetailPostingServiceImpl {
     return {cost:next.cost};
   }
   async issueInvoice(invoice) {
+    const enforcedQuota = LicenseService.issuanceQuota();
+    const identity = await createIssuanceIdentity(invoice,
+      invoice.idempotencyKey || ('factor-easypro-invoice-id:' + invoice.id));
+    invoice = { ...invoice, ...identity };
     const company=await DataScope.companyId();
+    if(invoice.companyId!==company)
+      throw Error('شناسه شرکت فاکتور با شرکت فعال مطابقت ندارد');
     if(!await this.isEnabled())throw Error('حسابداری یکپارچه برای این شرکت فعال نیست');
     assertInvoiceTotals(invoice);
     // A return is a new commercial/ledger document, not authorization for
@@ -229,7 +238,13 @@ class RetailPostingServiceImpl {
     }
     if(invoice.isPreInvoice)throw Error('پیش‌فاکتور نباید سند مالی تولید کند');
     if(!invoice.id)throw Error('شناسه یکتای فاکتور الزامی است');
+    if(typeof invoice.idempotencyKey!=='string'||invoice.idempotencyKey.length<16||
+       !/^[a-f0-9]{64}$/.test(invoice.requestHash||'')) {
+      throw Error('شناسه و اثرانگشت پایدار صدور الزامی است');
+    }
     return StorageService.transaction(FINANCE_STORES,async tx=>{
+      const replay=await findIdempotentInvoice(tx,invoice);
+      if(replay)return replay;
       const ctx=await this.context(tx,company,invoice.date);
       const kinds=INVOICE_DIRECTIONS;
       if(!kinds[invoice.kind])throw Error('نوع فاکتور نامعتبر است');
@@ -238,6 +253,7 @@ class RetailPostingServiceImpl {
       const existing=(await tx.getAll('invoices')).filter(i=>i.companyId===company&&!i.isPreInvoice);
       if(existing.some(i=>String(i.number)===String(invoice.number)))throw Error('شماره فاکتور تکراری است');
       if(invoice.contactId)sameCompany(await tx.get('contacts',invoice.contactId),company,'طرف حساب');
+      let returnAllocation = null;
       if(['sale_return','purchase_return'].includes(invoice.kind)){
         if(!invoice.originalInvoiceId)throw Error('فاکتور مرجوعی باید به فاکتور اولیه متصل باشد');
         const origin=sameCompany(await tx.get('invoices',invoice.originalInvoiceId),company,'فاکتور اولیه');
@@ -266,6 +282,29 @@ class RetailPostingServiceImpl {
           const requested=invoice.items.filter(matching).reduce((sum,x)=>sum+qtyUnits(x.qty),0);
           if(!base||was+requested>base)throw Error('تعداد مرجوعی از مقدار فاکتور اصلی بیشتر است');
         }
+        const priorCreditRows=(await tx.getAll('settlements')).filter(row=>
+          row.companyId===company && row.settlementType==='credit_allocation' &&
+          row.targetInvoiceId===origin.id);
+        const priorCreditApplied=priorCreditRows.reduce((sum,row)=>{
+          const source=existing.find(candidate=>candidate.id===row.sourceInvoiceId);
+          if(row.invoiceId!==origin.id||row.targetInvoiceId!==origin.id||row.transactionId!==null||
+             !source||source.kind!==invoice.kind||source.originalInvoiceId!==origin.id||!source.financePosted||
+             row.idempotencyKey!==JSON.stringify([company,'credit_allocation',source.id]))
+            throw Error('Prior return-credit allocation has an invalid source, target or company relationship');
+          if(!Number.isSafeInteger(row.amount)||row.amount<0||row.amount>amount(source.grandTotal)||
+             !Number.isSafeInteger(sum+row.amount))throw Error('Invalid prior return-credit allocation');
+          return sum+row.amount;
+        },0);
+        const storedCreditApplied=amount(origin.creditAppliedAmount||0);
+        if(storedCreditApplied!==priorCreditApplied)
+          throw Error('Original invoice credit-allocation ledger does not match its stored control total');
+        const allocation=previewReturnCreditAllocation({
+          originalTotal:amount(origin.grandTotal),
+          originalPaidAmount:amount(origin.paidAmount||0),
+          priorCreditApplied,
+          returnAmount:amount(invoice.grandTotal)
+        });
+        returnAllocation={origin,priorCreditApplied,...allocation};
       }
       const warehouseId=invoice.warehouseId||await this.defaultWarehouse(tx,company);
       sameCompany(await tx.get('warehouses',warehouseId),company,'انبار');
@@ -335,9 +374,41 @@ class RetailPostingServiceImpl {
       }
       const journal=await this.journal(tx,ctx,'invoice',invoice.id,lines,'فاکتور '+invoice.number);
       const issued={...invoice,companyId:company,ownerUserId:actor(),warehouseId,
-        financePosted:true,journalId:journal.id,status:invoice.paidAmount?'partial':'unpaid',
-        remaining:grand,paidAmount:0};
+        financePosted:true,journalId:journal.id,status:returnAllocation?(returnAllocation.returnCreditRemaining===0?'settled':'partial'):(invoice.paidAmount?'partial':'unpaid'),
+        creditAppliedAmount:returnAllocation?.allocatedToOriginal||0,
+        remaining:returnAllocation?returnAllocation.returnCreditRemaining:grand,
+        settlementStatus:returnAllocation&&returnAllocation.returnCreditRemaining===0?'settled':
+          returnAllocation?'credit_due':'open',paidAmount:0};
       await tx.put('invoices',issued);
+      if(returnAllocation){
+        const allocation=returnAllocation.allocatedToOriginal;
+        const origin=returnAllocation.origin;
+        const nextCreditApplied=returnAllocation.priorCreditApplied+allocation;
+        await tx.put('invoices',{...origin,creditAppliedAmount:nextCreditApplied,
+          remaining:returnAllocation.originalOpenAfter,
+          settlementStatus:returnAllocation.originalOpenAfter===0?'settled':'open',
+          status:returnAllocation.originalOpenAfter===0?(amount(origin.paidAmount||0)===amount(origin.grandTotal)?'paid':'settled'):
+            amount(origin.paidAmount||0)>0?'partial':'unpaid'});
+        if(allocation>0){
+          await tx.add('settlements',{id:uid('set_'),companyId:company,
+            settlementType:'credit_allocation',invoiceId:origin.id,
+            sourceInvoiceId:issued.id,targetInvoiceId:origin.id,transactionId:null,
+            amount:allocation,date:ctx.date,ownerUserId:actor(),
+            idempotencyKey:JSON.stringify([company,'credit_allocation',issued.id])});
+        }
+      }
+      await recordIssuanceReceipt(tx, issued, enforcedQuota);
+      const number = Number(issued.number);
+      if (/^\d+$/.test(String(issued.number)) && Number.isSafeInteger(number) &&
+          number >= 1 && number < Number.MAX_SAFE_INTEGER) {
+        const numberKey = `invoice_numbering_${company}`;
+        const numberSettings = await tx.get('settings', numberKey);
+        await tx.put('settings', {
+          ...numberSettings, id: numberKey, companyId: company,
+          numberingMode: numberSettings?.numberingMode === 'manual' ? 'manual' : 'auto',
+          nextNumber: Math.max(Number(numberSettings?.nextNumber) || 1, number + 1)
+        });
+      }
       const previousItems=await tx.getAllByIndex('invoice_items','invoiceId',invoice.id);
       for(const oldItem of previousItems){
         if(oldItem.companyId!==company)throw Error('اقلام فاکتور متعلق به شرکت دیگری است');
@@ -378,16 +449,36 @@ class RetailPostingServiceImpl {
     const to=cashAccounts.find(a=>a.id===chosen)||cashAccounts.find(a=>a.isDefault)||cashAccounts[0];
     if(!to)throw Error('برای تسویه نقدی، حساب صندوق یا بانک فعال تعریف کنید');
     const cashLedgerId=cashLedger(ctx,to);
-    const id=info.transactionId||uid('tx_');
-    if(await tx.get('treasury',id))throw Error('دریافت یا پرداخت تکراری است');
     if(info.contactId)sameCompany(await tx.get('contacts',info.contactId),ctx.companyId,'طرف حساب دریافت/پرداخت');
     let related=null;
     if(info.invoiceId) {
       related=sameCompany(await tx.get('invoices',info.invoiceId),ctx.companyId,'فاکتور تسویه');
       if(related.isPreInvoice||!related.financePosted)throw Error('این فاکتور در دفتر مالی قطعی نشده است');
       if(info.contactId&&related.contactId!==info.contactId)throw Error('شخص تراکنش با فاکتور متفاوت است');
-      if(sum>related.remaining)throw Error('مبلغ تسویه بیش از مانده فاکتور است');
     }
+    const idempotencyKey=info.idempotencyKey==null?null:String(info.idempotencyKey).trim();
+    if(idempotencyKey) {
+      if(idempotencyKey.length>200)throw Error('طول کلید تکرارپذیری بیش از حد مجاز است');
+      const duplicate=(await tx.getAll('treasury')).find(row=>
+        row.companyId===ctx.companyId&&row.recordType==='transaction'&&
+        row.idempotencyKey===idempotencyKey);
+      if(duplicate) {
+        const sameRequest=duplicate.type===info.type&&amount(duplicate.amount)===sum&&
+          (duplicate.refInvoiceId||null)===(related?.id||null)&&
+          (duplicate.contactId||null)===(info.contactId||related?.contactId||null)&&
+          (duplicate.fromAccountId||null)===(info.type==='payment'?to.id:null)&&
+          (duplicate.toAccountId||null)===(info.type==='receipt'?to.id:null)&&
+          (duplicate.method||'cash')===(info.method||'cash')&&
+          (duplicate.date||'')===ctx.date&&
+          (duplicate.description||'')===(info.description||'')&&
+          (duplicate.reasonCode||null)===(info.reasonCode||null)&&
+          (duplicate.explicitlyApproved===true)===(info.explicitlyApproved===true);
+        if(!sameRequest)throw Error('کلید تکرارپذیری قبلاً برای درخواست مالی متفاوت استفاده شده است');
+        return duplicate;
+      }
+    }
+    const id=info.transactionId||uid('tx_');
+    if(await tx.get('treasury',id))throw Error('تراکنش تکراری است');
     const isReceipt=info.type==='receipt';
     let otherCode=isReceipt?LEDGER_CODES.receivable:LEDGER_CODES.payable;
     if(related){
@@ -458,12 +549,18 @@ class RetailPostingServiceImpl {
       recordType:'transaction',type:info.type,date:ctx.date,amount:sum,
       fromAccountId:isReceipt?null:to.id,toAccountId:isReceipt?to.id:null,
       contactId:info.contactId||related?.contactId||null,refInvoiceId:related?.id||null,
-      method:info.method||'cash',description:info.description||'',financePosted:true,journalId:journal.id};
+      method:info.method||'cash',description:info.description||'',idempotencyKey,
+       reasonCode:info.reasonCode||null,explicitlyApproved:info.explicitlyApproved===true,
+       financePosted:true,journalId:journal.id};
     await tx.put('treasury',transaction);
     if(related){
       const paid=amount(related.paidAmount||0)+sum;
-      await tx.put('invoices',{...related,paidAmount:paid,remaining:related.grandTotal-paid,
-        status:paid===related.grandTotal?'paid':'partial'});
+      const creditApplied=amount(related.creditAppliedAmount||0);
+      const remaining=amount(related.grandTotal)-paid-creditApplied;
+      if(remaining<0)throw Error('Cash settlement exceeds invoice balance after return-credit allocation');
+      await tx.put('invoices',{...related,paidAmount:paid,remaining,
+        settlementStatus:remaining===0?'settled':'open',
+        status:remaining===0?(paid===related.grandTotal?'paid':'settled'):paid>0?'partial':'unpaid'});
       await tx.put('settlements',{id:uid('set_'),companyId:ctx.companyId,
         invoiceId:related.id,transactionId:id,amount:sum,date:ctx.date,ownerUserId:actor()});
       // A01: returning goods and handing back (or recovering) money are
@@ -500,14 +597,29 @@ class RetailPostingServiceImpl {
       throw Error('انتقال بین حساب‌های بانکی/صندوق غیرفعال مجاز نیست');
     if(from.id===to.id)throw Error('حساب مبدا و مقصد باید متفاوت باشند');
     const mapping=account=>cashLedger(ctx,account);
+    const idempotencyKey=info.idempotencyKey==null?null:String(info.idempotencyKey).trim();
+    if(idempotencyKey) {
+      if(idempotencyKey.length>200)throw Error('طول کلید تکرارپذیری بیش از حد مجاز است');
+      const duplicate=all.find(row=>row.companyId===ctx.companyId&&
+        row.recordType==='transaction'&&row.idempotencyKey===idempotencyKey);
+      if(duplicate) {
+        const sameRequest=duplicate.type==='transfer'&&amount(duplicate.amount)===sum&&
+          duplicate.fromAccountId===from.id&&duplicate.toAccountId===to.id&&
+          (duplicate.date||'')===ctx.date&&(duplicate.description||'')===(info.description||'')&&
+          (duplicate.reasonCode||null)===(info.reasonCode||null)&&
+          (duplicate.explicitlyApproved===true)===(info.explicitlyApproved===true);
+        if(!sameRequest)throw Error('کلید تکرارپذیری قبلاً برای درخواست مالی متفاوت استفاده شده است');
+        return duplicate;
+      }
+    }
     const id=info.transactionId||uid('tx_');
-    if(await tx.get('treasury',id))throw Error('تراکنش انتقال تکراری است');
+    if(await tx.get('treasury',id))throw Error('تراکنش تکراری است');
     const journal=await this.journal(tx,ctx,'treasury',id,[
       postLine(mapping(to),sum,0),postLine(mapping(from),0,sum)
     ],'انتقال داخلی بین حساب‌ها');
     const row={id,companyId:ctx.companyId,ownerUserId:actor(),recordType:'transaction',
       type:'transfer',amount:sum,date:ctx.date,fromAccountId:from.id,toAccountId:to.id,
-      contactId:null,method:'transfer',financePosted:true,journalId:journal.id,
+      contactId:null,method:'transfer',idempotencyKey,financePosted:true,journalId:journal.id,
       description:info.description||''};
     await tx.put('treasury',row);
     return row;

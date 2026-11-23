@@ -41,6 +41,7 @@ class InvoicesViewImpl {
         <select class="form-control" style="width:auto;min-width:130px" aria-label="وضعیت پرداخت فاکتور" onchange="window.InvoicesView._onFilter('paymentStatus', this.value)">
           <option value="">همه وضعیت‌ها</option>
           <option value="paid" ${filter.paymentStatus === 'paid' ? 'selected' : ''}>تسویه‌شده</option>
+          <option value="settled" ${filter.paymentStatus === 'settled' ? 'selected' : ''}>تسویه‌شده</option>
           <option value="partial" ${filter.paymentStatus === 'partial' ? 'selected' : ''}>پرداخت جزئی</option>
           <option value="unpaid" ${filter.paymentStatus === 'unpaid' ? 'selected' : ''}>پرداخت‌نشده</option>
         </select>
@@ -91,7 +92,9 @@ class InvoicesViewImpl {
     }
 
     const rows = invoices.map(inv => {
-      const statusBadge = inv.status === 'paid'
+      const statusBadge = inv.settlementStatus === 'settled' && inv.status !== 'paid'
+        ? '<span class="badge badge-success">تسویه‌شده</span>'
+        : inv.status === 'paid'
         ? '<span class="badge badge-success">تسویه‌شده</span>'
         : inv.status === 'partial'
         ? '<span class="badge badge-warning">پرداخت جزئی</span>'
@@ -119,7 +122,7 @@ class InvoicesViewImpl {
           <td>${this._esc(inv.contactName || '—')}</td>
           <td>${this._esc(Formatters.toPersianDigits(inv.date || '—'))}</td>
           <td style="font-weight:600">${Formatters.money(inv.grandTotal)}</td>
-          <td>${Formatters.money(inv.paidAmount || 0)}</td>
+          <td>${Formatters.money(inv.paidAmount || 0)}${Number(inv.creditAppliedAmount)>0 ? '<div style="font-size:10px;color:var(--text-muted)">اعتبار برگشت: ' + Formatters.money(inv.creditAppliedAmount) + '</div>' : ''}</td>
           <td style="color:${inv.remaining > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:600">
             ${Formatters.money(inv.remaining || 0)}
           </td>

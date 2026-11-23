@@ -1,12 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
+globalThis.window ??= globalThis;
+const secureTestStorage = new Map();
+globalThis.localStorage ??= { getItem: key => secureTestStorage.get(key) ?? null, setItem: (key, value) => secureTestStorage.set(key, String(value)), removeItem: key => secureTestStorage.delete(key) };
 import { reconcileFinancialData } from '../src/core/ReconciliationCore.mjs';
 import { StorageService as db } from '../src/core/StorageService.js';
 import { AccountingService as accounts } from '../src/core/AccountingService.js';
 import { RetailPostingService as retail } from '../src/core/RetailPostingService.js';
 import { Auth } from '../src/core/Auth.js';
 import { CompanyService } from '../src/core/CompanyService.js';
+import { LicenseService } from '../src/core/LicenseService.js';
+const { InvoiceController } = await import('../src/controllers/InvoiceController.js');
 
 const date='1405/07/20', company='reconciliation-c1';
 const fixture=()=>({
@@ -64,6 +69,9 @@ test('legacy company report never compares stock to a non-integrated ledger',()=
 
 async function setup(){
   await db.clearAll();
+  LicenseService.state = { trialStartedAt: new Date().toISOString(), lastSeenAt: new Date().toISOString(), installationId: 'reconciliation-test-installation', issuedInvoiceCount: 0 };
+  LicenseService.verifiedPayload = null;
+  LicenseService.clockRollback = false;
   Auth.currentUser={id:'recon-admin',role:'admin',username:'admin'};
   CompanyService.activeCompanyId=company;
   await db.put('companies',{id:company,name:'Company A'});
@@ -342,4 +350,28 @@ test('A05: explicit outbound cheque clearance checks payable bank direction and 
  cash.type='payment';
  chequeOffset.contactId='wrong-drawer';
  assert.ok(reconcileFinancialData(f).issues.some(x=>x.code==='CHEQUE_CLEARING_OFFSET_MISMATCH'));
+});
+
+
+test('V2 preinvoice conversion replay returns the committed invoice without duplicate journal or quota', async () => {
+  await setup();
+  await db.put('invoices', {
+    id: 'v2-preinvoice-replay', companyId: company, kind: 'sale',
+    number: '120', date, contactId: 'contact-a', contactName: 'Customer',
+    isPreInvoice: true, items: [{ productId: null, productName: 'Service', qty: 1, price: 1000, lineSubtotal: 1000, lineTotal: 1000, discount: 0 }], subtotal: 1000, totalDiscount: 0,
+    discountType: 'fixed', discountInput: 0, vatEnabled: false,
+    vatRate: 0, vatAmount: 0, grandTotal: 1000, paidAmount: 0,
+    paymentMethod: 'cash', remaining: 1000, status: 'unpaid'
+  });
+  const first = await InvoiceController.convertPreInvoice('v2-preinvoice-replay');
+  const journalCount = (await db.getAll('journal_entries')).length;
+  const second = await InvoiceController.convertPreInvoice('v2-preinvoice-replay');
+  assert.equal(first.id, second.id);
+  assert.equal(second.isPreInvoice, false);
+  assert.equal((await db.getAll('journal_entries')).length, journalCount);
+  assert.equal((await db.getAll('journal_entries')).length, 1);
+  const receipts = (await db.getAll('settings'))
+    .filter(row => String(row.id).startsWith('issuance_receipt_'));
+  assert.equal(receipts.length, 1);
+  assert.equal((await db.get('settings', 'issuance_global_counter_v1')).count, 1);
 });

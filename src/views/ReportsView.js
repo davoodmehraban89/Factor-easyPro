@@ -385,13 +385,13 @@ class ReportsViewImpl {
                   <td style="color:var(--danger)">${Formatters.money(c.totalReturns)}</td>
                   <td style="font-weight:700;color:${c.netSales < 0 ? 'var(--danger)' : 'var(--primary)'}">${Formatters.money(c.netSales)}</td>
                   <td style="color:var(--success)">${Formatters.money(c.totalPaid)}</td>
-                  <td style="font-weight:600;color:${c.totalRemaining > 0 ? 'var(--danger)' : 'var(--success)'}">${Formatters.money(c.totalRemaining)}</td>
+                  <td style="font-weight:600;color:${c.totalRemaining > 0 ? 'var(--danger)' : c.totalRemaining < 0 ? 'var(--warning)' : 'var(--success)'}">${Formatters.money(c.totalRemaining)}</td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
         </div>
-        <p role="note" style="font-size:12px;line-height:1.8;color:var(--text-muted);margin:10px 0 0">فروش خالص، مرجوعی را از فروش ناخالص کم می‌کند. مانده فقط جمع مانده فاکتورهای فروش است و اعتبار مرجوعی یا بازپرداخت را از دفتر کل محاسبه نمی‌کند.</p>
+        <p role="note" style="font-size:12px;line-height:1.8;color:var(--text-muted);margin:10px 0 0">مانده خالص پس از کسر اعتبار برگشت‌ها و تسویه نقدی است؛ عدد مثبت یعنی طلب از مشتری و عدد منفی یعنی بدهی به مشتری.</p>
       </div>
     `;
   }
@@ -532,9 +532,7 @@ class ReportsViewImpl {
 
       <div class="card">
         <h3 style="font-size:15px;font-weight:700;margin-bottom:8px">👥 گزارش تفصیلی مشتریان</h3>
-        <p role="note" style="font-size:12px;line-height:1.8;color:var(--text-muted);margin:0 0 12px">
-          فروش خالص، مرجوعی را از فروش ناخالص کم می‌کند. مانده این جدول فقط جمع مانده فاکتورهای فروش است و اعتبار مرجوعی یا بازپرداخت را از دفتر کل محاسبه نمی‌کند؛ برای مانده قطعی حساب، دفتر کل مبناست.
-        </p>
+        <p role="note" style="font-size:12px;line-height:1.8;color:var(--text-muted);margin:10px 0 0">مانده خالص پس از کسر اعتبار برگشت‌ها و تسویه نقدی است؛ عدد مثبت یعنی طلب از مشتری و عدد منفی یعنی بدهی به مشتری.</p>
         <div class="table-wrap">
           <table>
             <thead>
@@ -562,7 +560,7 @@ class ReportsViewImpl {
                   <td style="color:var(--danger)">${Formatters.money(customer.totalReturns)}</td>
                   <td style="font-weight:700;color:${customer.netSales < 0 ? 'var(--danger)' : 'var(--primary)'}">${Formatters.money(customer.netSales)}</td>
                   <td style="color:var(--success)">${Formatters.money(customer.totalPaid)}</td>
-                  <td style="font-weight:700;color:${customer.totalRemaining > 0 ? 'var(--danger)' : 'var(--success)'}">${Formatters.money(customer.totalRemaining)}</td>
+                  <td style="font-weight:700;color:${customer.totalRemaining > 0 ? 'var(--danger)' : customer.totalRemaining < 0 ? 'var(--warning)' : 'var(--success)'}">${Formatters.money(customer.totalRemaining)}</td>
                   <td>${customer.lastInvoiceDate ? Formatters.toPersianDigits(customer.lastInvoiceDate) : '—'}</td>
                 </tr>
               `).join('')}

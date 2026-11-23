@@ -1,3 +1,89 @@
+## RESUME_PACKET — verified independent A08 result (2026-11-23)
+
+- User approved ONLY PR #200 merge; merged to main as e4f9b020f50ba617db7f4a9fdd5eadc8fb6f0fa2. Product PR #199 remains Draft, unmerged.
+- Independent A08 run 45242810197: COMPLETED SUCCESS. Native installed WebView2 benchmark step and evidence upload SUCCESS.
+- Verified artifact ID 14852461701, archive digest sha256:19bdfb1462e0f81c032ff0fa782a1d6b7aa72b391df99505a6912c9670689411. Parsed benchmark-native-result.json from artifact: status PASSED, installedNativeTauri true, CDP ready, version 2.0.4, 10000 products, 50000 invoices, 50000 companyInvoices.
+- Products UI pagination: 100 rows/page, 100 pages, first/second/last page 100 rows; page two index 101. Report reload 956ms; company invoice read P50 470ms P95 501.8ms; encrypted backup 3116.3ms, 58793537 bytes.
+- JS renderer heap after benchmark 630993296 bytes (~602 MiB), scope not total Windows memory. Investigate long-duration memory/GC behavior; single sample does not prove leak.
+- CI source SHA 0ba77a1de4b9ea32434ec4fa1d81dbd639a8a807; installer run 45212480429; archive hash verified on runner.
+- Full native run 45241924392: CANCELLED, not PASS; prior successful full native run 45215772519 on product code 4d48448.
+- Phase A remains NO-GO pending independent QA and remaining release/physical gates. Do not claim all scenarios accepted.
+- Next: inspect cancellation reason and ensure no A08 regression; evaluate memory growth with controlled repeated tests; avoid unnecessary NSIS rebuild.
+- Older RESUME_PACKET below is historical.
+
+---
+
+## RESUME_PACKET — A08 activation and dispatch checkpoint (2026-11-23)
+
+- User approved merging ONLY PR #200; no product merge, release or production writes.
+- PR #200 merged via squash to main: e4f9b020f50ba617db7f4a9fdd5eadc8fb6f0fa2; workflow ID 428175137 registered.
+- Independent A08 run: https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/45242810197 ; source run 45212480429; source SHA 0ba77a1de4b9ea32434ec4fa1d81dbd639a8a807; expected version 2.0.4; queued at dispatch.
+- PR #200 CI run 45241731110: SUCCESS, Node and Windows jobs.
+- Product PR #199 remains Draft, not merged. Q01 45241924374 and PR Quality 45241924660 succeeded; full native 45241924392 in progress at last check.
+- Phase A NO-GO. A08 installed WebView2 evidence NOT YET VERIFIED.
+- Next: inspect targeted run 45242810197 logs and benchmark JSON; fix only evidenced issues.
+- Prior RESUME_PACKET entries below are historical and superseded.
+
+---
+
+## RESUME_PACKET — current verified checkpoint (2026-11-23)
+
+- Repo: davoodmehraban89/Factor-easyPro; product: offline Persian Tauri 2 / IndexedDB, NOT web/multiuser ERP.
+- Phase A: **NO-GO**; independent physical and release acceptance remain open. Phases A-E percentages are NOT measured; Phase F release not authorized.
+- Product Draft PR: #199; branch work/finance-curated-20261123; verified HEAD before this documentation-only checkpoint: 4d48448fe749382606f8d0d94d46e6e50cc3ba59; clean worktree.
+- Infrastructure Draft PR: #200; branch work/a08-dispatch-activation-20261123; last pushed HEAD 3d57e04235b260b4e06ad1d307a015ecd4e538cc. **Workflow-only**, no merge.
+- PR #199 native run 45215772519: success on 4d48448. Q01 45215772442: success; PR Quality 45215772427: success.
+- PR #200 latest quality run 45241731110: in progress at last check. No claim of pass.
+- Native artifact: successful run 45212480429, candidate artifact ID 14836179410, run head SHA 0ba77a1de4b9ea32434ec4fa1d81dbd639a8a807, archive SHA256 cdedd6bece4818707af2eb6bf58d2887b3ea2824bae862c40402e0775dde7cfe, expires 2026-12-07.
+- A08 targeted native: **NOT RUN**. GitHub returns 404 for workflow_dispatch while workflow absent from default main. PR #200 adds only dispatch workflow for independent review; approval and merge to main are NOT authorized in this session.
+- PR #200 checks first-party completed native run, exact source SHA checkout, artifact expiration and SHA256 archive download comparison. Actual Windows runner behavior not yet tested; archive hash does not establish installer-file provenance independently.
+- Blockers: review/approval of #200; manual dispatch; inspect installed WebView2 10k/50k JSON; verify independent QA and physical/release gates. Native script and harness are pinned to source SHA; no operational Holoo writes permitted.
+- Next: review #200 CI and security, then seek explicit approval for workflow-only merge. Do NOT merge #199 or #200 automatically; do NOT force push, release, deploy, touch production data, or claim A08 pass.
+- Prior checkpoint below is historical and superseded for active execution status.
+
+---
+## RESUME_PACKET — active execution checkpoint
+
+- schema_version: 1
+- updated_at_utc: 2026-11-23 (UTC clock precision not verified)
+- session_id: finora-20261123-native-cost-gates
+- repository: davoodmehraban89/Factor-easyPro
+- active_goal: Close remaining Windows-native cost-control gaps without rebuilding already validated acceptance scenarios
+- accepted_scope: Existing offline Tauri 2 / Vite / IndexedDB product; synthetic disposable CI only
+- current_phase: Phase A QA / release gates (NO-GO)
+- active_task_id: A08 / Windows native test infrastructure; task_state: implemented, targeted runner not yet independently verified
+- acceptance: A08 real installed WebView2 10k products / 50k invoices, first/second/last page; targeted runner must not run full 24-scenario matrix
+- dependencies: PR #199 stacked on PR #193 (fix/phase-a-pack6-atomic-legacy-20261101); do not merge automatically
+- worktree_path: C:\\Users\\Davood\\Documents\\Factor-easyPro-QA\\.worktrees\\factor-easypro-finance-curated-20261123
+- branch: work/finance-curated-20261123
+- baseline_commit: 1e104a31cf7bee00b3dda3ed053970e6896e05cf
+- last_implementation_commit_observed: 1e104a31cf7bee00b3dda3ed053970e6896e05cf
+- active_pr: https://github.com/davoodmehraban89/Factor-easyPro/pull/199 (Draft)
+- local_changes: clean at discovery; this checkpoint is a new documentation change
+- unpublished_work: this checkpoint until committed and pushed
+- delivery_state: Draft PR, not merged or released
+- last_completed_action: Native run 45206988729 and Q01 45206988898 succeeded on 5b68c3e; excluded harness-only paths from automatic full NSIS trigger.
+- interrupted_action: none
+- verification:
+  - Windows native full: https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/45206988729 — success on 5b68c3e
+  - Q01: https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/45206988898 — success on 5b68c3e
+  - Targeted A08 manual workflow: NOT RUN; script syntax and contract tests 4/4 passed before commit 1e104a3
+- native_test_state: Full installed candidate validated on 1e104a3; do not rerun for documentation-only checkpoint. Candidate NSIS artifact saved in successful run. Manual targeted A08 run remains unverified.
+- failure_ledger:
+  - A08 old fixed-date fixture: test-fixture drift; 1405/07/18 outside default 30-day filter; corrected by 6dffe04; full native success 45199020103
+  - A04 valid credit allocation without treasury transaction: product bug corrected by 75ad632; native restore passed afterward
+  - Targeted artifact reuse: unverified; source run must be completed and SHA-matched; PR merge-checkout SHA vs head SHA needs explicit verification before invoking
+  - Full CI trigger: harness-only changes excluded from automatic full NSIS trigger in current pending diff; needs GitHub event validation. Explicit workflow_dispatch still runs full acceptance. Product/Rust/dependency changes still trigger full workflow.
+  - Stacked PR quality gate: pr-quality-gates.yml currently filters pull_request branches to main, so PR #199 against PR #193 base is not covered by that workflow
+- do_not_repeat: No fresh full Windows NSIS for already-successful 1e104a3. No production Holoo writes. No force-push/merge/release. Do not call targeted workflow a pass until actual installed execution.
+- blockers: Phase A acceptance requires independent QA, release gates and approval; targeted A08 mode and PR-base trigger need validated behavioral evidence
+- approvals: User authorized safe branch edits, tests, commits, pushes, Draft PR; no merge/release/production authorization
+- security_gates: Offline synthetic tests allowed; Holoo operational write NO-GO; LAB restricted-read gate UNVERIFIED
+- known_limitations: Existing PROJECT_STATUS historical body is stale (2026-10-14); this checkpoint supersedes it for active PR state, not a claim of release readiness
+- next_action: validate automatic full-native path filtering in GitHub for this harness-only change; then implement robust SHA/product-build manifest and actual targeted WebView2 A08 run on an authorized matching artifact. Stacked PR quality-gate base restriction remains open.
+
+---
+
 # PROJECT_STATUS — Factor-easyPro
 
 > **نقطه ورود ثابت به پروژه** برای هر چت، توسعه‌دهنده یا اجرای جدید. ابتدا این فایل و سپس اسناد لینک‌شده را بخوانید. این فایل «وضعیت» است، نه سند قابلیت‌های اثبات‌نشده.

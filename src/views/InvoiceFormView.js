@@ -12,6 +12,7 @@ import { numberToWords } from '../utils/NumberToWords.js';
 import { NumberInput } from '../utils/NumberInput.js';
 import { SettingsController } from '../controllers/SettingsController.js';
 import { RetailPostingService } from '../core/RetailPostingService.js';
+import { createRetryStorageKey } from '../core/IssuanceReceipt.mjs';
 import { lineGrossRials, percentOfRials } from '../core/RetailFinanceCore.mjs';
 
 let ctx = {
@@ -831,10 +832,36 @@ class InvoiceFormViewImpl {
       description: document.getElementById('invDescription').value
     };
 
+    // Persist the retry identity before posting; a crash must not mint a new invoice.
+    // A changed form intentionally receives a different operation identity.
+    let retryStorageKey = null;
+    if (!data.isPreInvoice) {
+      if (ctx.editId) {
+        // A preinvoice-to-invoice conversion keeps the same identity across retries.
+        data.idempotencyKey = 'preinvoice-finalize:' + ctx.editId;
+      } else {
+        const retryPayload = { ...data };
+        if (ctx.invoiceSettings?.numberingMode !== 'manual') delete retryPayload.number;
+        const signature = JSON.stringify(retryPayload);
+        // Each distinct invoice payload has its own durable retry slot. A pending
+        // invoice in another tab can no longer overwrite this operation's key.
+        retryStorageKey = await createRetryStorageKey(signature);
+        const signatureHash = retryStorageKey.slice(retryStorageKey.lastIndexOf(':') + 1);
+        let pending = null;
+        try { pending = JSON.parse(localStorage.getItem(retryStorageKey) || 'null'); }
+        catch (_) { localStorage.removeItem(retryStorageKey); }
+        const key = pending?.signatureHash === signatureHash && typeof pending?.key === 'string'
+          ? pending.key : crypto.randomUUID();
+        // Persist only the digest and operation key, never customer or invoice data.
+        localStorage.setItem(retryStorageKey, JSON.stringify({ signatureHash, key }));
+        data.idempotencyKey = key;
+      }
+    }
     if (this._saving) return;
     this._saving = true;
     try {
       const saved = await InvoiceController.save(data, ctx.editId);
+      if (retryStorageKey) localStorage.removeItem(retryStorageKey);
       Toast.success(ctx.editId ? 'فاکتور ویرایش شد' : `فاکتور #${saved.number} صادر شد`);
       const savedId = saved.id;
       Modal.close();

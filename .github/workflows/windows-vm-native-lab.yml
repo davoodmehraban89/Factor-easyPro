@@ -9,18 +9,6 @@ on:
       - 'index.html'
       - 'package.json'
       - 'package-lock.json'
-      - 'tests/windows-vm-installed-tauri-cdp.cjs'
-      - 'tests/windows-vm-native-origin.cjs'
-      - 'tests/windows-vm-native-origin.test.mjs'
-      - 'tests/windows-vm-native-functional-matrix.cjs'
-      - 'tests/windows-vm-ui-interaction-audit-browser.js'
-      - 'scripts/q01-native-action-gap-report.cjs'
-      - 'tests/windows-vm-encrypted-company-backup-browser.js'
-      - 'tests/windows-vm-native-print-pdf-browser.js'
-      - 'tests/windows-vm-native-crash-import-browser.js'
-      - 'tests/windows-vm-native-performance-browser.js'
-      - 'scripts/windows-vm-native-lab.ps1'
-      - 'scripts/windows-vm-set-candidate.cjs'
       - '.github/workflows/windows-vm-native-lab.yml'
   push:
     branches:
@@ -32,18 +20,6 @@ on:
       - 'index.html'
       - 'package.json'
       - 'package-lock.json'
-      - 'tests/windows-vm-installed-tauri-cdp.cjs'
-      - 'tests/windows-vm-native-origin.cjs'
-      - 'tests/windows-vm-native-origin.test.mjs'
-      - 'tests/windows-vm-native-functional-matrix.cjs'
-      - 'tests/windows-vm-ui-interaction-audit-browser.js'
-      - 'scripts/q01-native-action-gap-report.cjs'
-      - 'tests/windows-vm-encrypted-company-backup-browser.js'
-      - 'tests/windows-vm-native-print-pdf-browser.js'
-      - 'tests/windows-vm-native-crash-import-browser.js'
-      - 'tests/windows-vm-native-performance-browser.js'
-      - 'scripts/windows-vm-native-lab.ps1'
-      - 'scripts/windows-vm-set-candidate.cjs'
       - '.github/workflows/windows-vm-native-lab.yml'
   workflow_dispatch:
 
@@ -57,8 +33,28 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  preflight:
+    name: Fast regression and A08 fixture gate before Windows installer
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Run all unit and integration regression tests
+        run: npm test
+      - name: Verify A08 fixture and native benchmark contracts
+        run: node --test tests/a08-benchmark-fixtures.test.mjs tests/windows-vm-native-performance-contract.test.mjs
+      - name: Build frontend before paying for Windows installer
+        run: npm run build
   native-windows-lab:
     name: Install, login, migrate v6 to v7, verify DPAPI and reinstall
+    needs: preflight
     runs-on: windows-latest
     timeout-minutes: 75
     steps:
@@ -93,6 +89,13 @@ jobs:
           }
           if ($installer.Length -lt 500000) { throw 'Native installer is suspiciously small' }
           (Get-FileHash $installer.FullName -Algorithm SHA256) | Format-List
+      - name: Preserve candidate installer for SHA-pinned targeted native reruns
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-a-native-candidate-nsis
+          path: src-tauri/target/release/bundle/nsis/*x64-setup.exe
+          retention-days: 14
+          if-no-files-found: error
       - name: Install released 2.0.3, launch real native WebView2 and upgrade in place
         shell: pwsh
         run: |

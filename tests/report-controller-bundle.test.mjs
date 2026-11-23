@@ -9,14 +9,14 @@ const fixture = {
   invoices: [
     {
       id: 'sale-1', kind: 'sale', isPreInvoice: false, date: '1405/01/02',
-      subtotal: 100, totalDiscount: 10, grandTotal: 90, paidAmount: 30,
-      remaining: 60, contactId: 'contact-1', contactName: 'Synthetic customer',
+      subtotal: 100, totalDiscount: 10, grandTotal: 90, paidAmount: 30, creditAppliedAmount: 10,
+      remaining: 50, contactId: 'contact-1', contactName: 'Synthetic customer',
       items: [{ productId: 'product-1', productName: 'Synthetic product',
         unit: 'عدد', qty: 2, price: 50, lineTotal: 100 }]
     },
     {
       id: 'return-1', kind: 'sale_return', isPreInvoice: false, date: '1405/01/03',
-      subtotal: 10, grandTotal: 10, contactId: 'contact-1', contactName: 'Synthetic customer',
+      subtotal: 10, grandTotal: 10, paidAmount: 0, creditAppliedAmount: 10, remaining: 0, contactId: 'contact-1', contactName: 'Synthetic customer',
       items: [{ productId: 'product-1', productName: 'Synthetic product',
         unit: 'عدد', qty: 1, price: 10, lineTotal: 10 }]
     },
@@ -226,17 +226,17 @@ test('a missing historical and current product cost is explicitly classified as 
 });
 
 
-test('customer reports subtract returns from net sales, include return-only customers and disclose gross invoice balances', async () => {
+test('customer reports subtract returns and return-credit allocations from net sales receivable, including return-only customers', async () => {
   const originalLoad = ReportController._loadData;
   const data = {
     invoices: [
       { id:'customer-sale', kind:'sale', isPreInvoice:false, date:'1405/01/02',
         contactId:'customer-1', contactName:'Customer one', grandTotal:1000,
-        paidAmount:400, remaining:600 },
+        paidAmount:400, creditAppliedAmount:250, remaining:350 },
       { id:'customer-return', kind:'sale_return', isPreInvoice:false, date:'1405/01/03',
-        contactId:'customer-1', contactName:'Customer one', grandTotal:250 },
+        contactId:'customer-1', contactName:'Customer one', grandTotal:250, paidAmount:0, creditAppliedAmount:250, remaining:0 },
       { id:'return-only', kind:'sale_return', isPreInvoice:false, date:'1405/01/04',
-        contactId:'customer-2', contactName:'Customer two', grandTotal:50 },
+        contactId:'customer-2', contactName:'Customer two', grandTotal:50, paidAmount:0, remaining:50 },
       { id:'supplier-purchase', kind:'purchase', isPreInvoice:false, date:'1405/01/05',
         contactId:'supplier-1', contactName:'Supplier only', grandTotal:9999 }
     ],
@@ -254,8 +254,8 @@ test('customer reports subtract returns from net sales, include return-only cust
     assert.deepEqual(
       { gross: customers[0].totalSales, returns: customers[0].totalReturns,
         net: customers[0].netSales, paid: customers[0].totalPaid,
-        invoiceBalanceBeforeReturns: customers[0].totalRemaining },
-      { gross: 1000, returns: 250, net: 750, paid: 400, invoiceBalanceBeforeReturns: 600 }
+        netReceivableAfterReturns: customers[0].totalRemaining },
+      { gross: 1000, returns: 250, net: 750, paid: 400, netReceivableAfterReturns: 350 }
     );
     assert.deepEqual(
       { name: customers[1].contactName, gross: customers[1].totalSales,
