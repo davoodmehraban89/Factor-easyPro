@@ -11,10 +11,10 @@ const { verifyNativeOrigin } = require('./windows-vm-native-origin.cjs');
 
 const [exe, profile, mode, expectedVersion, reportPath] = process.argv.slice(2);
 assert.equal(process.platform, 'win32');
-assert.ok(['seed','upgrade','reopen','fresh','benchmark','crash-arm','crash-verify'].includes(mode), 'unknown lab mode');
+assert.ok(['seed','upgrade','reopen','fresh','benchmark','stability','crash-arm','crash-verify'].includes(mode), 'unknown lab mode');
 assert.ok(fs.existsSync(exe), 'installed Windows executable missing');
 fs.mkdirSync(profile, { recursive: true });
-const port = mode === 'seed' ? 9371 : mode === 'upgrade' ? 9372 : mode === 'reopen' ? 9374 : mode === 'benchmark' ? 9375 : mode === 'crash-arm' ? 9376 : mode === 'crash-verify' ? 9377 : 9373;
+const port = mode === 'seed' ? 9371 : mode === 'upgrade' ? 9372 : mode === 'reopen' ? 9374 : mode === 'benchmark' || mode === 'stability' ? 9375 : mode === 'crash-arm' ? 9376 : mode === 'crash-verify' ? 9377 : 9373;
 const PASSWORD = 'VmOnly-Factor-83471!'; // Synthetic password, never printed.
 
 const REG_POLICY = [
@@ -163,7 +163,7 @@ async function connect(url) {
       assert.equal(ready.version, expectedVersion, 'candidate build runtime version mismatch');
     }
     const setup = ready.initialMode.includes('تعیین رمز');
-    if (mode === 'seed' || mode === 'fresh' || mode === 'benchmark' || mode === 'crash-arm') {
+    if (mode === 'seed' || mode === 'fresh' || mode === 'benchmark' || mode === 'stability' || mode === 'crash-arm') {
       assert.equal(setup, true, 'a new native profile must prompt to set the administrator password');
     } else {
       assert.equal(setup, false, 'upgrade/reopen should preserve existing administrator credentials');
@@ -590,7 +590,7 @@ async function connect(url) {
         });
       }
     }
-    if (mode === 'benchmark') {
+    if (mode === 'benchmark' || mode === 'stability') {
       // A08 performance sample from the actually installed NSIS/Tauri/WebView2
       // binary with a brand-new disposable profile, not Node fake-indexeddb.
       // The separate profile prevents benchmark fixtures from affecting
@@ -639,6 +639,41 @@ async function connect(url) {
       };
       measured.jsHeapScope = 'renderer-js-heap-not-total-Windows-process-memory';
       report.nativePerformance = measured;
+      if (mode === 'stability') {
+        const cycleCode = fs.readFileSync(
+          path.join(__dirname, 'windows-vm-native-memory-stability-browser.js'), 'utf8');
+        const cycles = [];
+        const heap = async () => {
+          const usage = await cdp.command('Runtime.getHeapUsage', {}, 30000);
+          assert.ok(Number.isSafeInteger(usage.usedSize) && usage.usedSize >= 0);
+          return { usedBytes: usage.usedSize, allocatedBytes: usage.totalSize };
+        };
+        let gcSupported = true;
+        const collect = async () => {
+          try { await cdp.command('HeapProfiler.collectGarbage', {}, 30000); }
+          catch (_) { gcSupported = false; }
+        };
+        await collect();
+        const baseline = await heap();
+        for (let i = 0; i < 10; i++) {
+          const result = await cdp.evaluate(cycleCode, 120000);
+          assert.equal(result.products, 10000);
+          assert.equal(result.invoices, 50000);
+          assert.equal(result.companyInvoices, 50000);
+          assert.equal(result.rounds.length, 1);
+          const raw = await heap();
+          if (gcSupported) await collect();
+          const postGc = gcSupported ? await heap() : null;
+          cycles.push({ cycle: i + 1, durationMs: result.rounds[0].durationMs,
+            raw, postGc });
+        }
+        report.nativeMemoryStability = {
+          status: 'PASSED', synthetic: true, cycles, baseline,
+          gcSupported, heapScope: 'renderer-js-heap-not-Windows-working-set',
+          note: 'Diagnostic series only; no leak verdict or SLA implied'
+        };
+      }
+
     }
     if (mode === 'fresh') {
       // LAST operation: real installed WebView2 PDF engine, using production

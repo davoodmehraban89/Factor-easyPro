@@ -1,7 +1,8 @@
 # Disposable Windows runner: run only the installed native A08 benchmark using an existing NSIS artifact.
 [CmdletBinding()]
 param([Parameter(Mandatory=$true)][string]$Installer,
-      [Parameter(Mandatory=$true)][string]$ExpectedVersion)
+      [Parameter(Mandatory=$true)][string]$ExpectedVersion,
+      [ValidateSet('benchmark','stability')][string]$Mode='benchmark')
 $ErrorActionPreference='Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows') {
   throw 'Targeted native test is restricted to disposable Windows GitHub Actions runners'
@@ -24,13 +25,15 @@ try {
 } finally { $proc.Dispose() }
 $exe=@(Get-ChildItem $install -Recurse -File | Where-Object { $_.Name -in @('app.exe','Factor-easyPro.exe') })
 if ($exe.Count -ne 1 -or $exe[0].Length -lt 300000) { throw 'Installed native executable not verified' }
-& node tests/windows-vm-installed-tauri-cdp.cjs $exe[0].FullName $profile benchmark $ExpectedVersion $report
+& node tests/windows-vm-installed-tauri-cdp.cjs $exe[0].FullName $profile $Mode $ExpectedVersion $report
 if ($LASTEXITCODE -ne 0) { throw 'Installed WebView2 A08 benchmark failed' }
 $result=Get-Content $report -Raw | ConvertFrom-Json
+if ($Mode -eq 'stability' -and ($result.nativeMemoryStability.status -ne 'PASSED' -or
+    $result.nativeMemoryStability.cycles.Count -ne 10)) { throw 'Stability cycle acceptance incomplete' }
 if ($result.status -ne 'PASSED' -or $result.installedNativeTauri -ne $true -or
     $result.nativePerformance.products -ne 10000 -or
     $result.nativePerformance.invoices -ne 50000 -or
     $result.nativePerformance.companyInvoices -ne 50000) {
   throw 'Targeted A08 acceptance incomplete'
 }
-Write-Host 'Installed native A08 10k/50k benchmark PASSED'
+Write-Host ('Installed native A08 10k/50k ' + $Mode + ' PASSED')
