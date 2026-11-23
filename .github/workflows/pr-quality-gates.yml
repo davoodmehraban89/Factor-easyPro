@@ -1,9 +1,9 @@
 name: PR Quality Gates — accounting, Windows and packaging
 
 on:
+  # Validate stacked Draft PRs as well as PRs targeting main.
+  # Keep the expensive Windows installer preview reserved for main-bound PRs.
   pull_request:
-    branches:
-      - main
   push:
     branches:
       - main
@@ -44,6 +44,8 @@ jobs:
 
   windows-installer:
     name: Windows native build and preview artifact (not a release)
+    # Stacked PRs receive the full Node quality gate, without rebuilding NSIS.
+    if: github.event_name != 'pull_request' || github.event.pull_request.base.ref == 'main'
     needs: node-quality
     runs-on: windows-latest
     timeout-minutes: 55
