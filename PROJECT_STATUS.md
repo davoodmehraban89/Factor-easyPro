@@ -3,7 +3,7 @@
 ## RESUME_PACKET — 2026-11-23 / CI recovery
 
 - schema_version: 1
-- updated_at_utc: 2026-11-23T05:15:38.161Z
+- updated_at_utc: 2026-11-23T05:22:24Z
 - run_id: finora-20261123-pr198-ci-recovery-01
 - repository: davoodmehraban89/Factor-easyPro
 - active_goal: Repair PR #198 Windows CI without granting LAB access or weakening the production NO-GO
@@ -13,22 +13,22 @@
 - branch: docs/holoo-lab-stabilization-phase1-20261111
 - baseline_commit: 32222c47a8010555f8e320ed4736e05fd7575000
 - implementation_commit: 2dab2a7e74280f67901e275b603c61ed5e8c89ef (verified local code/test change; do not confuse status commit with implementation)
-- active_pr: #198 (open; 57 commits/45 changed files at code commit 2dab2a7; PR title and description corrected)
+- active_pr: #198 (open; 58 commits / 45 files at exact-head 0e355ca before this checkpoint; PR description verified)
 - dependent_prs: none for #198; separately unmerged finance stack #183 → #190 → #191 → #192 → #193 must be evaluated independently
 - local_changes: LAB worktree initially clean; parity worktree has tracked and untracked unpublished changes; root main behind origin/main
 - unpublished_work: parity worktree remains untouched; do not overwrite or commit its contents as part of #198
-- verification: baseline 32222c Windows runs 45115679473 and 45115679483 failed due to unintended live-LAB test on public runners; Aram Windows, Node 24.21.0, npm ci --ignore-scripts succeeded; npm test 336 pass / 0 fail / 15 skip out of 351; npm run build success; npm audit --omit=dev --audit-level=high found 0 vulnerabilities; CI runs 45116535519 and 45116535495 for code commit 2dab2a7 were in_progress when checked, not yet passed
-- delivery_state: pushed / CI pending for code commit 2dab2a7; status update commit SHA from GitHub; no merge or release
+- verification: baseline 32222c Windows CI failed due to unintended private LAB test; isolated PR198 Aram Node 24.21.0 npm test 336 pass/0 fail/15 skip, build success, production npm audit 0 high; exact-head 0e355ca Windows installer/upgrade run 45116704593 success, Linux quality job 45116704615 success, Windows native preview job pending; separate unpublished parity worktree npm test 480 pass/0 fail/0 skip and build success, targeted financial 26/26 pass (not part of PR198)
+- delivery_state: pushed / CI partially verified at 0e355ca (installer/upgrade success, Linux success, native preview pending); no merge or release
 - active_task_id: FINORA-CI-PR198-LAB-GATE
-- task_state: Implemented — Not Verified (latest exact-head Windows CI outstanding)
-- last_completed_action: Commit 2dab2a7 created and pushed to PR #198; PR title/body corrected to describe 45 files and security limits; local tests/build/audit passed; SQL live test not run
+- task_state: Implemented — Partially Verified (exact-head Windows installer/upgrade CI passed; native preview CI pending; security/acceptance NO-GO)
+- last_completed_action: Exact-head Windows installer/upgrade workflow 45116704593 verified success; PR #198 evidence updated; unpublished parity worktree 480/480 tests and frontend build passed; no SQL live test, merge or release
 - interrupted_action: none
-- next_action: Verify Windows CI runs 45116535519 / 45116535495 on 2dab2a7; if rerun on status-only commit check exact SHA; review separately the finance PR #183→#193 integration sequence without touching dirty parity files
+- next_action: Check exact-head PR #198 quality run 45116704615 Windows native preview job conclusion and inspect failure logs if needed; keep LAB NO-GO; isolate and review unpublished parity financial changes before a separate draft PR, preserving dirty worktree
 - blockers: SQL LIVE readiness unverified for public runners (expected: remain fail closed; requires restricted approved LAB to clear); finance PR chain not merged (requires review/approval)
 - approvals: permission for isolated development, tests, branch push and draft PR updates; no merge/main push/release/database write permission
 - security_gates: synthetic unit tests allowed; private LAB SQL opt-in and preflight required; operational DB writes NO-GO
 - do_not_repeat: do not run live LAB integration during generic Windows CI; do not reimplement parity financial fixes already in dirty worktree or PR #193
-- known_limitations: older 32222c Windows CI failed; corrected commit CI pending; A03/A04 accepted in phase A manifest, eight remaining gates not accepted; no independent financial sign-off or physical print verification
+- known_limitations: exact-head Windows installer/upgrade run 45116704593 passed, Linux quality job passed, Windows native preview job pending; unpublished parity 480/480 local tests passed and build succeeded but is not merged; A03/A04 accepted in phase A manifest, eight remaining gates not accepted; no independent financial sign-off or physical print verification
 
 ---
 
