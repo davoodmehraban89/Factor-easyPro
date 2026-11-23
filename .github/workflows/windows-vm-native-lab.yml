@@ -57,8 +57,28 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  preflight:
+    name: Fast regression and A08 fixture gate before Windows installer
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Run all unit and integration regression tests
+        run: npm test
+      - name: Verify A08 fixture and native benchmark contracts
+        run: node --test tests/a08-benchmark-fixtures.test.mjs tests/windows-vm-native-performance-contract.test.mjs
+      - name: Build frontend before paying for Windows installer
+        run: npm run build
   native-windows-lab:
     name: Install, login, migrate v6 to v7, verify DPAPI and reinstall
+    needs: preflight
     runs-on: windows-latest
     timeout-minutes: 75
     steps:
