@@ -3,7 +3,7 @@
 ## RESUME_PACKET — 2026-11-23 / CI recovery
 
 - schema_version: 1
-- updated_at_utc: 2026-11-23T05:12:22.783Z
+- updated_at_utc: 2026-11-23T05:15:38.161Z
 - run_id: finora-20261123-pr198-ci-recovery-01
 - repository: davoodmehraban89/Factor-easyPro
 - active_goal: Repair PR #198 Windows CI without granting LAB access or weakening the production NO-GO
@@ -12,23 +12,23 @@
 - worktree_path: C:\Users\Davood\Documents\Factor-easyPro-QA\.worktrees\factor-easypro-holoo-lab-phase1-20261111
 - branch: docs/holoo-lab-stabilization-phase1-20261111
 - baseline_commit: 32222c47a8010555f8e320ed4736e05fd7575000
-- implementation_commit: not yet committed
-- active_pr: #198 (open; actual diff 45 files at baseline, not docs-only)
+- implementation_commit: 2dab2a7e74280f67901e275b603c61ed5e8c89ef (verified local code/test change; do not confuse status commit with implementation)
+- active_pr: #198 (open; 57 commits/45 changed files at code commit 2dab2a7; PR title and description corrected)
 - dependent_prs: none for #198; separately unmerged finance stack #183 → #190 → #191 → #192 → #193 must be evaluated independently
 - local_changes: LAB worktree initially clean; parity worktree has tracked and untracked unpublished changes; root main behind origin/main
 - unpublished_work: parity worktree remains untouched; do not overwrite or commit its contents as part of #198
-- verification: baseline 32222c Windows runs 45115679473 and 45115679483 failed due to unintended live-LAB test on public runners; on Aram Windows, Node 24.21.0, npm ci --ignore-scripts succeeded; npm test 336 pass / 0 fail / 15 skip out of 351; npm run build success; npm audit --omit=dev --audit-level=high found 0 vulnerabilities; Windows CI for corrected code not yet run
-- delivery_state: local_verified / not yet committed or pushed; no merge or release
+- verification: baseline 32222c Windows runs 45115679473 and 45115679483 failed due to unintended live-LAB test on public runners; Aram Windows, Node 24.21.0, npm ci --ignore-scripts succeeded; npm test 336 pass / 0 fail / 15 skip out of 351; npm run build success; npm audit --omit=dev --audit-level=high found 0 vulnerabilities; CI runs 45116535519 and 45116535495 for code commit 2dab2a7 were in_progress when checked, not yet passed
+- delivery_state: pushed / CI pending for code commit 2dab2a7; status update commit SHA from GitHub; no merge or release
 - active_task_id: FINORA-CI-PR198-LAB-GATE
-- task_state: Implemented — Not Verified (CI outstanding)
-- last_completed_action: Added explicit HOLOO_SQL_INTEGRATION=1 test opt-in and verified local regression, build and audit; did not run live SQL
+- task_state: Implemented — Not Verified (latest exact-head Windows CI outstanding)
+- last_completed_action: Commit 2dab2a7 created and pushed to PR #198; PR title/body corrected to describe 45 files and security limits; local tests/build/audit passed; SQL live test not run
 - interrupted_action: none
-- next_action: Review git diff and commit only PROJECT_STATUS.md plus tests/holoo-financial-procedure-signals.test.mjs; push existing #198 branch, verify exact-head Windows CI and revise inaccurate PR description
+- next_action: Verify Windows CI runs 45116535519 / 45116535495 on 2dab2a7; if rerun on status-only commit check exact SHA; review separately the finance PR #183→#193 integration sequence without touching dirty parity files
 - blockers: SQL LIVE readiness unverified for public runners (expected: remain fail closed; requires restricted approved LAB to clear); finance PR chain not merged (requires review/approval)
 - approvals: permission for isolated development, tests, branch push and draft PR updates; no merge/main push/release/database write permission
 - security_gates: synthetic unit tests allowed; private LAB SQL opt-in and preflight required; operational DB writes NO-GO
 - do_not_repeat: do not run live LAB integration during generic Windows CI; do not reimplement parity financial fixes already in dirty worktree or PR #193
-- known_limitations: current CI failure; A03/A04 accepted in phase A manifest, eight remaining gates not accepted; no independent financial sign-off or physical print verification
+- known_limitations: older 32222c Windows CI failed; corrected commit CI pending; A03/A04 accepted in phase A manifest, eight remaining gates not accepted; no independent financial sign-off or physical print verification
 
 ---
 
