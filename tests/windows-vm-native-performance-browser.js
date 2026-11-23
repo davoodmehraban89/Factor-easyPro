@@ -10,6 +10,16 @@
   }
   const productCount = 10000;
   const invoiceCount = 50000;
+  // The reports route defaults to the most recent 30 days. A hard-coded
+  // historical seed date silently makes the 50k invoices invisible as time
+  // advances, so derive a current Jalali date for the disposable fixture.
+  const dateParts = new Intl.DateTimeFormat('en-US-u-ca-persian', {
+    year:'numeric',month:'2-digit',day:'2-digit'
+  }).formatToParts(new Date());
+  const datePart = type => dateParts.find(part=>part.type===type)?.value;
+  const benchmarkDate = [datePart('year'),datePart('month'),datePart('day')].join('/');
+  if (!/^\d{4}\/\d{2}\/\d{2}$/.test(benchmarkDate))
+    throw Error('Native A08 could not derive a current Jalali fixture date');
   const t = fn => performance.now();
   const duration = async work => {
     const start = performance.now();
@@ -42,7 +52,7 @@
     const productId = 'vm-a08-product-' + productIndex;
     return {
       id: 'vm-a08-invoice-' + i, companyId: company.id, ownerUserId: user.id,
-      number: String(i + 1), date: '1405/07/18', kind: 'sale',
+      number: String(i + 1), date: benchmarkDate, kind: 'sale',
       contactId: 'vm-a08-contact', contactName: 'VM synthetic benchmark customer',
       isPreInvoice: false, financePosted: false,
       subtotal: price, totalDiscount: 0, vatAmount: 0,
