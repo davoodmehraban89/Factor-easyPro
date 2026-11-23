@@ -1,3 +1,16 @@
+## RESUME_PACKET — A08 activation and dispatch checkpoint (2026-11-23)
+
+- User approved merging ONLY PR #200; no product merge, release or production writes.
+- PR #200 merged via squash to main: e4f9b020f50ba617db7f4a9fdd5eadc8fb6f0fa2; workflow ID 428175137 registered.
+- Independent A08 run: https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/45242810197 ; source run 45212480429; source SHA 0ba77a1de4b9ea32434ec4fa1d81dbd639a8a807; expected version 2.0.4; queued at dispatch.
+- PR #200 CI run 45241731110: SUCCESS, Node and Windows jobs.
+- Product PR #199 remains Draft, not merged. Q01 45241924374 and PR Quality 45241924660 succeeded; full native 45241924392 in progress at last check.
+- Phase A NO-GO. A08 installed WebView2 evidence NOT YET VERIFIED.
+- Next: inspect targeted run 45242810197 logs and benchmark JSON; fix only evidenced issues.
+- Prior RESUME_PACKET entries below are historical and superseded.
+
+---
+
 ## RESUME_PACKET — current verified checkpoint (2026-11-23)
 
 - Repo: davoodmehraban89/Factor-easyPro; product: offline Persian Tauri 2 / IndexedDB, NOT web/multiuser ERP.
