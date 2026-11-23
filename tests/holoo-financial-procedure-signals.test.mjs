@@ -18,7 +18,9 @@ test('procedure signals are catalog-only and preflight-gated', () => {
   assert.doesNotMatch(source, /\bEXEC(?:UTE)?\s+dbo\./i);
 });
 
-test('live lab signal output is explicitly non-authoritative', { skip: process.platform !== 'win32' }, () => {
+// The Windows CI runner has no approved private SQL LAB. Only explicit LAB integration
+// runs may execute the read-only metadata collector; its own preflight still fails closed.
+test('live lab signal output is explicitly non-authoritative', { skip: process.platform !== 'win32' || process.env.HOLOO_SQL_INTEGRATION !== '1' }, () => {
   const run = spawnSync('powershell.exe', ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',script,'-Json'], { encoding:'utf8', timeout:60000 });
   assert.equal(run.status, 0, run.stderr);
   const report = JSON.parse(run.stdout);

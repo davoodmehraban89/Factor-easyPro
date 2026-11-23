@@ -1,5 +1,38 @@
 # PROJECT_STATUS — Factor-easyPro
 
+## RESUME_PACKET — 2026-11-23 / CI recovery
+
+- schema_version: 1
+- updated_at_utc: 2026-11-23T05:12:22.783Z
+- run_id: finora-20261123-pr198-ci-recovery-01
+- repository: davoodmehraban89/Factor-easyPro
+- active_goal: Repair PR #198 Windows CI without granting LAB access or weakening the production NO-GO
+- accepted_scope: Test harness isolation, accurate PR metadata and evidence; no real SQL data or production changes
+- current_phase: F0 verification / P0 CI regression; mapping_to_A_B_C: A — Reliable Core
+- worktree_path: C:\Users\Davood\Documents\Factor-easyPro-QA\.worktrees\factor-easypro-holoo-lab-phase1-20261111
+- branch: docs/holoo-lab-stabilization-phase1-20261111
+- baseline_commit: 32222c47a8010555f8e320ed4736e05fd7575000
+- implementation_commit: not yet committed
+- active_pr: #198 (open; actual diff 45 files at baseline, not docs-only)
+- dependent_prs: none for #198; separately unmerged finance stack #183 → #190 → #191 → #192 → #193 must be evaluated independently
+- local_changes: LAB worktree initially clean; parity worktree has tracked and untracked unpublished changes; root main behind origin/main
+- unpublished_work: parity worktree remains untouched; do not overwrite or commit its contents as part of #198
+- verification: baseline 32222c Windows runs 45115679473 and 45115679483 failed due to unintended live-LAB test on public runners; on Aram Windows, Node 24.21.0, npm ci --ignore-scripts succeeded; npm test 336 pass / 0 fail / 15 skip out of 351; npm run build success; npm audit --omit=dev --audit-level=high found 0 vulnerabilities; Windows CI for corrected code not yet run
+- delivery_state: local_verified / not yet committed or pushed; no merge or release
+- active_task_id: FINORA-CI-PR198-LAB-GATE
+- task_state: Implemented — Not Verified (CI outstanding)
+- last_completed_action: Added explicit HOLOO_SQL_INTEGRATION=1 test opt-in and verified local regression, build and audit; did not run live SQL
+- interrupted_action: none
+- next_action: Review git diff and commit only PROJECT_STATUS.md plus tests/holoo-financial-procedure-signals.test.mjs; push existing #198 branch, verify exact-head Windows CI and revise inaccurate PR description
+- blockers: SQL LIVE readiness unverified for public runners (expected: remain fail closed; requires restricted approved LAB to clear); finance PR chain not merged (requires review/approval)
+- approvals: permission for isolated development, tests, branch push and draft PR updates; no merge/main push/release/database write permission
+- security_gates: synthetic unit tests allowed; private LAB SQL opt-in and preflight required; operational DB writes NO-GO
+- do_not_repeat: do not run live LAB integration during generic Windows CI; do not reimplement parity financial fixes already in dirty worktree or PR #193
+- known_limitations: current CI failure; A03/A04 accepted in phase A manifest, eight remaining gates not accepted; no independent financial sign-off or physical print verification
+
+---
+
+
 > **نقطه ورود ثابت به پروژه** برای هر چت، توسعه‌دهنده یا اجرای جدید. ابتدا این فایل و سپس اسناد لینک‌شده را بخوانید. این فایل «وضعیت» است، نه سند قابلیت‌های اثبات‌نشده.
 
 **تاریخ بازبینی سند مرجع:** 2026-11-11  
