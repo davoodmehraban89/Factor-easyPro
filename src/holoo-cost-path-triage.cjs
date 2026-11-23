@@ -9,7 +9,7 @@ function triageCostPaths(report) {
     if (matches.length !== 1) return {name, status:'UNRESOLVED', reason:matches.length ? 'ambiguous procedure name' : 'procedure absent'};
     const p = matches[0];
     if (!p.definitionAvailable) return {name, schema:p.schema, status:'UNRESOLVED', reason:'definition unavailable'};
-    if (['Tedad','Buy_Price','Price_BS'].every(t => p.signals[t] === 0)) return {name:p.name, schema:p.schema, status:'UNRESOLVED', reason:'no direct cost or quantity token evidence'};
+    if (['Buy_Price','Price_BS'].every(t => p.signals[t] === 0)) return {name:p.name, schema:p.schema, status:'UNRESOLVED', reason:'no direct price token evidence; quantity alone cannot establish a cost path'};
     return {
       name:p.name, schema:p.schema, status:'LEXICAL_CANDIDATE',
       signals:Object.fromEntries(['FACTURE','FACTART','SANAD','Tedad','Buy_Price','Price_BS','INSERT','UPDATE','DELETE','EXEC','sp_executesql'].map(t=>[t,p.signals[t]]))
