@@ -896,9 +896,11 @@ async function nativeInactiveBankSettlementGuard() {
   let toast=[...document.querySelectorAll('.toast-error')].find(x=>x.textContent.includes('غیرفعال'));
   check(toast,'Inactive bank transfer did not display rejection');
   check(JSON.stringify(await counts())===JSON.stringify(before),'Rejected transfer wrote journals or cash');
+  // Error toasts from earlier native scenarios intentionally persist until
+  // dismissed. Assert only this rejected-transfer notice was closed.
   toast.querySelector('.toast-close')?.click();
   FINORA.Modal.close();
-  check(!document.querySelector('.toast-error'),'Expected transfer toast not dismissed');
+  check(!toast.isConnected,'Expected transfer toast not dismissed');
 
   // With no active bank, the real cheque status UI must reject settlement
   // without changing posted status or writing a cash receipt.
