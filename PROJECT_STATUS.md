@@ -1,3 +1,19 @@
+## RESUME_PACKET — current verified checkpoint (2026-11-23)
+
+- Repo: davoodmehraban89/Factor-easyPro; product: offline Persian Tauri 2 / IndexedDB, NOT web/multiuser ERP.
+- Phase A: **NO-GO**; independent physical and release acceptance remain open. Phases A-E percentages are NOT measured; Phase F release not authorized.
+- Product Draft PR: #199; branch work/finance-curated-20261123; verified HEAD before this documentation-only checkpoint: 4d48448fe749382606f8d0d94d46e6e50cc3ba59; clean worktree.
+- Infrastructure Draft PR: #200; branch work/a08-dispatch-activation-20261123; last pushed HEAD 3d57e04235b260b4e06ad1d307a015ecd4e538cc. **Workflow-only**, no merge.
+- PR #199 native run 45215772519: success on 4d48448. Q01 45215772442: success; PR Quality 45215772427: success.
+- PR #200 latest quality run 45241731110: in progress at last check. No claim of pass.
+- Native artifact: successful run 45212480429, candidate artifact ID 14836179410, run head SHA 0ba77a1de4b9ea32434ec4fa1d81dbd639a8a807, archive SHA256 cdedd6bece4818707af2eb6bf58d2887b3ea2824bae862c40402e0775dde7cfe, expires 2026-12-07.
+- A08 targeted native: **NOT RUN**. GitHub returns 404 for workflow_dispatch while workflow absent from default main. PR #200 adds only dispatch workflow for independent review; approval and merge to main are NOT authorized in this session.
+- PR #200 checks first-party completed native run, exact source SHA checkout, artifact expiration and SHA256 archive download comparison. Actual Windows runner behavior not yet tested; archive hash does not establish installer-file provenance independently.
+- Blockers: review/approval of #200; manual dispatch; inspect installed WebView2 10k/50k JSON; verify independent QA and physical/release gates. Native script and harness are pinned to source SHA; no operational Holoo writes permitted.
+- Next: review #200 CI and security, then seek explicit approval for workflow-only merge. Do NOT merge #199 or #200 automatically; do NOT force push, release, deploy, touch production data, or claim A08 pass.
+- Prior checkpoint below is historical and superseded for active execution status.
+
+---
 ## RESUME_PACKET — active execution checkpoint
 
 - schema_version: 1
