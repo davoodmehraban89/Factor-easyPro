@@ -6,6 +6,10 @@ on:
         description: 'Native Windows workflow run holding candidate NSIS from this exact commit'
         required: true
         type: string
+      source_sha:
+        description: 'Exact 40-character commit SHA used to build the installer (not the workflow dispatch SHA)'
+        required: true
+        type: string
       expected_version:
         description: 'Candidate installer version from that run'
         required: true
@@ -18,8 +22,11 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 35
     steps:
+      # Re-run the benchmark harness from the exact binary-producing commit.
+      # The workflow_dispatch event itself may be at a newer commit.
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.source_sha }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -29,12 +36,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_RUN: ${{ inputs.artifact_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
           EXPECTED_VERSION: ${{ inputs.expected_version }}
         run: |
           if ($env:SOURCE_RUN -notmatch '^[0-9]+$') { throw 'Invalid source run ID' }
+          if ($env:SOURCE_SHA -notmatch '^[a-fA-F0-9]{40}$') { throw 'Invalid source commit SHA' }
+          if ((git rev-parse HEAD).Trim() -ne $env:SOURCE_SHA) { throw 'Checked out source SHA mismatch' }
           if ($env:EXPECTED_VERSION -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid candidate version' }
           $run=gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SOURCE_RUN" | ConvertFrom-Json
-          if ($run.head_sha -ne $env:GITHUB_SHA -or $run.status -ne 'completed' -or
+          if ($run.head_sha -ne $env:SOURCE_SHA -or $run.status -ne 'completed' -or
+              $run.conclusion -ne 'success' -or $run.event -notin @('pull_request','push','workflow_dispatch') -or
               $run.path -notmatch 'windows-vm-native-lab.yml') {
             throw 'Source must be a completed native lab run on exactly this commit'
           }
