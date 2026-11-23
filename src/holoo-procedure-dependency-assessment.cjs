@@ -4,7 +4,7 @@ const TABLES=new Set(['FACTURE','FACTART','SANAD']);
 function assessProcedureDependencies(e){
  const fail=(reason)=>({status:'INVALID_EVIDENCE',reason,productionWriteGate:'NO-GO'});
  if(!e||e.schemaVersion!==1||e.database!==LAB||e.metadataOnly!==true||e.productionWriteGate!=='NO-GO'||e.dependencyCoverageComplete!==false||e.dynamicSqlAndIndirectCallsUnresolved!==true||e.financialSemanticsVerified!==false)return fail('Untrusted LAB evidence or unsupported safety assertions');
- if(!Array.isArray(e.dependencyRows)||!Number.isSafeInteger(e.dependencyRowCount)||!Number.isSafeInteger(e.procedureCount)||e.dependencyRowCount!==e.dependencyRows.length)return fail('Invalid dependency counts');
+ if(!Array.isArray(e.dependencyRows)||!Number.isSafeInteger(e.dependencyRowCount)||!Number.isSafeInteger(e.procedureCount)||e.dependencyRowCount<1||e.procedureCount<1||e.dependencyRowCount!==e.dependencyRows.length)return fail('Invalid dependency counts');
  const procedures=new Set(),tables=new Set(),unresolved=[];
  for(const row of e.dependencyRows){
   if(!row||typeof row.procedure_schema!=='string'||!row.procedure_schema.trim()||typeof row.procedure_name!=='string'||!row.procedure_name.trim()||(typeof row.referenced_entity_name!=='string'||!TABLES.has(row.referenced_entity_name.toUpperCase()))||!Number.isSafeInteger(row.referenced_minor_id)||row.referenced_minor_id<0||![false,true,0,1].includes(row.is_ambiguous)||![false,true,0,1].includes(row.is_caller_dependent))return fail('Malformed catalog dependency row');
