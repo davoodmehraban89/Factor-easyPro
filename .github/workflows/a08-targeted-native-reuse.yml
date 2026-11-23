@@ -1,0 +1,64 @@
+name: A08 targeted installed Windows benchmark (reuse NSIS)
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: 'Native Windows workflow run holding candidate NSIS from this exact commit'
+        required: true
+        type: string
+      expected_version:
+        description: 'Candidate installer version from that run'
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  targeted-native-a08:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify artifact source SHA and workflow identity
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.artifact_run_id }}
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+        run: |
+          if ($env:SOURCE_RUN -notmatch '^[0-9]+$') { throw 'Invalid source run ID' }
+          if ($env:EXPECTED_VERSION -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid candidate version' }
+          $run=gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SOURCE_RUN" | ConvertFrom-Json
+          if ($run.head_sha -ne $env:GITHUB_SHA -or $run.status -ne 'completed' -or
+              $run.path -notmatch 'windows-vm-native-lab.yml') {
+            throw 'Source must be a completed native lab run on exactly this commit'
+          }
+          Write-Host ("Verified candidate run "+$run.html_url+" SHA "+$run.head_sha)
+      - name: Reuse already-built candidate NSIS
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ github.token }}
+          name: phase-a-native-candidate-nsis
+          path: test-installer
+      - name: Run only real installed WebView2 A08 10k/50k benchmark
+        shell: pwsh
+        env:
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+        run: |
+          $files=@(Get-ChildItem test-installer -Recurse -Filter '*x64-setup.exe')
+          if ($files.Count -ne 1) { throw 'Expected exactly one reused NSIS installer' }
+          ./scripts/windows-vm-targeted-a08.ps1 -Installer $files[0].FullName -ExpectedVersion $env:EXPECTED_VERSION
+      - name: Upload targeted native A08 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a08-targeted-installed-webview2-evidence
+          path: ${{ runner.temp }}/factor-a08-targeted-native/reports/*.json
+          retention-days: 14
+          if-no-files-found: warn

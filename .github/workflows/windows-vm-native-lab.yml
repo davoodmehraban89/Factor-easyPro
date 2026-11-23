@@ -113,6 +113,13 @@ jobs:
           }
           if ($installer.Length -lt 500000) { throw 'Native installer is suspiciously small' }
           (Get-FileHash $installer.FullName -Algorithm SHA256) | Format-List
+      - name: Preserve candidate installer for SHA-pinned targeted native reruns
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-a-native-candidate-nsis
+          path: src-tauri/target/release/bundle/nsis/*x64-setup.exe
+          retention-days: 14
+          if-no-files-found: error
       - name: Install released 2.0.3, launch real native WebView2 and upgrade in place
         shell: pwsh
         run: |
