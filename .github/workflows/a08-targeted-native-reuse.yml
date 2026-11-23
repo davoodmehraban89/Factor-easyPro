@@ -1,0 +1,99 @@
+name: A08 targeted installed Windows benchmark (reuse NSIS)
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: 'Native Windows workflow run holding candidate NSIS from this exact commit'
+        required: true
+        type: string
+      source_sha:
+        description: 'Exact 40-character commit SHA used to build the installer (not the workflow dispatch SHA)'
+        required: true
+        type: string
+      expected_version:
+        description: 'Candidate installer version from that run'
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  targeted-native-a08:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      # Re-run the benchmark harness from the exact binary-producing commit.
+      # The workflow_dispatch event itself may be at a newer commit.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify artifact source SHA and workflow identity
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.artifact_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+        run: |
+          if ($env:SOURCE_RUN -notmatch '^[0-9]+$') { throw 'Invalid source run ID' }
+          if ($env:SOURCE_SHA -notmatch '^[a-fA-F0-9]{40}$') { throw 'Invalid source commit SHA' }
+          if ((git rev-parse HEAD).Trim() -ne $env:SOURCE_SHA) { throw 'Checked out source SHA mismatch' }
+          if ($env:EXPECTED_VERSION -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid candidate version' }
+          $run=gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SOURCE_RUN" | ConvertFrom-Json
+          # Reject artifacts produced by a fork or by an unrelated workflow.
+          $repo=gh api "repos/$env:GITHUB_REPOSITORY" | ConvertFrom-Json
+          if ($run.repository.id -ne $repo.id -or $run.head_repository.id -ne $repo.id -or
+              $run.head_sha -ne $env:SOURCE_SHA -or $run.status -ne 'completed' -or
+              $run.conclusion -ne 'success' -or $run.event -notin @('pull_request','push','workflow_dispatch') -or
+              $run.path -notmatch '(^|/)windows-vm-native-lab[.]yml(@|$)') {
+            throw 'Source must be a successful first-party native lab run on exactly this commit'
+          }
+          $artifacts=gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SOURCE_RUN/artifacts?per_page=100" | ConvertFrom-Json
+          $candidate=@($artifacts.artifacts | Where-Object { $_.name -eq 'phase-a-native-candidate-nsis' })
+          if ($candidate.Count -ne 1 -or $candidate[0].expired -or
+              $candidate[0].size_in_bytes -lt 500000 -or
+              $candidate[0].digest -notmatch '^sha256:[a-fA-F0-9]{64}$') {
+            throw 'Missing, expired, duplicated or unverifiable native candidate artifact'
+          }
+          Write-Host ("Verified candidate run "+$run.html_url+" SHA "+$run.head_sha+
+            " artifact "+$candidate[0].id+" archive digest "+$candidate[0].digest)
+      - name: Download and independently verify NSIS artifact archive SHA256
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.artifact_run_id }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $artifacts=gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SOURCE_RUN/artifacts?per_page=100" | ConvertFrom-Json
+          $candidate=@($artifacts.artifacts | Where-Object { $_.name -eq 'phase-a-native-candidate-nsis' })
+          if ($candidate.Count -ne 1 -or $candidate[0].expired -or
+              $candidate[0].digest -notmatch '^sha256:[a-fA-F0-9]{64}$') { throw 'Candidate artifact is missing or unverifiable' }
+          $zip=Join-Path $env:RUNNER_TEMP 'verified-a08-nsis.zip'
+          $headers=@{ Authorization="Bearer $env:GH_TOKEN"; Accept='application/vnd.github+json'; 'X-GitHub-Api-Version'='2022-11-28' }
+          Invoke-WebRequest -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/artifacts/$($candidate[0].id)/zip" -Headers $headers -OutFile $zip
+          $actual=(Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected=($candidate[0].digest -split ':',2)[1].ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Downloaded artifact archive SHA256 mismatch: $actual" }
+          New-Item -ItemType Directory -Path test-installer -Force | Out-Null
+          Expand-Archive -LiteralPath $zip -DestinationPath test-installer -Force
+          Write-Host "Verified downloaded native artifact archive SHA256: $actual"
+      - name: Run only real installed WebView2 A08 10k/50k benchmark
+        shell: pwsh
+        env:
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+        run: |
+          $files=@(Get-ChildItem test-installer -Recurse -Filter '*x64-setup.exe')
+          if ($files.Count -ne 1) { throw 'Expected exactly one reused NSIS installer' }
+          ./scripts/windows-vm-targeted-a08.ps1 -Installer $files[0].FullName -ExpectedVersion $env:EXPECTED_VERSION
+      - name: Upload targeted native A08 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a08-targeted-installed-webview2-evidence
+          path: ${{ runner.temp }}/factor-a08-targeted-native/reports/*.json
+          retention-days: 14
+          if-no-files-found: warn
