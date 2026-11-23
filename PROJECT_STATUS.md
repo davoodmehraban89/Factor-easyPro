@@ -18,25 +18,25 @@
 - local_changes: clean at discovery; this checkpoint is a new documentation change
 - unpublished_work: this checkpoint until committed and pushed
 - delivery_state: Draft PR, not merged or released
-- last_completed_action: Native run 45202726699 and Q01 45202726672 succeeded on 1e104a3; inspected workflow trigger and stale status
+- last_completed_action: Native run 45206988729 and Q01 45206988898 succeeded on 5b68c3e; excluded harness-only paths from automatic full NSIS trigger.
 - interrupted_action: none
 - verification:
-  - Windows native full: https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/45202726699 — success on 1e104a3
-  - Q01: https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/45202726672 — success on 1e104a3
+  - Windows native full: https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/45206988729 — success on 5b68c3e
+  - Q01: https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/45206988898 — success on 5b68c3e
   - Targeted A08 manual workflow: NOT RUN; script syntax and contract tests 4/4 passed before commit 1e104a3
 - native_test_state: Full installed candidate validated on 1e104a3; do not rerun for documentation-only checkpoint. Candidate NSIS artifact saved in successful run. Manual targeted A08 run remains unverified.
 - failure_ledger:
   - A08 old fixed-date fixture: test-fixture drift; 1405/07/18 outside default 30-day filter; corrected by 6dffe04; full native success 45199020103
   - A04 valid credit allocation without treasury transaction: product bug corrected by 75ad632; native restore passed afterward
   - Targeted artifact reuse: unverified; source run must be completed and SHA-matched; PR merge-checkout SHA vs head SHA needs explicit verification before invoking
-  - Full CI trigger: harness-only changes under tests/windows-vm-native-performance-browser.js still trigger full installer; remaining optimization
+  - Full CI trigger: harness-only changes excluded from automatic full NSIS trigger in current pending diff; needs GitHub event validation. Explicit workflow_dispatch still runs full acceptance. Product/Rust/dependency changes still trigger full workflow.
   - Stacked PR quality gate: pr-quality-gates.yml currently filters pull_request branches to main, so PR #199 against PR #193 base is not covered by that workflow
 - do_not_repeat: No fresh full Windows NSIS for already-successful 1e104a3. No production Holoo writes. No force-push/merge/release. Do not call targeted workflow a pass until actual installed execution.
 - blockers: Phase A acceptance requires independent QA, release gates and approval; targeted A08 mode and PR-base trigger need validated behavioral evidence
 - approvals: User authorized safe branch edits, tests, commits, pushes, Draft PR; no merge/release/production authorization
 - security_gates: Offline synthetic tests allowed; Holoo operational write NO-GO; LAB restricted-read gate UNVERIFIED
 - known_limitations: Existing PROJECT_STATUS historical body is stale (2026-10-14); this checkpoint supersedes it for active PR state, not a claim of release readiness
-- next_action: inspect exact-head native artifact provenance and workflow run checkout SHA, then implement and test a no-full-installer trigger for harness-only changes; verify targeted A08 path on a pinned artifact without silently running fresh 24-scenario matrix
+- next_action: validate automatic full-native path filtering in GitHub for this harness-only change; then implement robust SHA/product-build manifest and actual targeted WebView2 A08 run on an authorized matching artifact. Stacked PR quality-gate base restriction remains open.
 
 ---
 
