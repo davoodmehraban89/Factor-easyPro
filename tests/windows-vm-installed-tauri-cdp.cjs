@@ -648,6 +648,34 @@ async function connect(url) {
           assert.ok(Number.isSafeInteger(usage.usedSize) && usage.usedSize >= 0);
           return { usedBytes: usage.usedSize, allocatedBytes: usage.totalSize };
         };
+        // Windows process tree metrics are distinct from CDP renderer JS heap.
+        // Capture installed Tauri parent + descendants using OS process counters.
+        // A transient CIM failure is recorded, not converted to a zero reading.
+        const windowsProcessMemory = () => {
+          try {
+            const script = [
+              '$ErrorActionPreference = "Stop"',
+              '$all = @(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,WorkingSetSize,PrivatePageCount)',
+              '$ids = [System.Collections.Generic.HashSet[int]]::new()',
+              '[void]$ids.Add(' + proc.pid + ')',
+              'do { $before = $ids.Count; foreach ($p in $all) { if ($ids.Contains([int]$p.ParentProcessId)) { [void]$ids.Add([int]$p.ProcessId) } } } while ($ids.Count -gt $before)',
+              '$members = @($all | Where-Object { $ids.Contains([int]$_.ProcessId) })',
+              'if ($members.Count -lt 1) { throw "Installed process not found" }',
+              '$ws = ($members | Measure-Object -Property WorkingSetSize -Sum).Sum',
+              '$private = ($members | Measure-Object -Property PrivatePageCount -Sum).Sum',
+              '@{ processCount=$members.Count; workingSetBytes=[long]$ws; privateBytes=[long]$private } | ConvertTo-Json -Compress'
+            ].join('; ');
+            const sample = JSON.parse(execFileSync('powershell.exe',
+              ['-NoProfile', '-NonInteractive', '-Command', script],
+              { encoding: 'utf8', timeout: 30000 }));
+            assert.ok(Number.isSafeInteger(sample.workingSetBytes) &&
+              sample.workingSetBytes > 0 && Number.isSafeInteger(sample.privateBytes) &&
+              sample.privateBytes > 0 && sample.processCount > 0);
+            return sample;
+          } catch (error) {
+            return { unavailable: true, reason: 'Windows CIM process-tree sample unavailable' };
+          }
+        };
         let gcSupported = true;
         const collect = async () => {
           try { await cdp.command('HeapProfiler.collectGarbage', {}, 30000); }
@@ -655,6 +683,7 @@ async function connect(url) {
         };
         await collect();
         const baseline = await heap();
+        const processBaseline = windowsProcessMemory();
         for (let i = 0; i < 10; i++) {
           const result = await cdp.evaluate(cycleCode, 120000);
           assert.equal(result.products, 10000);
@@ -665,11 +694,12 @@ async function connect(url) {
           if (gcSupported) await collect();
           const postGc = gcSupported ? await heap() : null;
           cycles.push({ cycle: i + 1, durationMs: result.rounds[0].durationMs,
-            raw, postGc });
+            raw, postGc, windowsProcessTree: windowsProcessMemory() });
         }
         report.nativeMemoryStability = {
-          status: 'PASSED', synthetic: true, cycles, baseline,
+          status: 'PASSED', synthetic: true, cycles, baseline, processBaseline,
           gcSupported, heapScope: 'renderer-js-heap-not-Windows-working-set',
+          windowsProcessScope: 'installed-Tauri-parent-and-descendant-processes',
           note: 'Diagnostic series only; no leak verdict or SLA implied'
         };
       }
