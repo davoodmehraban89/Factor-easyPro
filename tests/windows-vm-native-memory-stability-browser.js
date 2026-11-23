@@ -1,8 +1,4 @@
 'use strict';
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const { spawn, execFileSync } = require('node:child_process');
 // This script is evaluated by CDP inside the installed Tauri/WebView2 renderer.
 // It does not seed data; the standard A08 benchmark must run first.
 (async () => {
