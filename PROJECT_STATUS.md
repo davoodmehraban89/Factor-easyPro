@@ -1,3 +1,45 @@
+## RESUME_PACKET — active execution checkpoint
+
+- schema_version: 1
+- updated_at_utc: 2026-11-23 (UTC clock precision not verified)
+- session_id: finora-20261123-native-cost-gates
+- repository: davoodmehraban89/Factor-easyPro
+- active_goal: Close remaining Windows-native cost-control gaps without rebuilding already validated acceptance scenarios
+- accepted_scope: Existing offline Tauri 2 / Vite / IndexedDB product; synthetic disposable CI only
+- current_phase: Phase A QA / release gates (NO-GO)
+- active_task_id: A08 / Windows native test infrastructure; task_state: implemented, targeted runner not yet independently verified
+- acceptance: A08 real installed WebView2 10k products / 50k invoices, first/second/last page; targeted runner must not run full 24-scenario matrix
+- dependencies: PR #199 stacked on PR #193 (fix/phase-a-pack6-atomic-legacy-20261101); do not merge automatically
+- worktree_path: C:\\Users\\Davood\\Documents\\Factor-easyPro-QA\\.worktrees\\factor-easypro-finance-curated-20261123
+- branch: work/finance-curated-20261123
+- baseline_commit: 1e104a31cf7bee00b3dda3ed053970e6896e05cf
+- last_implementation_commit_observed: 1e104a31cf7bee00b3dda3ed053970e6896e05cf
+- active_pr: https://github.com/davoodmehraban89/Factor-easyPro/pull/199 (Draft)
+- local_changes: clean at discovery; this checkpoint is a new documentation change
+- unpublished_work: this checkpoint until committed and pushed
+- delivery_state: Draft PR, not merged or released
+- last_completed_action: Native run 45202726699 and Q01 45202726672 succeeded on 1e104a3; inspected workflow trigger and stale status
+- interrupted_action: none
+- verification:
+  - Windows native full: https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/45202726699 — success on 1e104a3
+  - Q01: https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/45202726672 — success on 1e104a3
+  - Targeted A08 manual workflow: NOT RUN; script syntax and contract tests 4/4 passed before commit 1e104a3
+- native_test_state: Full installed candidate validated on 1e104a3; do not rerun for documentation-only checkpoint. Candidate NSIS artifact saved in successful run. Manual targeted A08 run remains unverified.
+- failure_ledger:
+  - A08 old fixed-date fixture: test-fixture drift; 1405/07/18 outside default 30-day filter; corrected by 6dffe04; full native success 45199020103
+  - A04 valid credit allocation without treasury transaction: product bug corrected by 75ad632; native restore passed afterward
+  - Targeted artifact reuse: unverified; source run must be completed and SHA-matched; PR merge-checkout SHA vs head SHA needs explicit verification before invoking
+  - Full CI trigger: harness-only changes under tests/windows-vm-native-performance-browser.js still trigger full installer; remaining optimization
+  - Stacked PR quality gate: pr-quality-gates.yml currently filters pull_request branches to main, so PR #199 against PR #193 base is not covered by that workflow
+- do_not_repeat: No fresh full Windows NSIS for already-successful 1e104a3. No production Holoo writes. No force-push/merge/release. Do not call targeted workflow a pass until actual installed execution.
+- blockers: Phase A acceptance requires independent QA, release gates and approval; targeted A08 mode and PR-base trigger need validated behavioral evidence
+- approvals: User authorized safe branch edits, tests, commits, pushes, Draft PR; no merge/release/production authorization
+- security_gates: Offline synthetic tests allowed; Holoo operational write NO-GO; LAB restricted-read gate UNVERIFIED
+- known_limitations: Existing PROJECT_STATUS historical body is stale (2026-10-14); this checkpoint supersedes it for active PR state, not a claim of release readiness
+- next_action: inspect exact-head native artifact provenance and workflow run checkout SHA, then implement and test a no-full-installer trigger for harness-only changes; verify targeted A08 path on a pinned artifact without silently running fresh 24-scenario matrix
+
+---
+
 # PROJECT_STATUS — Factor-easyPro
 
 > **نقطه ورود ثابت به پروژه** برای هر چت، توسعه‌دهنده یا اجرای جدید. ابتدا این فایل و سپس اسناد لینک‌شده را بخوانید. این فایل «وضعیت» است، نه سند قابلیت‌های اثبات‌نشده.
