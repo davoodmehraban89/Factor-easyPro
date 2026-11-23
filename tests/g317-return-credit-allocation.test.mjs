@@ -53,6 +53,17 @@ async function allocationRows(targetId){
   return (await db.getAll('settlements')).filter(x=>
     x.settlementType==='credit_allocation'&&x.targetInvoiceId===targetId);
 }
+async function assertBalancedJournalLedger(){
+  const entries=await db.getAll('journal_entries');
+  const lines=await db.getAll('journal_lines');
+  for(const entry of entries){
+    const related=lines.filter(row=>row.journalId===entry.id);
+    assert.ok(related.length>=2,'posted journal must have multiple lines: '+entry.id);
+    const debit=related.reduce((sum,row)=>sum+Number(row.debit||0),0);
+    const credit=related.reduce((sum,row)=>sum+Number(row.credit||0),0);
+    assert.equal(debit,credit,'journal debit/credit imbalance: '+entry.id);
+  }
+}
 
 test('G317 purchase return allocates credit to open supplier payable before cash recovery',async()=>{
   await setup();
@@ -161,6 +172,27 @@ test('G317 multiple partial purchase returns allocate the original payable only 
   const rows=await allocationRows(original.id);
   assert.equal(rows.length,2);
   assert.equal(rows.reduce((n,x)=>n+x.amount,0),300);
+});
+
+
+test('G317 multi-return supplier settlement keeps every posted journal balanced and reconciles payable',async()=>{
+  await setup();
+  const original=await retail.issueInvoice(invoice('purchase',10,100));
+  await retail.postTransaction({id:'g317-balance-payment',type:'payment',date,amount:700,
+    contactId:'g317-supplier',refInvoiceId:original.id,fromAccountId:'g317-cash',method:'cash'});
+  const first=await retail.issueInvoice(invoice('purchase_return',2,100,{originalInvoiceId:original.id}));
+  const second=await retail.issueInvoice(invoice('purchase_return',2,100,{originalInvoiceId:original.id}));
+  assert.equal((await db.get('invoices',first.id)).remaining,0);
+  assert.equal((await db.get('invoices',second.id)).remaining,100);
+  assert.equal(await controlBalance('201','g317-supplier','credit'),-100);
+  await assertBalancedJournalLedger();
+  await retail.postTransaction({id:'g317-balance-recovery',type:'receipt',date,amount:100,
+    contactId:'g317-supplier',refInvoiceId:second.id,toAccountId:'g317-cash',method:'cash',
+    reasonCode:'goods_return',explicitlyApproved:true});
+  assert.equal(await controlBalance('201','g317-supplier','credit'),0);
+  assert.equal((await db.get('invoices',original.id)).remaining,0);
+  assert.equal((await db.get('invoices',second.id)).remaining,0);
+  await assertBalancedJournalLedger();
 });
 
 test('G317 concurrent idempotent return issuance creates one return and one credit allocation',async()=>{
