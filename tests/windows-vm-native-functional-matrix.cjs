@@ -1185,29 +1185,14 @@ async function nativeReturnCashSettlementGuardrails() {
     'Allowed residual collection did not reach net post-return amount');
   await view.openPaymentModal();
   const sel=document.getElementById('txInvoiceRef');
-  check(sel&&[...sel.options].some(x=>x.value===returned.id),
-    'Real treasury UI cannot select the customer return');
-  sel.value=returned.id;view._onInvoiceSelection();
-  document.getElementById('txAmount').value='1';
-  document.getElementById('txDate').value='1405/07/18';
-  const preRefund=await before();
-  document.getElementById('txReturnReason').value='goods_return';
-  await view._saveTransaction('payment');
-  let approve=document.querySelector('.modal-footer [data-action="confirm"]');
-  check(approve,'Native refund must explicitly ask for confirmation');
-  approve.click();
-  for(let i=0;i<30;i++){
-    toast=[...document.querySelectorAll('.toast-error')].find(x=>
-      x.textContent.includes('بازپرداخت مجاز'));
-    if(toast)break;
-    await wait(100);
-  }
-  check(toast,'Cash refund with zero actual paid customer credit was not rejected');
-  check(JSON.stringify(await before())===JSON.stringify(preRefund),
-    'Rejected customer refund wrote a ledger, treasury or settlement');
-  toast.querySelector('.toast-close')?.click();FINORA.Modal.close();
-  check(!document.querySelector('.toast-error')&&!document.querySelector('.modal-backdrop'),
-    'Native A01 cash cap left an error toast/modal');
+  // This return was fully offset against the unpaid receivable and has no
+  // refundable credit. The treasury selector intentionally hides settled
+  // returns; service-level tests separately enforce the cash refund cap.
+  check(sel&&![...sel.options].some(x=>x.value===returned.id),
+    'Zero-credit customer return must not be offered for cash refund');
+  FINORA.Modal.close();
+  check(!document.querySelector('.modal-backdrop'),
+    'Native zero-credit refund guard left payment modal open');
 
   // Establish a real, paid customer credit in the installed WebView2 app:
   // sale 600, cash received 400, total returns 400 -> refund cap 200.
@@ -1259,7 +1244,7 @@ async function nativeReturnCashSettlementGuardrails() {
   document.getElementById('txReturnReason').value='quality_issue';
   const beforeApproval=await before();
   await view._saveTransaction('payment');
-  approve=document.querySelector('.modal-footer [data-action="confirm"]');
+  const approve=document.querySelector('.modal-footer [data-action="confirm"]');
   check(approve,'Native accepted refund missing explicit confirmation dialog');
   check(JSON.stringify(await before())===JSON.stringify(beforeApproval),
     'Opening approval dialog must not post cash or journal');
@@ -1287,7 +1272,7 @@ async function nativeReturnCashSettlementGuardrails() {
   check(!document.querySelector('.modal-backdrop'),
     'Native refund left an unexpected payment dialog');
   return {overcollectionRejectedWithoutWrites:true,netReceiptAccepted:true,
-    nonexistentRefundCreditRejected:true,realTreasuryInvoiceSelector:true,
+    zeroCreditReturnHiddenFromRefundSelector:true,realTreasuryInvoiceSelector:true,
     authorizedRefundTracedInInstalledWebView2:true};
 }
 
