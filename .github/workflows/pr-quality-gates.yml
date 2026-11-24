@@ -26,6 +26,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Validate GitHub Actions schema and expressions
+        run: bash scripts/lint-workflows.sh
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:

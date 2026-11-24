@@ -1,12 +1,14 @@
-أ¯آ»طںname: A08 installed Windows memory stability (reuse NSIS)
+name: A08 installed Windows memory stability (reuse NSIS)
 on:
   push:
     branches: [work/a08-memory-stability-20261123]
     paths:
       - '.github/workflows/a08-installed-memory-stability.yml'
       - 'tests/windows-vm-native-memory-stability-browser.js'
+      - 'tests/windows-vm-native-memory-stability-contract.test.mjs'
       - 'tests/windows-vm-installed-tauri-cdp.cjs'
       - 'scripts/windows-vm-targeted-a08.ps1'
+      - 'scripts/lint-workflows.sh'
   workflow_dispatch:
     inputs:
       artifact_run_id:
@@ -21,14 +23,40 @@ on:
         description: 'Candidate installer version from that run'
         required: true
         type: string
+      run_endurance:
+        description: 'Also run the 120-minute endurance test after the ten-cycle smoke'
+        required: false
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
+concurrency:
+  group: a08-memory-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 jobs:
+  preflight:
+    name: Validate workflows and browser-cycle regression before Windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate GitHub Actions schema and expressions
+        run: bash scripts/lint-workflows.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Exercise browser-cycle success and rejection paths
+        run: node --test tests/windows-vm-native-memory-stability-contract.test.mjs
+      - name: Parse native harness before starting Windows
+        run: node --check tests/windows-vm-installed-tauri-cdp.cjs
   targeted-native-a08:
     if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/work/a08-memory-stability-20261123'
+    needs: preflight
     runs-on: windows-latest
-    timeout-minutes: 160
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.run_endurance && 160 || 25 }}
     steps:
       # Checkout the separately reviewed QA harness; verify the immutable
       # binary-producing source SHA independently against its successful run.
@@ -74,6 +102,7 @@ jobs:
           if ($files.Count -ne 1) { throw 'Expected exactly one reused NSIS installer' }
           ./scripts/windows-vm-targeted-a08.ps1 -Installer $files[0].FullName -ExpectedVersion $env:EXPECTED_VERSION -Mode stability
       - name: Run 120-minute installed endurance after short smoke
+        if: github.event_name == 'workflow_dispatch' && inputs.run_endurance
         shell: pwsh
         env:
           A08_ENDURANCE: '1'
@@ -93,3 +122,12 @@ jobs:
             ${{ runner.temp }}/factor-a08-targeted-native-smoke/reports/*.json
           retention-days: 14
           if-no-files-found: warn
+      - name: State actual acceptance scope
+        if: always()
+        shell: pwsh
+        env:
+          ENDURANCE_REQUESTED: ${{ github.event_name == 'workflow_dispatch' && inputs.run_endurance }}
+        run: |
+          "Harness checkout: $(git rev-parse HEAD)" >> $env:GITHUB_STEP_SUMMARY
+          "120-minute endurance requested: $env:ENDURANCE_REQUESTED" >> $env:GITHUB_STEP_SUMMARY
+          "A ten-cycle smoke is not a 120-minute acceptance or a memory-leak verdict. Consult the recorded step results and JSON evidence." >> $env:GITHUB_STEP_SUMMARY
