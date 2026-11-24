@@ -29,7 +29,7 @@ if ($exe.Count -ne 1 -or $exe[0].Length -lt 300000) { throw 'Installed native ex
 if ($LASTEXITCODE -ne 0) { throw 'Installed WebView2 A08 benchmark failed' }
 $result=Get-Content $report -Raw | ConvertFrom-Json
 if ($Mode -eq 'stability' -and ($result.nativeMemoryStability.status -ne 'PASSED' -or
-    $result.nativeMemoryStability.cycles.Count -ne 10)) { throw 'Stability cycle acceptance incomplete' }
+    $result.nativeMemoryStability.cycles.Count -ne $(if ($env:A08_ENDURANCE -eq '1') { 240 } else { 10 }))) { throw 'Stability cycle acceptance incomplete' }
 if ($result.status -ne 'PASSED' -or $result.installedNativeTauri -ne $true -or
     $result.nativePerformance.products -ne 10000 -or
     $result.nativePerformance.invoices -ne 50000 -or

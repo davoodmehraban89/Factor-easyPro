@@ -1,4 +1,4 @@
-﻿name: A08 installed Windows memory stability (reuse NSIS)
+ï»؟name: A08 installed Windows memory stability (reuse NSIS)
 on:
   pull_request:
     paths:
@@ -27,7 +27,7 @@ jobs:
   targeted-native-a08:
     if: github.event_name == 'workflow_dispatch' || github.head_ref == 'work/a08-memory-stability-20261123'
     runs-on: windows-latest
-    timeout-minutes: 35
+    timeout-minutes: 160
     steps:
       # Checkout the separately reviewed QA harness; verify the immutable
       # binary-producing source SHA independently against its successful run.
@@ -72,11 +72,23 @@ jobs:
           $files=@(Get-ChildItem test-installer -Recurse -Filter '*x64-setup.exe')
           if ($files.Count -ne 1) { throw 'Expected exactly one reused NSIS installer' }
           ./scripts/windows-vm-targeted-a08.ps1 -Installer $files[0].FullName -ExpectedVersion $env:EXPECTED_VERSION -Mode stability
+      - name: Run 120-minute installed endurance after short smoke
+        shell: pwsh
+        env:
+          A08_ENDURANCE: '1'
+          EXPECTED_VERSION: ${{ inputs.expected_version || '2.0.4' }}
+        run: |
+          $lab=Join-Path $env:RUNNER_TEMP 'factor-a08-targeted-native'
+          Move-Item $lab "$lab-smoke"
+          $files=@(Get-ChildItem test-installer -Recurse -Filter '*x64-setup.exe')
+          ./scripts/windows-vm-targeted-a08.ps1 -Installer $files[0].FullName -ExpectedVersion $env:EXPECTED_VERSION -Mode stability
       - name: Upload targeted native A08 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: a08-installed-memory-stability-evidence
-          path: ${{ runner.temp }}/factor-a08-targeted-native/reports/*.json
+          path: |
+            ${{ runner.temp }}/factor-a08-targeted-native/reports/*.json
+            ${{ runner.temp }}/factor-a08-targeted-native-smoke/reports/*.json
           retention-days: 14
           if-no-files-found: warn

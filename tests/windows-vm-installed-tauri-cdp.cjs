@@ -162,14 +162,14 @@ async function connect(url) {
     } else {
       assert.equal(ready.version, expectedVersion, 'candidate build runtime version mismatch');
     }
-    const setup = ready.initialMode.includes('تعیین رمز');
+    const setup = ready.initialMode.includes('طھط¹غŒغŒظ† ط±ظ…ط²');
     if (mode === 'seed' || mode === 'fresh' || mode === 'benchmark' || mode === 'stability' || mode === 'crash-arm') {
       assert.equal(setup, true, 'a new native profile must prompt to set the administrator password');
     } else {
       assert.equal(setup, false, 'upgrade/reopen should preserve existing administrator credentials');
     }
     await cdp.evaluate('(() => {' +
-      'document.getElementById("faUser").value="مدیر";' +
+      'document.getElementById("faUser").value="ظ…ط¯غŒط±";' +
       'document.getElementById("faPass").value=' + JSON.stringify(PASSWORD) + ';' +
       'if(document.getElementById("faPass2").style.display!=="none") document.getElementById("faPass2").value=' + JSON.stringify(PASSWORD) + ';' +
       'document.getElementById("faSubmit").click();return "submitted"})()');
@@ -374,7 +374,7 @@ async function connect(url) {
     if (mode === 'fresh') {
       // Drive synthetic records, complete snapshot replay and every SPA route
       // inside the actually installed Tauri WebView2, not Vite preview.
-      const ui = await cdp.evaluate("(async () => {\n  const ensure = (pass, message) => { if (!pass) throw Error(message); };\n  ensure(!document.getElementById('finoraAuthOverlay'), 'Cannot test UI before login');\n  const person = await window.ContactController.create({\n    name: 'شخص آزمایشی ماشین مجازی', role: 'both'\n  });\n  const product = await window.ProductController.createProduct({\n    name: 'کالای آزمایشی ماشین مجازی', code: 'WINDOWS-VM-LAB',\n    buyPrice: 150, sellPrice: 250, trackInventory: true\n  });\n  const db = window.FINORA.Storage;\n  const before = {\n    contacts: (await db.getAll('contacts')).length,\n    products: (await db.getAll('products')).length\n  };\n  ensure((await db.get('contacts',person.id))?.name === 'شخص آزمایشی ماشین مجازی',\n    'Contact did not persist in the native app');\n  ensure((await db.get('products',product.id))?.sellPrice === 250,\n    'Product did not persist in the native app');\n  const snapshot = await db.exportAll();\n  ensure(snapshot.version === 7 && snapshot.app === 'Factor-easyPro',\n    'Native snapshot identity/version mismatch');\n  ensure(snapshot.data.users.every(u => !u.pwHash && !u.pwSalt && !u.pass),\n    'Credential hash leaked into plain export');\n  ensure(snapshot.data.contacts.some(c => c.id === person.id) &&\n    snapshot.data.products.some(p => p.id === product.id),\n    'Native snapshot missing committed master data');\n  ensure(await db.importAll(snapshot) === true,\n    'Native full snapshot replay did not succeed');\n  const after = {\n    contacts: (await db.getAll('contacts')).length,\n    products: (await db.getAll('products')).length\n  };\n  ensure(before.contacts === after.contacts && before.products === after.products,\n    'Snapshot replay duplicated a contact or product');\n  const routes = [\n    'dashboard', 'invoices', 'products', 'contacts', 'treasury',\n    'cheques', 'expenses', 'reports', 'accounting', 'settings'\n  ];\n  const pages = [];\n  for (const route of routes) {\n    await FINORA.Router.go(route);\n    const view = document.getElementById('pageContent');\n    const text = (view?.textContent || '').trim();\n    ensure(FINORA.Router.current() === route, 'Unexpected route: ' + route);\n    ensure(text.length > 10, 'Empty page: ' + route);\n    ensure(!text.includes('خطا در بارگذاری صفحه'),\n      'Router reported a page rendering error: ' + route);\n    ensure(!document.querySelector('.toast-error'),\n      'Error toast while navigating to: ' + route);\n    pages.push({route, renderedCharacters: text.length});\n  }\n  await FINORA.Router.go('dashboard');\n  ensure(!document.getElementById('finoraAuthOverlay'),\n    'Navigation unexpectedly returned to authentication overlay');\n  return {masterData:before, backup:'plain-no-credentials-replay-idempotent',\n    routes:pages, visibleVersion:FINORA.version};\n})()", 45000);
+      const ui = await cdp.evaluate("(async () => {\n  const ensure = (pass, message) => { if (!pass) throw Error(message); };\n  ensure(!document.getElementById('finoraAuthOverlay'), 'Cannot test UI before login');\n  const person = await window.ContactController.create({\n    name: 'ط´ط®طµ ط¢ط²ظ…ط§غŒط´غŒ ظ…ط§ط´غŒظ† ظ…ط¬ط§ط²غŒ', role: 'both'\n  });\n  const product = await window.ProductController.createProduct({\n    name: 'ع©ط§ظ„ط§غŒ ط¢ط²ظ…ط§غŒط´غŒ ظ…ط§ط´غŒظ† ظ…ط¬ط§ط²غŒ', code: 'WINDOWS-VM-LAB',\n    buyPrice: 150, sellPrice: 250, trackInventory: true\n  });\n  const db = window.FINORA.Storage;\n  const before = {\n    contacts: (await db.getAll('contacts')).length,\n    products: (await db.getAll('products')).length\n  };\n  ensure((await db.get('contacts',person.id))?.name === 'ط´ط®طµ ط¢ط²ظ…ط§غŒط´غŒ ظ…ط§ط´غŒظ† ظ…ط¬ط§ط²غŒ',\n    'Contact did not persist in the native app');\n  ensure((await db.get('products',product.id))?.sellPrice === 250,\n    'Product did not persist in the native app');\n  const snapshot = await db.exportAll();\n  ensure(snapshot.version === 7 && snapshot.app === 'Factor-easyPro',\n    'Native snapshot identity/version mismatch');\n  ensure(snapshot.data.users.every(u => !u.pwHash && !u.pwSalt && !u.pass),\n    'Credential hash leaked into plain export');\n  ensure(snapshot.data.contacts.some(c => c.id === person.id) &&\n    snapshot.data.products.some(p => p.id === product.id),\n    'Native snapshot missing committed master data');\n  ensure(await db.importAll(snapshot) === true,\n    'Native full snapshot replay did not succeed');\n  const after = {\n    contacts: (await db.getAll('contacts')).length,\n    products: (await db.getAll('products')).length\n  };\n  ensure(before.contacts === after.contacts && before.products === after.products,\n    'Snapshot replay duplicated a contact or product');\n  const routes = [\n    'dashboard', 'invoices', 'products', 'contacts', 'treasury',\n    'cheques', 'expenses', 'reports', 'accounting', 'settings'\n  ];\n  const pages = [];\n  for (const route of routes) {\n    await FINORA.Router.go(route);\n    const view = document.getElementById('pageContent');\n    const text = (view?.textContent || '').trim();\n    ensure(FINORA.Router.current() === route, 'Unexpected route: ' + route);\n    ensure(text.length > 10, 'Empty page: ' + route);\n    ensure(!text.includes('ط®ط·ط§ ط¯ط± ط¨ط§ط±ع¯ط°ط§ط±غŒ طµظپط­ظ‡'),\n      'Router reported a page rendering error: ' + route);\n    ensure(!document.querySelector('.toast-error'),\n      'Error toast while navigating to: ' + route);\n    pages.push({route, renderedCharacters: text.length});\n  }\n  await FINORA.Router.go('dashboard');\n  ensure(!document.getElementById('finoraAuthOverlay'),\n    'Navigation unexpectedly returned to authentication overlay');\n  return {masterData:before, backup:'plain-no-credentials-replay-idempotent',\n    routes:pages, visibleVersion:FINORA.version};\n})()", 45000);
       assert.equal(ui.routes.length, 10);
       assert.equal(ui.visibleVersion, expectedVersion);
       report.nativeUI = ui;
@@ -568,7 +568,7 @@ async function connect(url) {
             await FINORA.Router.go(route);
             const body = (document.getElementById('pageContent')?.textContent || '').trim();
             if (FINORA.Router.current() !== route || body.length <= 10 ||
-                body.includes('خطا در بارگذاری صفحه') ||
+                body.includes('ط®ط·ط§ ط¯ط± ط¨ط§ط±ع¯ط°ط§ط±غŒ طµظپط­ظ‡') ||
                 document.querySelector('.toast-error') ||
                 document.getElementById('finoraAuthOverlay')) {
               throw Error('Installed app route failed while offline: ' + route);
@@ -684,7 +684,24 @@ async function connect(url) {
         await collect();
         const baseline = await heap();
         const processBaseline = windowsProcessMemory();
-        for (let i = 0; i < 10; i++) {
+        const endurance = process.env.A08_ENDURANCE === '1';
+        const count = endurance ? 240 : 10;
+        const intervalMs = endurance ? 30000 : 0;
+        const started = performance.now();
+        const checkpoint = () => {
+          if (!reportPath) return;
+          const target = path.join(path.dirname(reportPath), 'stability-checkpoint.json');
+          fs.writeFileSync(target + '.tmp', JSON.stringify(report, null, 2));
+          fs.renameSync(target + '.tmp', target);
+        };
+        report.nativeMemoryStability = {
+          status: 'RUNNING', synthetic: true, cycles, baseline, processBaseline,
+          gcSupported, count, intervalMs, endurance
+        };
+        checkpoint();
+        for (let i = 0; i < count; i++) {
+          if (endurance) await wait(Math.max(0, started + i * intervalMs - performance.now()));
+          const elapsedMs = performance.now() - started;
           const result = await cdp.evaluate(cycleCode, 120000);
           assert.equal(result.products, 10000);
           assert.equal(result.invoices, 50000);
@@ -693,15 +710,27 @@ async function connect(url) {
           const raw = await heap();
           if (gcSupported) await collect();
           const postGc = gcSupported ? await heap() : null;
-          cycles.push({ cycle: i + 1, durationMs: result.rounds[0].durationMs,
-            raw, postGc, windowsProcessTree: windowsProcessMemory() });
+          const windowsProcessTree = windowsProcessMemory();
+          cycles.push({ cycle: i + 1, elapsedMs, durationMs: result.rounds[0].durationMs,
+            raw, postGc, windowsProcessTree });
+          report.nativeMemoryStability.gcSupported = gcSupported;
+          checkpoint();
+          if (endurance) {
+            assert.ok(gcSupported && !windowsProcessTree.unavailable && !processBaseline.unavailable,
+              'Endurance memory evidence unavailable');
+            assert.ok(performance.now() - started <= (i + 1) * intervalMs,
+              'Endurance sample exceeded its scheduled interval');
+          }
         }
+        if (endurance) await wait(Math.max(0, started + count * intervalMs - performance.now()));
         report.nativeMemoryStability = {
+          count, intervalMs, endurance, elapsedMs: performance.now() - started,
           status: 'PASSED', synthetic: true, cycles, baseline, processBaseline,
           gcSupported, heapScope: 'renderer-js-heap-not-Windows-working-set',
           windowsProcessScope: 'installed-Tauri-parent-and-descendant-processes',
           note: 'Diagnostic series only; no leak verdict or SLA implied'
         };
+        checkpoint();
       }
 
     }
