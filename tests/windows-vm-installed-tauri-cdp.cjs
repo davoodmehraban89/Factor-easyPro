@@ -11,10 +11,10 @@ const { verifyNativeOrigin } = require('./windows-vm-native-origin.cjs');
 
 const [exe, profile, mode, expectedVersion, reportPath] = process.argv.slice(2);
 assert.equal(process.platform, 'win32');
-assert.ok(['seed','upgrade','reopen','fresh','benchmark','crash-arm','crash-verify'].includes(mode), 'unknown lab mode');
+assert.ok(['seed','upgrade','reopen','fresh','benchmark','stability','crash-arm','crash-verify'].includes(mode), 'unknown lab mode');
 assert.ok(fs.existsSync(exe), 'installed Windows executable missing');
 fs.mkdirSync(profile, { recursive: true });
-const port = mode === 'seed' ? 9371 : mode === 'upgrade' ? 9372 : mode === 'reopen' ? 9374 : mode === 'benchmark' ? 9375 : mode === 'crash-arm' ? 9376 : mode === 'crash-verify' ? 9377 : 9373;
+const port = mode === 'seed' ? 9371 : mode === 'upgrade' ? 9372 : mode === 'reopen' ? 9374 : mode === 'benchmark' || mode === 'stability' ? 9375 : mode === 'crash-arm' ? 9376 : mode === 'crash-verify' ? 9377 : 9373;
 const PASSWORD = 'VmOnly-Factor-83471!'; // Synthetic password, never printed.
 
 const REG_POLICY = [
@@ -163,7 +163,7 @@ async function connect(url) {
       assert.equal(ready.version, expectedVersion, 'candidate build runtime version mismatch');
     }
     const setup = ready.initialMode.includes('تعیین رمز');
-    if (mode === 'seed' || mode === 'fresh' || mode === 'benchmark' || mode === 'crash-arm') {
+    if (mode === 'seed' || mode === 'fresh' || mode === 'benchmark' || mode === 'stability' || mode === 'crash-arm') {
       assert.equal(setup, true, 'a new native profile must prompt to set the administrator password');
     } else {
       assert.equal(setup, false, 'upgrade/reopen should preserve existing administrator credentials');
@@ -590,7 +590,7 @@ async function connect(url) {
         });
       }
     }
-    if (mode === 'benchmark') {
+    if (mode === 'benchmark' || mode === 'stability') {
       // A08 performance sample from the actually installed NSIS/Tauri/WebView2
       // binary with a brand-new disposable profile, not Node fake-indexeddb.
       // The separate profile prevents benchmark fixtures from affecting
@@ -639,6 +639,100 @@ async function connect(url) {
       };
       measured.jsHeapScope = 'renderer-js-heap-not-total-Windows-process-memory';
       report.nativePerformance = measured;
+      if (mode === 'stability') {
+        const cycleCode = fs.readFileSync(
+          path.join(__dirname, 'windows-vm-native-memory-stability-browser.js'), 'utf8');
+        const cycles = [];
+        const heap = async () => {
+          const usage = await cdp.command('Runtime.getHeapUsage', {}, 30000);
+          assert.ok(Number.isSafeInteger(usage.usedSize) && usage.usedSize >= 0);
+          return { usedBytes: usage.usedSize, allocatedBytes: usage.totalSize };
+        };
+        // Windows process tree metrics are distinct from CDP renderer JS heap.
+        // Capture installed Tauri parent + descendants using OS process counters.
+        // A transient CIM failure is recorded, not converted to a zero reading.
+        const windowsProcessMemory = () => {
+          try {
+            const script = [
+              '$ErrorActionPreference = "Stop"',
+              '$all = @(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,WorkingSetSize,PrivatePageCount)',
+              '$ids = [System.Collections.Generic.HashSet[int]]::new()',
+              '[void]$ids.Add(' + proc.pid + ')',
+              'do { $before = $ids.Count; foreach ($p in $all) { if ($ids.Contains([int]$p.ParentProcessId)) { [void]$ids.Add([int]$p.ProcessId) } } } while ($ids.Count -gt $before)',
+              '$members = @($all | Where-Object { $ids.Contains([int]$_.ProcessId) })',
+              'if ($members.Count -lt 1) { throw "Installed process not found" }',
+              '$ws = ($members | Measure-Object -Property WorkingSetSize -Sum).Sum',
+              '$private = ($members | Measure-Object -Property PrivatePageCount -Sum).Sum',
+              '@{ processCount=$members.Count; workingSetBytes=[long]$ws; privateBytes=[long]$private } | ConvertTo-Json -Compress'
+            ].join('; ');
+            const sample = JSON.parse(execFileSync('powershell.exe',
+              ['-NoProfile', '-NonInteractive', '-Command', script],
+              { encoding: 'utf8', timeout: 30000 }));
+            assert.ok(Number.isSafeInteger(sample.workingSetBytes) &&
+              sample.workingSetBytes > 0 && Number.isSafeInteger(sample.privateBytes) &&
+              sample.privateBytes > 0 && sample.processCount > 0);
+            return sample;
+          } catch (error) {
+            return { unavailable: true, reason: 'Windows CIM process-tree sample unavailable' };
+          }
+        };
+        let gcSupported = true;
+        const collect = async () => {
+          try { await cdp.command('HeapProfiler.collectGarbage', {}, 30000); }
+          catch (_) { gcSupported = false; }
+        };
+        await collect();
+        const baseline = await heap();
+        const processBaseline = windowsProcessMemory();
+        const endurance = process.env.A08_ENDURANCE === '1';
+        const count = endurance ? 240 : 10;
+        const intervalMs = endurance ? 30000 : 0;
+        const started = performance.now();
+        const checkpoint = () => {
+          if (!reportPath) return;
+          const target = path.join(path.dirname(reportPath), 'stability-checkpoint.json');
+          fs.writeFileSync(target + '.tmp', JSON.stringify(report, null, 2));
+          fs.renameSync(target + '.tmp', target);
+        };
+        report.nativeMemoryStability = {
+          status: 'RUNNING', synthetic: true, cycles, baseline, processBaseline,
+          gcSupported, count, intervalMs, endurance
+        };
+        checkpoint();
+        for (let i = 0; i < count; i++) {
+          if (endurance) await wait(Math.max(0, started + i * intervalMs - performance.now()));
+          const elapsedMs = performance.now() - started;
+          const result = await cdp.evaluate(cycleCode, 120000);
+          assert.equal(result.products, 10000);
+          assert.equal(result.invoices, 50000);
+          assert.equal(result.companyInvoices, 50000);
+          assert.equal(result.rounds.length, 1);
+          const raw = await heap();
+          if (gcSupported) await collect();
+          const postGc = gcSupported ? await heap() : null;
+          const windowsProcessTree = windowsProcessMemory();
+          cycles.push({ cycle: i + 1, elapsedMs, durationMs: result.rounds[0].durationMs,
+            raw, postGc, windowsProcessTree });
+          report.nativeMemoryStability.gcSupported = gcSupported;
+          checkpoint();
+          if (endurance) {
+            assert.ok(gcSupported && !windowsProcessTree.unavailable && !processBaseline.unavailable,
+              'Endurance memory evidence unavailable');
+            assert.ok(performance.now() - started <= (i + 1) * intervalMs,
+              'Endurance sample exceeded its scheduled interval');
+          }
+        }
+        if (endurance) await wait(Math.max(0, started + count * intervalMs - performance.now()));
+        report.nativeMemoryStability = {
+          count, intervalMs, endurance, elapsedMs: performance.now() - started,
+          status: 'PASSED', synthetic: true, cycles, baseline, processBaseline,
+          gcSupported, heapScope: 'renderer-js-heap-not-Windows-working-set',
+          windowsProcessScope: 'installed-Tauri-parent-and-descendant-processes',
+          note: 'Diagnostic series only; no leak verdict or SLA implied'
+        };
+        checkpoint();
+      }
+
     }
     if (mode === 'fresh') {
       // LAST operation: real installed WebView2 PDF engine, using production

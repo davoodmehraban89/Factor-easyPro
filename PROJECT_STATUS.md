@@ -1,4 +1,33 @@
-## RESUME_PACKET — verified independent A08 result (2026-11-23)
+## RESUME_PACKET — A08 workflow recovered and native smoke verified (2026-11-24)
+
+- schema_version: 2; updated_at_utc: 2026-11-24T13:44:14+00:00; session_id: finora-a08-workflow-recovery-20261124.
+- active_goal / task: Issue #201 installed-memory QA; this workflow/encoding recovery package is VERIFIED. Endurance and final product acceptance are separate, still open.
+- repository: davoodmehraban89/Factor-easyPro; active Draft PR: #202; branch: work/a08-memory-stability-20261123; parent Draft PR: #199.
+- worktree_path: C:\Users\Davood\Documents\Factor-easyPro-QA\.worktrees\factor-a08-memory-stability-20261123.
+- baseline_commit: 93bec56498e115c653da153e00a19f02efc57159; implementation_commit: fdee1685c73864c74dbee39c9158886e4de3024c; preceding workflow repair: c61c4ffee816a966a04046c4b5bf6d9b91c4cd8d.
+- delivery_state: implementation committed/pushed, all related CI passed, #202 remains Draft and unmerged. Resolve the status-document revision and any later local changes from Git; do not require another native run solely for this documentation checkpoint.
+- last_completed_action: repaired workflow encoding and four corrupted Persian native-harness lines; added checksum-pinned Actions schema validation, an enforced cheap preflight, discoverable behavioral regressions, and explicit opt-in endurance. Exactly one active RESUME_PACKET remains; older entries are historical.
+- verification: local Linux npm test 491/491 pass, 0 failed/skipped; Aram Node 24 focused suite 8/8 pass; Vite build pass (existing large-chunk advisory); production dependency audit 0 advisories; actionlint across workflows pass. Two encoding regressions were confirmed failing before restoring the labels and passed afterward.
+- current_quality: https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/45405967290 — SUCCESS on fdee168; Q01 https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/45405967288 — SUCCESS. The stacked-PR NSIS build job was intentionally skipped, not counted as a passing build.
+- current_native: https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/45405957443 — COMPLETED SUCCESS at 2026-11-24T13:42:47Z, checkout/head fdee1685c73864c74dbee39c9158886e4de3024c. Preflight and installed ten-cycle smoke passed. The 120-minute endurance step was SKIPPED as designed, not accepted.
+- current_artifact: https://github.com/davoodmehraban89/Factor-easyPro/actions/runs/45405957443/artifacts/14926755167 — benchmark-native-result.json and stability-checkpoint.json; status PASSED, installedNativeTauri true, first-run admin setup passed, 10000 products/50000 invoices, 100 pages and correct first/second/last pagination.
+- memory_evidence: 10 cycles, endurance=false, GC supported. Post-GC renderer heap cycle 1 = 4094276 B; cycle 10 = 4153100 B. Windows process-tree working set cycle 1 = 521912320 B; cycle 10 = 544018432 B. These are distinct metrics; this short diagnostic sample does not prove absence/presence of a leak or a production SLA.
+- artifact_source: reused NSIS from successful native run 45243530762, product source 25faa1548536572d4a2199fe9c11fea9c1029b6f, version 2.0.4. No product or build-input changes and no NSIS rebuild in this recovery.
+- test_policy: relevant pushes run preflight then the ten-cycle installed smoke. Endurance requires workflow_dispatch with run_endurance=true, default false; timeouts are 25/160 minutes. Unknown or incomplete results must never be reported as full acceptance.
+- failure_ledger: 45343458191 / 45343858906 had zero jobs because the workflow name key was corrupted by an encoding conversion. Run 45405204319 then exposed corrupted Persian setup/error strings in the runner from the same earlier conversion. Both causes are repaired and covered by cheap validation; do not repeat those revisions or re-open the historical fixed-date A08 defect.
+- prior_installed_evidence: run 45248855137 on 369ba0b also passed 10 cycles; it is historical evidence, not a 120-minute test. The large raw benchmark heap alone was not a leak diagnosis.
+- change_scope: CI, test harness and execution status only; application, schema, dependencies, actual customer data and Holoo permissions were not changed.
+- next_action: continue Issue #201 from the remaining evidence gaps: review/integrate the QA workflow under the required authorization, then explicitly request the bounded endurance run and complete the independent sample/physical acceptance matrix. Reuse the same compatible installer; do not redo this verified recovery or merge #199 automatically.
+- blockers / limits: memory workflow absent from main at verification, so workflow_dispatch activation needs separately authorized workflow integration. No successful 120-minute run is claimed; >=3 comparable independent runner samples and physical/UAT/release gates are not yet accepted.
+- approvals: branch edits, tests, commits/pushes and Draft PR maintenance authorized. No new merge, release, production installation or SQL write authorization. Historical #200 approval does not authorize #202/#199 merge.
+- interrupted_action: none; no unfinished code repair in this package. Check Git for any newer user changes before editing.
+- do_not_repeat: no automatic two-hour run per push; no full installer build for these harness-only fixes; no rerun for this checkpoint; no interpretation of short smoke as endurance or product release acceptance.
+- security_gates: synthetic isolated CI allowed; Phase A public release and operational Holoo writes remain NO-GO.
+- All sections below are historical evidence, not additional active resume packets.
+
+---
+
+## Historical checkpoint — verified independent A08 result (2026-11-23)
 
 - User approved ONLY PR #200 merge; merged to main as e4f9b020f50ba617db7f4a9fdd5eadc8fb6f0fa2. Product PR #199 remains Draft, unmerged.
 - Independent A08 run 45242810197: COMPLETED SUCCESS. Native installed WebView2 benchmark step and evidence upload SUCCESS.
@@ -13,7 +42,7 @@
 
 ---
 
-## RESUME_PACKET — A08 activation and dispatch checkpoint (2026-11-23)
+## Historical checkpoint — A08 activation and dispatch checkpoint (2026-11-23)
 
 - User approved merging ONLY PR #200; no product merge, release or production writes.
 - PR #200 merged via squash to main: e4f9b020f50ba617db7f4a9fdd5eadc8fb6f0fa2; workflow ID 428175137 registered.
@@ -26,7 +55,7 @@
 
 ---
 
-## RESUME_PACKET — current verified checkpoint (2026-11-23)
+## Historical checkpoint — current verified checkpoint (2026-11-23)
 
 - Repo: davoodmehraban89/Factor-easyPro; product: offline Persian Tauri 2 / IndexedDB, NOT web/multiuser ERP.
 - Phase A: **NO-GO**; independent physical and release acceptance remain open. Phases A-E percentages are NOT measured; Phase F release not authorized.
@@ -42,7 +71,7 @@
 - Prior checkpoint below is historical and superseded for active execution status.
 
 ---
-## RESUME_PACKET — active execution checkpoint
+## Historical checkpoint — active execution checkpoint
 
 - schema_version: 1
 - updated_at_utc: 2026-11-23 (UTC clock precision not verified)
