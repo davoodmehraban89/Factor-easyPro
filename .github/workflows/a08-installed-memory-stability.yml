@@ -1,6 +1,7 @@
-ï»؟name: A08 installed Windows memory stability (reuse NSIS)
+أ¯آ»طںname: A08 installed Windows memory stability (reuse NSIS)
 on:
-  pull_request:
+  push:
+    branches: [work/a08-memory-stability-20261123]
     paths:
       - '.github/workflows/a08-installed-memory-stability.yml'
       - 'tests/windows-vm-native-memory-stability-browser.js'
@@ -25,7 +26,7 @@ permissions:
   actions: read
 jobs:
   targeted-native-a08:
-    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'work/a08-memory-stability-20261123'
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/work/a08-memory-stability-20261123'
     runs-on: windows-latest
     timeout-minutes: 160
     steps:
